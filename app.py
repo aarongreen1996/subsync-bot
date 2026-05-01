@@ -9,8 +9,10 @@ from supabase import create_client
 from datetime import datetime
 import requests as http_requests
 from pdf_generator import generate_pdf
+from dashboard import dashboard_bp
 
 app = Flask(__name__)
+app.register_blueprint(dashboard_bp)
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
