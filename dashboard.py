@@ -64,7 +64,9 @@ def summary():
         return jsonify({"error": "Unauthorized"}), 401
 
     company_number = request.args.get("number", "")
-    encoded = company_number.replace("+", "%2B")
+    if not company_number.startswith("whatsapp:"):
+        company_number = f"whatsapp:{company_number}"
+    encoded = company_number.replace("+", "%2B"))
 
     logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
     projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
@@ -106,7 +108,9 @@ def generate():
     site_name   = data.get("site_name")
     doc_type    = data.get("doc_type", "VARIATION")
     from_number = data.get("from_number", "")
-    encoded     = from_number.replace("+", "%2B")
+    if not from_number.startswith("whatsapp:"):
+        from_number = f"whatsapp:{from_number}"
+    encoded = from_number.replace("+", "%2B")
 
     companies = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
     if not companies:
