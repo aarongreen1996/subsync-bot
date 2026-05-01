@@ -48,6 +48,7 @@ def slugify(text):
 
 def normalise(number):
     """Ensure number is in whatsapp:+44... format and URL-safe."""
+    number = number.strip().replace(" ", "+")  # fix space back to +
     if not number.startswith("whatsapp:"):
         number = "whatsapp:" + number
     return number.replace("+", "%2B")
