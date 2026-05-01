@@ -135,9 +135,10 @@ def handle_generate(from_number, msg):
 
         log_type, doc_title = detect_doc_type(msg)
 
+        encoded_number = from_number.replace("+", "%2B")
         logs = db_get(
-            f"site_logs?from_number=eq.{from_number}"
-            f"&status=eq.pending&type=eq.{log_type}&order=created_at.asc"
+            f"site_logs?from_number=eq.{encoded_number}"
+            f"&status=eq.pending&order=created_at.asc"
         )
 
         if not logs:
