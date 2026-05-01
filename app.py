@@ -129,7 +129,7 @@ def handle_generate(from_number, msg):
     try:
         companies = db_get(f"companies?whatsapp_number=eq.{from_number}&limit=1")
         if not companies:
-            return _reply("⚠️ Your company isn't registered yet. Contact your admin.")
+            return _reply(f"⚠️ Not registered. Your number: '{from_number}'")
         company = companies[0]
 
         log_type, doc_title = detect_doc_type(msg)
