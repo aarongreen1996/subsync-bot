@@ -70,7 +70,8 @@ def summary():
     encoded = encode_number(company_number)
 
     logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
-    projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
+    proj_num = company_number.replace("+", "%2B")
+    projects = db_get(f"projects?whatsapp_number=eq.{proj_num}&status=eq.active&order=site_name.asc")
     sent     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.sent&order=created_at.desc&limit=10")
     company  = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
 
