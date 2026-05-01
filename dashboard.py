@@ -37,9 +37,6 @@ def db_patch(path, payload):
 def check_auth():
     return request.headers.get("X-Dashboard-Password", "") == DASHBOARD_PASSWORD
 
-def encode_number(n):
-    return n.replace("+", "%2B")
-
 def slugify(text):
     text = str(text).strip().replace(" ", "_")
     return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
@@ -69,9 +66,8 @@ def summary():
     company_number = request.args.get("number", "")
     encoded = company_number.replace("+", "%2B")
 
-        logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
-    proj_num = company_number.replace("+", "%2B")
-    projects = db_get(f"projects?whatsapp_number=eq.{proj_num}&status=eq.active&order=site_name.asc")
+    logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
+    projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
     sent     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.sent&order=created_at.desc&limit=10")
     company  = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
 
@@ -89,14 +85,14 @@ def summary():
         by_site[site]["logs"].append(log)
 
     return jsonify({
-        "company":        company[0] if company else {},
-        "total_pending":  len(logs),
-        "total_value":    total_value,
-        "total_hours":    total_hours,
-        "sites":          len(projects),
-        "by_site":        by_site,
-        "projects":       projects,
-        "recent_sent":    sent,
+        "company":       company[0] if company else {},
+        "total_pending": len(logs),
+        "total_value":   total_value,
+        "total_hours":   total_hours,
+        "sites":         len(projects),
+        "by_site":       by_site,
+        "projects":      projects,
+        "recent_sent":   sent,
     })
 
 
@@ -110,7 +106,7 @@ def generate():
     site_name   = data.get("site_name")
     doc_type    = data.get("doc_type", "VARIATION")
     from_number = data.get("from_number", "")
-    encoded     = encode_number(from_number)
+    encoded     = from_number.replace("+", "%2B")
 
     companies = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
     if not companies:
@@ -142,12 +138,14 @@ def generate():
 
     pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
 
-    # Upload to Supabase Storage
     upload_url = f"{SUPABASE_URL}/storage/v1/object/documents/{filename}"
     r = http_requests.post(
         upload_url, data=pdf_bytes,
-        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
-                 "Content-Type": "application/pdf"}
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/pdf"
+        }
     )
     if r.status_code not in (200, 201):
         return jsonify({"error": f"Upload failed: {r.text}"}), 500
@@ -173,7 +171,7 @@ def send_email():
         return jsonify({"error": "Unauthorized"}), 401
 
     if not RESEND_API_KEY:
-        return jsonify({"error": "Email not set up yet. Add RESEND_API_KEY to Railway variables."}), 500
+        return jsonify({"error": "Email not set up. Add RESEND_API_KEY to Railway variables."}), 500
 
     data         = request.json or {}
     to_email     = data.get("to_email")
@@ -183,8 +181,7 @@ def send_email():
     company_name = data.get("company_name", "Company")
     filename     = data.get("filename")
 
-    # Download and attach PDF
-    pdf_r  = http_requests.get(pdf_url)
+    pdf_r   = http_requests.get(pdf_url)
     pdf_b64 = base64.b64encode(pdf_r.content).decode()
 
     payload = {
@@ -206,7 +203,10 @@ def send_email():
     r = http_requests.post(
         "https://api.resend.com/emails",
         json=payload,
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"}
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
     )
 
     if r.status_code in (200, 201):
