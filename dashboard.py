@@ -67,9 +67,9 @@ def summary():
         return jsonify({"error": "Unauthorized"}), 401
 
     company_number = request.args.get("number", "")
-    encoded = encode_number(company_number)
+    encoded = company_number.replace("+", "%2B")
 
-    logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
+        logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
     proj_num = company_number.replace("+", "%2B")
     projects = db_get(f"projects?whatsapp_number=eq.{proj_num}&status=eq.active&order=site_name.asc")
     sent     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.sent&order=created_at.desc&limit=10")
