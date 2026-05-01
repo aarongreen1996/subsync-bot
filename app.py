@@ -11,6 +11,8 @@ import requests as http_requests
 from pdf_generator import generate_pdf
 from dashboard import dashboard_bp
 from onboarding import onboarding_bp
+
+app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 
@@ -53,7 +55,6 @@ def encode_number(number):
     return number.replace("+", "%2B")
 
 def encode_text(text):
-    """URL encode text for query strings."""
     from urllib.parse import quote
     return quote(str(text), safe="")
 
@@ -65,26 +66,22 @@ def get_projects(from_number):
     )
 
 def match_site(msg, projects):
-    """Try to find a matching project from the message text."""
     msg_lower = msg.lower()
     for p in projects:
         if p["site_name"].lower() in msg_lower:
             return p["site_name"]
-        # Also check client name
         if p.get("client_name", "").lower() in msg_lower:
             return p["site_name"]
     return None
 
 def format_project_list(projects):
-    """Return a numbered list of projects for the user to pick from."""
     lines = ["Which site is this for? Reply with the number:\n"]
     for i, p in enumerate(projects, 1):
         lines.append(f"{i}. {p['site_name']}")
     lines.append("\nOr type the site name directly.")
     return "\n".join(lines)
 
-# ── Pending selection state (in-memory, simple) ───────────────────────────────
-# Stores {from_number: {"pending_log": {...}, "projects": [...]}}
+# ── Pending selection state ───────────────────────────────────────────────────
 pending_selections = {}
 
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
@@ -154,12 +151,12 @@ def make_doc_ref_and_filename(company, logs, prefix, site_name):
         f"site_logs?from_number=eq.{encode_number(company.get('whatsapp_number',''))}"
         f"&status=eq.sent&select=id"
     )
-    doc_number    = str(len(sent) + 1).zfill(3)
-    site_slug     = slugify(site_name) if site_name else "AllSites"
-    company_slug  = slugify(company.get("company_name", "Company").split()[0])
-    date_str      = datetime.now().strftime("%d%b%Y")
-    ref_str       = f"{prefix}-{doc_number}"
-    filename      = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
+    doc_number   = str(len(sent) + 1).zfill(3)
+    site_slug    = slugify(site_name) if site_name else "AllSites"
+    company_slug = slugify(company.get("company_name", "Company").split()[0])
+    date_str     = datetime.now().strftime("%d%b%Y")
+    ref_str      = f"{prefix}-{doc_number}"
+    filename     = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
     return ref_str, filename
 
 # ── Supabase Storage ──────────────────────────────────────────────────────────
@@ -218,7 +215,6 @@ def webhook():
     if not incoming_msg:
         return _reply("Send me a message about what happened on site today 👷")
 
-    # Check if user is responding to a site selection prompt
     if from_number in pending_selections:
         return handle_site_selection(from_number, incoming_msg)
 
@@ -231,20 +227,17 @@ def webhook():
     return handle_log(from_number, incoming_msg)
 
 
-# ── Site selection handler ────────────────────────────────────────────────────
 def handle_site_selection(from_number, msg):
     state    = pending_selections[from_number]
     projects = state["projects"]
     log_data = state["pending_log"]
 
-    # Try to match by number
     site_name = None
     if msg.strip().isdigit():
         idx = int(msg.strip()) - 1
         if 0 <= idx < len(projects):
             site_name = projects[idx]["site_name"]
 
-    # Try to match by name
     if not site_name:
         msg_lower = msg.lower()
         for p in projects:
@@ -254,11 +247,10 @@ def handle_site_selection(from_number, msg):
 
     if not site_name:
         return _reply(
-            f"I didn't recognise that site. Please reply with a number:\n\n"
+            "I didn't recognise that site. Please reply with a number:\n\n"
             + "\n".join([f"{i+1}. {p['site_name']}" for i, p in enumerate(projects)])
         )
 
-    # Save the log with the site name
     log_data["site_name"] = site_name
     del pending_selections[from_number]
 
@@ -273,7 +265,6 @@ def handle_site_selection(from_number, msg):
         return _reply(f"⚠️ Couldn't save. Please try again. ({str(e)[:80]})")
 
 
-# ── Generate handler ──────────────────────────────────────────────────────────
 def handle_generate(from_number, msg):
     try:
         companies = db_get(
@@ -285,13 +276,10 @@ def handle_generate(from_number, msg):
         company["whatsapp_number"] = from_number
 
         log_type, doc_title, prefix = detect_doc_type(msg)
-
-        # Check if a specific site is mentioned
-        projects   = get_projects(from_number)
-        site_name  = match_site(msg, projects)
+        projects  = get_projects(from_number)
+        site_name = match_site(msg, projects)
         site_label = site_name or "All Sites"
 
-        # Build query — filter by site if specified
         query = (
             f"site_logs?from_number=eq.{encode_number(from_number)}"
             f"&status=eq.pending&order=created_at.asc"
@@ -303,20 +291,11 @@ def handle_generate(from_number, msg):
 
         if not logs:
             if site_name:
-                return _reply(
-                    f"📋 No pending items found for *{site_name}*.\n"
-                    f"Log some activity for that site first."
-                )
-            return _reply(
-                "📋 No pending items found.\n"
-                "Log some site activity first, then ask me to generate again."
-            )
+                return _reply(f"📋 No pending items found for *{site_name}*.\nLog some activity for that site first.")
+            return _reply("📋 No pending items found.\nLog some site activity first, then ask me to generate again.")
 
         doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
-
-        # Add site info to company dict for PDF header
         company["site_label"] = site_label
-
         pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
         pdf_url   = upload_pdf(pdf_bytes, filename)
 
@@ -337,7 +316,6 @@ def handle_generate(from_number, msg):
         return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:150]}")
 
 
-# ── Log handler ───────────────────────────────────────────────────────────────
 def handle_log(from_number, incoming_msg):
     try:
         ai_response = anthropic_client.messages.create(
@@ -371,11 +349,9 @@ def handle_log(from_number, incoming_msg):
         if data.get("materials"):     insert_data["materials"]     = json.dumps(data["materials"])
         if data.get("supplier"):      insert_data["supplier"]      = str(data["supplier"])
 
-        # Check if site was detected in message
-        ai_site   = data.get("site_name")
-        projects  = get_projects(from_number)
+        ai_site  = data.get("site_name")
+        projects = get_projects(from_number)
 
-        # Try to match site from AI extraction or message text
         site_name = None
         if ai_site:
             site_name = match_site(ai_site, projects)
@@ -383,13 +359,11 @@ def handle_log(from_number, incoming_msg):
             site_name = match_site(incoming_msg, projects)
 
         if site_name:
-            # Site identified — save immediately
             insert_data["site_name"] = site_name
             db_post("site_logs", insert_data)
             reply = data.get("confirmation_message", "✅ Logged!")
             reply += f"\n📍 Site: *{site_name}*"
         elif projects:
-            # Site ambiguous — ask user to pick
             pending_selections[from_number] = {
                 "pending_log": insert_data,
                 "projects":    projects,
@@ -399,7 +373,6 @@ def handle_log(from_number, incoming_msg):
                 + format_project_list(projects)
             )
         else:
-            # No projects set up — save without site
             db_post("site_logs", insert_data)
             reply = data.get("confirmation_message", "✅ Logged!")
 
@@ -412,8 +385,8 @@ def handle_log(from_number, incoming_msg):
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
-@app.route("/", methods=["GET"])
-def index():
+@app.route("/health", methods=["GET"])
+def health():
     return "SubSync Bot is running ✅", 200
 
 
@@ -425,5 +398,3 @@ def _reply(msg):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-
-
