@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import re
 from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
 import anthropic
@@ -45,6 +46,9 @@ def db_patch(path, payload):
         json=payload,
         headers={**sb_headers(), "Prefer": "return=minimal"}
     )
+
+def encode_number(number):
+    return number.replace("+", "%2B")
 
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
@@ -92,10 +96,37 @@ def is_generate_command(msg):
 def detect_doc_type(msg):
     msg_lower = msg.lower()
     if "daywork" in msg_lower:
-        return "DAYWORK", "Daywork Sheet"
+        return "DAYWORK", "Daywork Sheet", "DS"
     if "material" in msg_lower or "order" in msg_lower or "purchase" in msg_lower:
-        return "MATERIAL_ORDER", "Purchase Order"
-    return "VARIATION", "Variation Order"
+        return "MATERIAL_ORDER", "Purchase Order", "PO"
+    return "VARIATION", "Variation Order", "VO"
+
+# ── Reference number + filename ───────────────────────────────────────────────
+def slugify(text):
+    """Turn a string into a safe filename-friendly slug."""
+    text = text.strip().replace(" ", "_")
+    return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:30]
+
+def make_doc_ref_and_filename(company, logs, prefix, doc_title):
+    # Sequential number based on how many sent docs exist for this company
+    sent = db_get(
+        f"site_logs?from_number=eq.{encode_number(company.get('whatsapp_number',''))}"
+        f"&status=eq.sent&select=id"
+    )
+    doc_number = str(len(sent) + 1).zfill(3)
+
+    # Best location from logs (most common, or first)
+    locations = [l.get("location", "") for l in logs if l.get("location")]
+    site_slug = slugify(locations[0]) if locations else "Site"
+
+    # Company short name
+    company_slug = slugify(company.get("company_name", "Company").split()[0])
+
+    date_str   = datetime.now().strftime("%d%b%Y")       # e.g. 01May2026
+    ref_str    = f"{prefix}-{doc_number}"                # e.g. VO-003
+    filename   = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
+
+    return ref_str, filename
 
 # ── Supabase Storage ──────────────────────────────────────────────────────────
 def upload_pdf(pdf_bytes, filename):
@@ -127,48 +158,43 @@ def webhook():
 
 def handle_generate(from_number, msg):
     try:
-        encoded_number = from_number.replace("+", "%2B")
-        companies = db_get(f"companies?whatsapp_number=eq.{encoded_number}&limit=1")
+        companies = db_get(f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1")
         if not companies:
-            return _reply(f"⚠️ Not registered. Your number: '{from_number}'")
+            return _reply(f"⚠️ Your company isn't registered yet. Contact your admin.")
         company = companies[0]
+        company["whatsapp_number"] = from_number
 
-        log_type, doc_title = detect_doc_type(msg)
+        log_type, doc_title, prefix = detect_doc_type(msg)
 
-        encoded_number = from_number.replace("+", "%2B")
         logs = db_get(
-            f"site_logs?from_number=eq.{encoded_number}"
+            f"site_logs?from_number=eq.{encode_number(from_number)}"
             f"&status=eq.pending&order=created_at.asc"
         )
 
         if not logs:
             return _reply(
-                f"📋 No pending {doc_title.lower()}s found.\n"
+                f"📋 No pending items found.\n"
                 f"Log some site activity first, then ask me to generate again."
             )
 
-        pdf_bytes = generate_pdf(company, logs, doc_title)
-
-        filename = (
-            f"{log_type.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            f"_{uuid.uuid4().hex[:6]}.pdf"
-        )
-        pdf_url = upload_pdf(pdf_bytes, filename)
+        doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, doc_title)
+        pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref)
+        pdf_url   = upload_pdf(pdf_bytes, filename)
 
         for log in logs:
             db_patch(f"site_logs?id=eq.{log['id']}", {"status": "sent"})
 
         resp = MessagingResponse()
         m = resp.message(
-            f"📄 *{doc_title}* ready!\n"
+            f"📄 *{doc_ref}* — {doc_title} ready!\n"
             f"{len(logs)} item(s) · {company['company_name']}\n"
-            f"Review and forward to your client ✅"
+            f"File: {filename}\nReview and forward to your client ✅"
         )
         m.media(pdf_url)
         return Response(str(resp), mimetype="application/xml")
 
     except Exception as e:
-        return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:120]}")
+        return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:150]}")
 
 
 def handle_log(from_number, incoming_msg):
@@ -230,4 +256,5 @@ def _reply(msg):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
 
