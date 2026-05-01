@@ -127,7 +127,8 @@ def webhook():
 
 def handle_generate(from_number, msg):
     try:
-        companies = db_get(f"companies?whatsapp_number=eq.{from_number}&limit=1")
+        encoded_number = from_number.replace("+", "%2B")
+        companies = db_get(f"companies?whatsapp_number=eq.{encoded_number}&limit=1")
         if not companies:
             return _reply(f"⚠️ Not registered. Your number: '{from_number}'")
         company = companies[0]
