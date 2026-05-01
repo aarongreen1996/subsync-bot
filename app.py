@@ -50,6 +50,41 @@ def db_patch(path, payload):
 def encode_number(number):
     return number.replace("+", "%2B")
 
+def encode_text(text):
+    """URL encode text for query strings."""
+    from urllib.parse import quote
+    return quote(str(text), safe="")
+
+# ── Get active projects for a company ─────────────────────────────────────────
+def get_projects(from_number):
+    return db_get(
+        f"projects?whatsapp_number=eq.{encode_number(from_number)}"
+        f"&status=eq.active&order=site_name.asc"
+    )
+
+def match_site(msg, projects):
+    """Try to find a matching project from the message text."""
+    msg_lower = msg.lower()
+    for p in projects:
+        if p["site_name"].lower() in msg_lower:
+            return p["site_name"]
+        # Also check client name
+        if p.get("client_name", "").lower() in msg_lower:
+            return p["site_name"]
+    return None
+
+def format_project_list(projects):
+    """Return a numbered list of projects for the user to pick from."""
+    lines = ["Which site is this for? Reply with the number:\n"]
+    for i, p in enumerate(projects, 1):
+        lines.append(f"{i}. {p['site_name']}")
+    lines.append("\nOr type the site name directly.")
+    return "\n".join(lines)
+
+# ── Pending selection state (in-memory, simple) ───────────────────────────────
+# Stores {from_number: {"pending_log": {...}, "projects": [...]}}
+pending_selections = {}
+
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
 You are an admin assistant for UK construction subcontractors.
@@ -72,6 +107,7 @@ JSON structure:
   "hours": 2.5,
   "cost_estimate": 40.00,
   "location": "Room 4",
+  "site_name": "Site name if clearly mentioned in message, otherwise null",
   "requested_by": "Name of person who asked (if mentioned)",
   "worker_name": "Name of worker logging this (if mentioned)",
   "materials": ["item 1", "item 2"],
@@ -90,8 +126,13 @@ GENERATE_KEYWORDS = [
     "produce report", "get variations", "send variations"
 ]
 
+HELP_KEYWORDS = ["help", "guide", "how do i", "what can you do", "commands"]
+
 def is_generate_command(msg):
     return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
+
+def is_help_command(msg):
+    return any(kw in msg.lower() for kw in HELP_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -103,29 +144,20 @@ def detect_doc_type(msg):
 
 # ── Reference number + filename ───────────────────────────────────────────────
 def slugify(text):
-    """Turn a string into a safe filename-friendly slug."""
     text = text.strip().replace(" ", "_")
-    return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:30]
+    return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
 
-def make_doc_ref_and_filename(company, logs, prefix, doc_title):
-    # Sequential number based on how many sent docs exist for this company
+def make_doc_ref_and_filename(company, logs, prefix, site_name):
     sent = db_get(
         f"site_logs?from_number=eq.{encode_number(company.get('whatsapp_number',''))}"
         f"&status=eq.sent&select=id"
     )
-    doc_number = str(len(sent) + 1).zfill(3)
-
-    # Best location from logs (most common, or first)
-    locations = [l.get("location", "") for l in logs if l.get("location")]
-    site_slug = slugify(locations[0]) if locations else "Site"
-
-    # Company short name
-    company_slug = slugify(company.get("company_name", "Company").split()[0])
-
-    date_str   = datetime.now().strftime("%d%b%Y")       # e.g. 01May2026
-    ref_str    = f"{prefix}-{doc_number}"                # e.g. VO-003
-    filename   = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
-
+    doc_number    = str(len(sent) + 1).zfill(3)
+    site_slug     = slugify(site_name) if site_name else "AllSites"
+    company_slug  = slugify(company.get("company_name", "Company").split()[0])
+    date_str      = datetime.now().strftime("%d%b%Y")
+    ref_str       = f"{prefix}-{doc_number}"
+    filename      = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
     return ref_str, filename
 
 # ── Supabase Storage ──────────────────────────────────────────────────────────
@@ -141,6 +173,40 @@ def upload_pdf(pdf_bytes, filename):
         raise Exception(f"Storage upload failed {r.status_code}: {r.text}")
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
+# ── Help message ──────────────────────────────────────────────────────────────
+HELP_TEXT = """👷 *SubSync Bot — Quick Guide*
+
+*LOGGING ITEMS*
+Just describe what happened naturally:
+• "Site manager asked me to fit extra sockets in room 4, 2 hrs, £40 materials"
+• "Need to order 50 joist hangers from Travis Perkins"
+• "Logged 8 hours today on Brookfield Site"
+
+*MENTIONING THE SITE*
+Include the site name in your message:
+• "Variation on Brookfield Site — extra spotlights kitchen"
+• "Flat 3 Refurb — boarded loft, 3 hrs, £60"
+
+If you forget, I'll ask you which site it's for.
+
+*GENERATING DOCUMENTS*
+• "Generate variations for Brookfield Site"
+• "Generate dayworks for Flat 3 Refurb"
+• "Generate purchase orders for Brookfield Site"
+
+*DOCUMENT TYPES*
+• *Variation Order (VO)* — extra work not in contract
+• *Daywork Sheet (DS)* — time-based extra work
+• *Purchase Order (PO)* — materials & equipment
+
+*TIPS*
+✅ Log things as they happen — don't wait
+✅ Always mention the site name
+✅ One message per item is fine
+✅ Voice notes work too
+
+Reply *Help* anytime to see this guide again."""
+
 # ── Webhook ───────────────────────────────────────────────────────────────────
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -150,35 +216,106 @@ def webhook():
     if not incoming_msg:
         return _reply("Send me a message about what happened on site today 👷")
 
+    # Check if user is responding to a site selection prompt
+    if from_number in pending_selections:
+        return handle_site_selection(from_number, incoming_msg)
+
+    if is_help_command(incoming_msg):
+        return _reply(HELP_TEXT)
+
     if is_generate_command(incoming_msg):
         return handle_generate(from_number, incoming_msg)
 
     return handle_log(from_number, incoming_msg)
 
 
+# ── Site selection handler ────────────────────────────────────────────────────
+def handle_site_selection(from_number, msg):
+    state    = pending_selections[from_number]
+    projects = state["projects"]
+    log_data = state["pending_log"]
+
+    # Try to match by number
+    site_name = None
+    if msg.strip().isdigit():
+        idx = int(msg.strip()) - 1
+        if 0 <= idx < len(projects):
+            site_name = projects[idx]["site_name"]
+
+    # Try to match by name
+    if not site_name:
+        msg_lower = msg.lower()
+        for p in projects:
+            if p["site_name"].lower() in msg_lower or msg_lower in p["site_name"].lower():
+                site_name = p["site_name"]
+                break
+
+    if not site_name:
+        return _reply(
+            f"I didn't recognise that site. Please reply with a number:\n\n"
+            + "\n".join([f"{i+1}. {p['site_name']}" for i, p in enumerate(projects)])
+        )
+
+    # Save the log with the site name
+    log_data["site_name"] = site_name
+    del pending_selections[from_number]
+
+    try:
+        db_post("site_logs", log_data)
+        return _reply(
+            f"✅ Logged for *{site_name}*!\n"
+            f"{log_data.get('description', 'Item')} saved. "
+            f"I'll include this in the next document for that site."
+        )
+    except Exception as e:
+        return _reply(f"⚠️ Couldn't save. Please try again. ({str(e)[:80]})")
+
+
+# ── Generate handler ──────────────────────────────────────────────────────────
 def handle_generate(from_number, msg):
     try:
-        companies = db_get(f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1")
+        companies = db_get(
+            f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1"
+        )
         if not companies:
-            return _reply(f"⚠️ Your company isn't registered yet. Contact your admin.")
+            return _reply("⚠️ Your company isn't registered yet. Contact your admin.")
         company = companies[0]
         company["whatsapp_number"] = from_number
 
         log_type, doc_title, prefix = detect_doc_type(msg)
 
-        logs = db_get(
+        # Check if a specific site is mentioned
+        projects   = get_projects(from_number)
+        site_name  = match_site(msg, projects)
+        site_label = site_name or "All Sites"
+
+        # Build query — filter by site if specified
+        query = (
             f"site_logs?from_number=eq.{encode_number(from_number)}"
             f"&status=eq.pending&order=created_at.asc"
         )
+        if site_name:
+            query += f"&site_name=eq.{encode_text(site_name)}"
+
+        logs = db_get(query)
 
         if not logs:
+            if site_name:
+                return _reply(
+                    f"📋 No pending items found for *{site_name}*.\n"
+                    f"Log some activity for that site first."
+                )
             return _reply(
-                f"📋 No pending items found.\n"
-                f"Log some site activity first, then ask me to generate again."
+                "📋 No pending items found.\n"
+                "Log some site activity first, then ask me to generate again."
             )
 
-        doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, doc_title)
-        pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref)
+        doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
+
+        # Add site info to company dict for PDF header
+        company["site_label"] = site_label
+
+        pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
         pdf_url   = upload_pdf(pdf_bytes, filename)
 
         for log in logs:
@@ -186,9 +323,10 @@ def handle_generate(from_number, msg):
 
         resp = MessagingResponse()
         m = resp.message(
-            f"📄 *{doc_ref}* — {doc_title} ready!\n"
-            f"{len(logs)} item(s) · {company['company_name']}\n"
-            f"File: {filename}\nReview and forward to your client ✅"
+            f"📄 *{doc_ref}* — {doc_title}\n"
+            f"Site: {site_label} · {len(logs)} item(s)\n"
+            f"File: {filename}\n"
+            f"Review and forward to your client ✅"
         )
         m.media(pdf_url)
         return Response(str(resp), mimetype="application/xml")
@@ -197,6 +335,7 @@ def handle_generate(from_number, msg):
         return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:150]}")
 
 
+# ── Log handler ───────────────────────────────────────────────────────────────
 def handle_log(from_number, incoming_msg):
     try:
         ai_response = anthropic_client.messages.create(
@@ -230,12 +369,40 @@ def handle_log(from_number, incoming_msg):
         if data.get("materials"):     insert_data["materials"]     = json.dumps(data["materials"])
         if data.get("supplier"):      insert_data["supplier"]      = str(data["supplier"])
 
-        db_post("site_logs", insert_data)
+        # Check if site was detected in message
+        ai_site   = data.get("site_name")
+        projects  = get_projects(from_number)
 
-        reply = data.get("confirmation_message", "✅ Logged! I'll include this in your next document pack.")
+        # Try to match site from AI extraction or message text
+        site_name = None
+        if ai_site:
+            site_name = match_site(ai_site, projects)
+        if not site_name:
+            site_name = match_site(incoming_msg, projects)
+
+        if site_name:
+            # Site identified — save immediately
+            insert_data["site_name"] = site_name
+            db_post("site_logs", insert_data)
+            reply = data.get("confirmation_message", "✅ Logged!")
+            reply += f"\n📍 Site: *{site_name}*"
+        elif projects:
+            # Site ambiguous — ask user to pick
+            pending_selections[from_number] = {
+                "pending_log": insert_data,
+                "projects":    projects,
+            }
+            reply = (
+                data.get("confirmation_message", "✅ Got it!") + "\n\n"
+                + format_project_list(projects)
+            )
+        else:
+            # No projects set up — save without site
+            db_post("site_logs", insert_data)
+            reply = data.get("confirmation_message", "✅ Logged!")
 
     except json.JSONDecodeError:
-        reply = "⚠️ I couldn't read that clearly. Try rephrasing — e.g. 'Variation: fitted 3 extra sockets room 4, 2 hours, £40 materials'"
+        reply = "⚠️ I couldn't read that clearly. Try rephrasing — e.g. 'Variation on Brookfield Site: fitted 3 extra sockets room 4, 2 hours, £40'"
     except Exception as e:
         reply = f"⚠️ Something went wrong. Please try again. ({str(e)[:100]})"
 
