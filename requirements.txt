@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 gunicorn==22.0.0
 requests==2.31.0
 reportlab==4.2.2
+stripe==8.9.0
