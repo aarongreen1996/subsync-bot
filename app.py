@@ -5,6 +5,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 import anthropic
 from supabase import create_client
 from datetime import datetime
+import requests as http_requests
 
 app = Flask(__name__)
 
@@ -93,7 +94,21 @@ def webhook():
         if data.get("materials"):    insert_data["materials"]     = json.dumps(data["materials"])
         if data.get("supplier"):     insert_data["supplier"]      = str(data["supplier"])
 
-        result = supabase.table("site_logs").insert(insert_data).execute()
+        sb_url = os.environ.get("SUPABASE_URL").rstrip("/")
+        sb_key = os.environ.get("SUPABASE_KEY")
+        headers = {
+            "apikey": sb_key,
+            "Authorization": f"Bearer {sb_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        }
+        db_result = http_requests.post(
+            f"{sb_url}/rest/v1/site_logs",
+            json=insert_data,
+            headers=headers
+        )
+        if db_result.status_code not in (200, 201):
+            raise Exception(f"DB Error: {db_result.status_code} - {db_result.text}")
 
         reply = data.get("confirmation_message", "✅ Logged! I'll include this in your next document pack.")
 
