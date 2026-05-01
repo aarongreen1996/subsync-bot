@@ -62,7 +62,7 @@ def webhook():
     try:
         # Ask Claude to classify and extract
         ai_response = anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-haiku-4-5-20251001",
             max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": incoming_msg}]
