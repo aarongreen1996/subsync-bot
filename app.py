@@ -69,6 +69,12 @@ def webhook():
         )
 
         raw_json = ai_response.content[0].text.strip()
+        # Strip markdown code blocks if model wraps response in them
+        if raw_json.startswith("```"):
+            raw_json = raw_json.split("```")[1]
+            if raw_json.startswith("json"):
+                raw_json = raw_json[4:]
+        raw_json = raw_json.strip()
         data = json.loads(raw_json)
 
         # Save to Supabase
