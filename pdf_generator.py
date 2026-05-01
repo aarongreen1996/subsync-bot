@@ -8,7 +8,7 @@ from io import BytesIO
 from datetime import datetime
 
 
-def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001"):
+def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", site_label=None):
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
