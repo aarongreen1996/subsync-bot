@@ -77,23 +77,23 @@ def webhook():
         raw_json = raw_json.strip()
         data = json.loads(raw_json)
 
-        # Save to Supabase
-        supabase.table("site_logs").insert({
-            "from_number":   from_number,
-            "raw_message":   incoming_msg,
-            "type":          data.get("type"),
-            "description":   data.get("description"),
-            "hours":         data.get("hours"),
-            "cost_estimate": data.get("cost_estimate"),
-            "location":      data.get("location"),
-            "requested_by":  data.get("requested_by"),
-            "worker_name":   data.get("worker_name"),
-            "materials":     json.dumps(data.get("materials")) if data.get("materials") else None,
-            "supplier":      data.get("supplier"),
-            "quantity":      data.get("quantity"),
-            "status":        "pending",
-            "created_at":    datetime.utcnow().isoformat()
-        }).execute()
+        # Save to Supabase — minimal fields to avoid type issues
+        insert_data = {
+            "from_number": from_number,
+            "raw_message": incoming_msg,
+            "type":        data.get("type", "UNKNOWN"),
+            "description": data.get("description", ""),
+            "status":      "pending",
+        }
+        if data.get("hours"):        insert_data["hours"]         = float(data["hours"])
+        if data.get("cost_estimate"): insert_data["cost_estimate"] = float(data["cost_estimate"])
+        if data.get("location"):     insert_data["location"]      = str(data["location"])
+        if data.get("requested_by"): insert_data["requested_by"]  = str(data["requested_by"])
+        if data.get("worker_name"):  insert_data["worker_name"]   = str(data["worker_name"])
+        if data.get("materials"):    insert_data["materials"]     = json.dumps(data["materials"])
+        if data.get("supplier"):     insert_data["supplier"]      = str(data["supplier"])
+
+        result = supabase.table("site_logs").insert(insert_data).execute()
 
         reply = data.get("confirmation_message", "✅ Logged! I'll include this in your next document pack.")
 
