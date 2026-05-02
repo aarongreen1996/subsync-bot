@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubSync — Stop Losing Money on Forgotten Variations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --red: #d62828;
+  --red-dark: #b01f1f;
+  --red-light: #fce8e8;
+  --cream: #fff3e0;
+  --cream-dark: #ffe0b2;
+  --ink: #0f0a00;
+  --ink-light: #3d3020;
+  --muted: #8a7560;
+  --border: #e8ddd0;
+  --white: #ffffff;
+  --bg: #faf8f5;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--white);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── TYPOGRAPHY ── */
+.display {
+  font-family: 'Fraunces', serif;
+  font-optical-sizing: auto;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed; top: 0; width: 100%; z-index: 100;
+  padding: 0 48px; height: 68px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.nav-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: -0.5px;
+}
+.nav-logo em { color: var(--red); font-style: normal; }
+
+.nav-links {
+  display: flex; align-items: center; gap: 36px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--ink-light); font-size: 14px; font-weight: 500;
+  text-decoration: none; transition: color 0.15s;
+}
+.nav-links a:hover { color: var(--red); }
+
+.nav-cta {
+  background: var(--red); color: white;
+  padding: 10px 22px; border-radius: 8px;
+  font-size: 14px; font-weight: 600;
+  text-decoration: none; transition: all 0.15s;
+  letter-spacing: -0.1px;
+}
+.nav-cta:hover { background: var(--red-dark); transform: translateY(-1px); }
+
+@media(max-width:768px) {
+  nav { padding: 0 24px; }
+  .nav-links { display: none; }
+}
+
+/* ── HERO ── */
+.hero {
+  min-height: 100vh;
+  padding: 120px 48px 80px;
+  display: flex; align-items: center;
+  background: var(--white);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -200px; right: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(214,40,40,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.hero-inner {
+  max-width: 1200px; margin: 0 auto; width: 100%;
+  display: grid; grid-template-columns: 1fr 480px; gap: 80px; align-items: center;
+}
+
+@media(max-width:1024px) {
+  .hero-inner { grid-template-columns: 1fr; }
+  .hero-visual { display: none; }
+}
+
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--cream); border: 1px solid var(--cream-dark);
+  padding: 6px 14px; border-radius: 100px;
+  font-size: 12px; font-weight: 600; color: var(--ink-light);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  margin-bottom: 28px;
+}
+.hero-eyebrow span { color: var(--red); }
+
+.hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(44px, 6vw, 80px);
+  font-weight: 900;
+  line-height: 1.0;
+  letter-spacing: -2px;
+  color: var(--ink);
+  margin-bottom: 24px;
+}
+
+.hero h1 em {
+  font-style: italic;
+  color: var(--red);
+}
+
+.hero-sub {
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--muted);
+  max-width: 500px;
+  margin-bottom: 40px;
+  font-weight: 300;
+}
+
+.hero-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+.btn-primary {
+  background: var(--red); color: white;
+  padding: 14px 28px; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  text-decoration: none; transition: all 0.2s;
+  display: inline-flex; align-items: center; gap: 8px;
+  letter-spacing: -0.2px;
+}
+.btn-primary:hover {
+  background: var(--red-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(214,40,40,0.25);
+}
+
+.btn-secondary {
+  color: var(--ink); font-size: 15px; font-weight: 500;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  transition: gap 0.2s;
+}
+.btn-secondary:hover { gap: 10px; }
+.btn-secondary::after { content: '→'; }
+
+.hero-note {
+  margin-top: 20px;
+  font-size: 13px; color: var(--muted); font-weight: 300;
+}
+
+/* ── HERO VISUAL ── */
+.hero-visual {
+  position: relative;
+}
+
+.phone-frame {
+  background: var(--ink);
+  border-radius: 36px;
+  padding: 16px;
+  box-shadow:
+    0 40px 80px rgba(0,0,0,0.15),
+    0 0 0 1px rgba(255,255,255,0.05);
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.phone-screen {
+  background: #075e54;
+  border-radius: 24px;
+  padding: 20px;
+  min-height: 480px;
+}
+
+.whatsapp-header {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 20px;
+}
+
+.wa-avatar {
+  width: 40px; height: 40px;
+  background: var(--red);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 900;
+  font-family: 'Fraunces', serif;
+  color: white;
+}
+
+.wa-name { font-size: 15px; font-weight: 600; color: white; }
+.wa-status { font-size: 11px; color: rgba(255,255,255,0.6); }
+
+.chat-msg {
+  display: flex; flex-direction: column;
+  margin-bottom: 12px;
+}
+.chat-msg.out { align-items: flex-end; }
+
+.bubble {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 13px; line-height: 1.5;
+  max-width: 85%;
+}
+.bubble.in {
+  background: rgba(255,255,255,0.12);
+  color: white;
+  border-bottom-left-radius: 4px;
+}
+.bubble.out {
+  background: #dcf8c6;
+  color: #1a1a1a;
+  border-bottom-right-radius: 4px;
+}
+.bubble.bot {
+  background: white;
+  color: var(--ink);
+  border-bottom-left-radius: 4px;
+  font-size: 12px;
+}
+
+.chat-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 3px;
+}
+.chat-msg.out .chat-time { color: rgba(0,0,0,0.3); }
+
+.floating-badge {
+  position: absolute;
+  right: -20px; bottom: 60px;
+  background: white;
+  border-radius: 14px;
+  padding: 14px 18px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+  border: 1px solid var(--border);
+}
+.badge-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+.badge-value {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 700; color: var(--red);
+}
+
+/* ── MARQUEE ── */
+.marquee-section {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.marquee-track {
+  display: flex; gap: 0;
+  animation: marquee 30s linear infinite;
+  width: max-content;
+}
+
+.marquee-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 40px;
+  font-size: 13px; font-weight: 500; color: var(--muted);
+  white-space: nowrap;
+  border-right: 1px solid var(--border);
+}
+.marquee-item .dot {
+  width: 6px; height: 6px;
+  background: var(--red); border-radius: 50%;
+  flex-shrink: 0;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* ── STATS ── */
+.stats-section {
+  padding: 80px 48px;
+  background: var(--white);
+}
+.stats-inner {
+  max-width: 1200px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+@media(max-width:700px) { .stats-inner { grid-template-columns: repeat(2,1fr); } }
+
+.stat-item {
+  background: var(--white);
+  padding: 40px 32px;
+  text-align: center;
+}
+.stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: 52px; font-weight: 900;
+  color: var(--red);
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.stat-label {
+  font-size: 13px; color: var(--muted);
+  margin-top: 8px; line-height: 1.5;
+  font-weight: 400;
+}
+
+/* ── SECTION BASE ── */
+.section {
+  padding: 100px 48px;
+}
+@media(max-width:768px) { .section { padding: 60px 24px; } }
+
+.section-inner { max-width: 1200px; margin: 0 auto; }
+
+.eyebrow {
+  display: inline-block;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--red);
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(32px, 4vw, 52px);
+  font-weight: 900; letter-spacing: -1.5px;
+  color: var(--ink);
+  line-height: 1.05;
+  margin-bottom: 16px;
+}
+
+.section-lead {
+  font-size: 17px; color: var(--muted);
+  max-width: 560px; line-height: 1.7;
+  font-weight: 300;
+  margin-bottom: 56px;
+}
+
+/* ── PROBLEM ── */
+.problem-section { background: var(--bg); }
+
+.problems {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+@media(max-width:768px) { .problems { grid-template-columns: 1fr; } }
+
+.problem-card {
+  background: var(--white);
+  padding: 40px 36px;
+}
+
+.problem-num {
+  font-family: 'Fraunces', serif;
+  font-size: 64px; font-weight: 900;
+  color: var(--red-light);
+  line-height: 1;
+  margin-bottom: 20px;
+  letter-spacing: -2px;
+}
+
+.problem-card h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+.problem-card p {
+  font-size: 15px; color: var(--muted);
+  line-height: 1.7; font-weight: 300;
+}
+
+/* ── HOW IT WORKS ── */
+.steps {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px; overflow: hidden;
+  background: var(--border);
+}
+@media(max-width:900px) { .steps { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:500px) { .steps { grid-template-columns: 1fr; } }
+
+.step {
+  background: var(--white);
+  padding: 40px 32px;
+  position: relative;
+}
+.step-num {
+  font-family: 'Fraunces', serif;
+  font-size: 13px; font-weight: 700;
+  color: var(--red); letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  display: flex; align-items: center; gap: 8px;
+}
+.step-num::before {
+  content: '';
+  width: 24px; height: 1px; background: var(--red);
+}
+.step-icon {
+  font-size: 28px; margin-bottom: 16px;
+  display: block;
+}
+.step h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 20px; font-weight: 700;
+  color: var(--ink); margin-bottom: 10px;
+  letter-spacing: -0.3px;
+}
+.step p { font-size: 14px; color: var(--muted); line-height: 1.7; font-weight: 300; }
+
+/* ── FEATURES ── */
+.features-section { background: var(--bg); }
+
+.features {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px; overflow: hidden;
+}
+@media(max-width:768px) { .features { grid-template-columns: 1fr; } }
+
+.feature {
+  background: var(--white);
+  padding: 40px 36px;
+  transition: background 0.2s;
+}
+.feature:hover { background: var(--bg); }
+
+.feature-icon {
+  width: 44px; height: 44px;
+  background: var(--cream);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 20px;
+}
+.feature h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 19px; font-weight: 700;
+  color: var(--ink); margin-bottom: 10px;
+  letter-spacing: -0.3px;
+}
+.feature p { font-size: 14px; color: var(--muted); line-height: 1.7; font-weight: 300; }
+
+/* ── TESTIMONIAL ── */
+.testimonial-section {
+  background: var(--ink);
+  padding: 100px 48px;
+}
+.testimonial-inner {
+  max-width: 800px; margin: 0 auto; text-align: center;
+}
+.testimonial-quote {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(24px, 3vw, 38px);
+  font-weight: 400;
+  font-style: italic;
+  color: white;
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+  margin-bottom: 32px;
+}
+.testimonial-quote em { color: var(--cream-dark); font-style: normal; }
+.testimonial-author {
+  font-size: 14px; color: rgba(255,255,255,0.5);
+  font-weight: 400; letter-spacing: 0.5px;
+}
+
+/* ── PRICING ── */
+.pricing-section { background: var(--white); }
+
+.price-card {
+  max-width: 520px; margin: 0 auto;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.price-top {
+  background: var(--cream);
+  padding: 40px 48px 36px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.price-tag {
+  display: inline-block;
+  background: var(--red);
+  color: white;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 100px;
+  margin-bottom: 20px;
+}
+
+.price-amount {
+  font-family: 'Fraunces', serif;
+  font-size: 80px; font-weight: 900;
+  color: var(--ink); line-height: 1;
+  letter-spacing: -3px;
+}
+.price-amount sup {
+  font-size: 32px; vertical-align: top;
+  margin-top: 16px; display: inline-block;
+  letter-spacing: 0;
+}
+
+.price-period { font-size: 15px; color: var(--muted); margin-top: 4px; }
+.price-trial { font-size: 15px; color: var(--red); font-weight: 600; margin-top: 8px; }
+
+.price-bottom { padding: 36px 48px; }
+
+.price-feature {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px; color: var(--ink-light);
+}
+.price-feature:last-of-type { border-bottom: none; margin-bottom: 32px; }
+.check {
+  width: 20px; height: 20px;
+  background: var(--red);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px; color: white;
+}
+
+.btn-pricing {
+  display: block; width: 100%;
+  background: var(--ink); color: white;
+  padding: 16px; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  text-align: center; text-decoration: none;
+  transition: all 0.2s; letter-spacing: -0.2px;
+}
+.btn-pricing:hover {
+  background: var(--red);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(214,40,40,0.2);
+}
+
+.price-note {
+  font-size: 12px; color: var(--muted);
+  text-align: center; margin-top: 14px;
+}
+
+/* ── CTA ── */
+.cta-section {
+  background: var(--red);
+  padding: 100px 48px;
+  text-align: center;
+}
+.cta-section h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 900;
+  color: white;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 16px;
+}
+.cta-section p { font-size: 18px; color: rgba(255,255,255,0.75); margin-bottom: 36px; font-weight: 300; }
+.btn-cta-white {
+  display: inline-block;
+  background: white; color: var(--red);
+  padding: 16px 36px; border-radius: 10px;
+  font-size: 16px; font-weight: 700;
+  text-decoration: none; transition: all 0.2s;
+  letter-spacing: -0.2px;
+}
+.btn-cta-white:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.15); }
+
+/* ── FOOTER ── */
+footer {
+  background: var(--ink);
+  padding: 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 16px;
+}
+.footer-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 18px; font-weight: 900;
+  color: white;
+}
+.footer-logo em { color: var(--red); font-style: normal; }
+.footer-note { font-size: 13px; color: rgba(255,255,255,0.35); }
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-eyebrow { animation: fadeUp 0.6s ease 0.1s both; }
+.hero h1      { animation: fadeUp 0.6s ease 0.2s both; }
+.hero-sub     { animation: fadeUp 0.6s ease 0.3s both; }
+.hero-actions { animation: fadeUp 0.6s ease 0.4s both; }
+.hero-note    { animation: fadeUp 0.6s ease 0.5s both; }
+.hero-visual  { animation: fadeUp 0.8s ease 0.3s both; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Sub<em>Sync</em></div>
+  <ul class="nav-links">
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+  </ul>
+  <a href="/signup" class="nav-cta">Start free trial →</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-eyebrow">
+        <span>⚡</span> Built for UK subcontractors
+      </div>
+      <h1>Stop losing money on <em>forgotten</em> variations</h1>
+      <p class="hero-sub">Log site extras in seconds via WhatsApp. SubSync turns your voice notes into branded invoices, variation orders and purchase orders — automatically.</p>
+      <div class="hero-actions">
+        <a href="/signup" class="btn-primary">Start 14-day free trial</a>
+        <a href="#how" class="btn-secondary">See how it works</a>
+      </div>
+      <p class="hero-note">No app to download &nbsp;·&nbsp; No contract &nbsp;·&nbsp; Cancel anytime</p>
+    </div>
+
+    <div class="hero-visual">
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <div class="whatsapp-header">
+            <div class="wa-avatar">S</div>
+            <div>
+              <div class="wa-name">SubSync Bot</div>
+              <div class="wa-status">online</div>
+            </div>
+          </div>
+
+          <div class="chat-msg out">
+            <div class="bubble out">Site manager wants 3 extra sockets in room 4, 2 hours, £40 materials</div>
+            <div class="chat-time">15:23 ✓✓</div>
+          </div>
+
+          <div class="chat-msg">
+            <div class="bubble bot">✅ Variation logged — 3 extra sockets, Room 4, 2hrs + £40 materials.<br><br>📍 Brookfield Site</div>
+            <div class="chat-time">15:23</div>
+          </div>
+
+          <div class="chat-msg out">
+            <div class="bubble out">Generate variations for Brookfield Site</div>
+            <div class="chat-time">17:30 ✓✓</div>
+          </div>
+
+          <div class="chat-msg">
+            <div class="bubble bot">📄 <strong>VO-003</strong> ready<br>4 items · £340.00<br>Brookfield Site ✅</div>
+            <div class="chat-time">17:30</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="floating-badge">
+        <div class="badge-label">Saved this week</div>
+        <div class="badge-value">£1,240</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee-section">
+  <div class="marquee-track">
+    <div class="marquee-item"><span class="dot"></span>Variation Orders</div>
+    <div class="marquee-item"><span class="dot"></span>Daywork Sheets</div>
+    <div class="marquee-item"><span class="dot"></span>Purchase Orders</div>
+    <div class="marquee-item"><span class="dot"></span>Timesheets</div>
+    <div class="marquee-item"><span class="dot"></span>Branded PDFs</div>
+    <div class="marquee-item"><span class="dot"></span>Multi-Site Tracking</div>
+    <div class="marquee-item"><span class="dot"></span>Client Emails</div>
+    <div class="marquee-item"><span class="dot"></span>WhatsApp Native</div>
+    <div class="marquee-item"><span class="dot"></span>Voice Notes</div>
+    <div class="marquee-item"><span class="dot"></span>Variation Orders</div>
+    <div class="marquee-item"><span class="dot"></span>Daywork Sheets</div>
+    <div class="marquee-item"><span class="dot"></span>Purchase Orders</div>
+    <div class="marquee-item"><span class="dot"></span>Timesheets</div>
+    <div class="marquee-item"><span class="dot"></span>Branded PDFs</div>
+    <div class="marquee-item"><span class="dot"></span>Multi-Site Tracking</div>
+    <div class="marquee-item"><span class="dot"></span>Client Emails</div>
+    <div class="marquee-item"><span class="dot"></span>WhatsApp Native</div>
+    <div class="marquee-item"><span class="dot"></span>Voice Notes</div>
+  </div>
+</div>
+
+<!-- STATS -->
+<section class="stats-section">
+  <div class="section-inner">
+    <div class="stats-inner">
+      <div class="stat-item">
+        <div class="stat-num">£4.8k</div>
+        <div class="stat-label">Average lost per year on forgotten site extras</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">5hrs</div>
+        <div class="stat-label">Admin time saved every single week</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">10s</div>
+        <div class="stat-label">To log anything from site via WhatsApp</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">£49</div>
+        <div class="stat-label">Per month. Less than 2 hours of your labour rate</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section class="section problem-section">
+  <div class="section-inner">
+    <span class="eyebrow">The Problem</span>
+    <h2 class="section-title">Sound familiar?</h2>
+    <p class="section-lead">Every subcontractor knows the feeling. You do the extra work. You forget to log it. The invoice goes out short.</p>
+    <div class="problems">
+      <div class="problem-card">
+        <div class="problem-num">01</div>
+        <h3>Forgotten variations</h3>
+        <p>Site manager asks for something extra. You do it on the spot. By the time you're home writing invoices, it's gone from your head.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-num">02</div>
+        <h3>Evening admin nightmare</h3>
+        <p>Two or three hours every evening on paperwork. Invoices, daywork sheets, purchase orders — built from scratch after a full day's work.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-num">03</div>
+        <h3>Material order chaos</h3>
+        <p>Workers ask for materials on site, you say you'll sort it, and half the time it slips through. Job stops. Everyone waits. You lose money.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="section-inner">
+    <span class="eyebrow">How It Works</span>
+    <h2 class="section-title">Simple as sending a text</h2>
+    <p class="section-lead">No app to learn. No forms to fill in. Just WhatsApp — the tool you already use every day on site.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">Step 01</div>
+        <span class="step-icon">📱</span>
+        <h3>Text or voice note</h3>
+        <p>Send a message to SubSync on WhatsApp. Speak naturally — exactly like you'd text a mate on site.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Step 02</div>
+        <span class="step-icon">🧠</span>
+        <h3>AI understands it</h3>
+        <p>SubSync classifies your message — variation, daywork, material order — and saves it tagged to the right site.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Step 03</div>
+        <span class="step-icon">📄</span>
+        <h3>Documents generated</h3>
+        <p>Say "generate variations for Site X." Branded PDFs land in your WhatsApp in seconds — ready to send.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Step 04</div>
+        <span class="step-icon">✉️</span>
+        <h3>Send to client</h3>
+        <p>Review on your dashboard, hit send, and the PDF goes straight to your client. Done in under a minute.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section features-section" id="features">
+  <div class="section-inner">
+    <span class="eyebrow">Features</span>
+    <h2 class="section-title">Everything you need, nothing you don't</h2>
+    <p class="section-lead">Built specifically for the way tradespeople actually work — on site, hands dirty, no time for admin.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">💬</div>
+        <h3>WhatsApp Native</h3>
+        <p>No new app. Works on any phone. Your whole team can use it from day one with zero training.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎨</div>
+        <h3>Fully Branded</h3>
+        <p>Your logo, colours, address, VAT number. Every document looks like it came from a professional firm.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📍</div>
+        <h3>Multi-Site Tracking</h3>
+        <p>Running multiple jobs? Logs are tagged to the right client and site. No mixing, no confusion.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <h3>Boss Dashboard</h3>
+        <p>See everything in one place. Pending items, total value, hours logged — sorted by site and week.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🧠</div>
+        <h3>AI That Gets It</h3>
+        <p>Knows the difference between a variation, daywork and a purchase order. No training required.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📧</div>
+        <h3>Direct Client Email</h3>
+        <p>Send documents straight to clients from the dashboard. No downloading, no attaching, no faff.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIAL -->
+<section class="testimonial-section">
+  <div class="testimonial-inner">
+    <p class="testimonial-quote">"I used to spend three hours every Sunday doing paperwork. Now it takes <em>ten minutes</em> on the dashboard. The lads just WhatsApp everything as it happens."</p>
+    <p class="testimonial-author">Beta tester &nbsp;·&nbsp; Electrical Subcontractor &nbsp;·&nbsp; Essex</p>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="section pricing-section" id="pricing">
+  <div class="section-inner">
+    <span class="eyebrow" style="display:block;text-align:center">Pricing</span>
+    <h2 class="section-title" style="text-align:center;margin-bottom:8px">One price. Everything included.</h2>
+    <p class="section-lead" style="text-align:center;margin:0 auto 48px">No setup fees. No per-document charges. No surprises.</p>
+
+    <div class="price-card">
+      <div class="price-top">
+        <div class="price-tag">Most popular</div>
+        <div class="price-amount"><sup>£</sup>49</div>
+        <div class="price-period">per month, billed monthly</div>
+        <div class="price-trial">✓ 14 days free — no card charged upfront</div>
+      </div>
+      <div class="price-bottom">
+        <div class="price-feature"><span class="check">✓</span>Unlimited WhatsApp logging</div>
+        <div class="price-feature"><span class="check">✓</span>Variation orders, dayworks & purchase orders</div>
+        <div class="price-feature"><span class="check">✓</span>Branded PDF documents</div>
+        <div class="price-feature"><span class="check">✓</span>Multi-site tracking</div>
+        <div class="price-feature"><span class="check">✓</span>Boss dashboard</div>
+        <div class="price-feature"><span class="check">✓</span>Direct client email sending</div>
+        <div class="price-feature"><span class="check">✓</span>Unlimited team members</div>
+        <a href="/signup" class="btn-pricing">Start 14-day free trial →</a>
+        <p class="price-note">Cancel anytime. No contract. No setup fee.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Ready to stop losing money?</h2>
+  <p>Join subcontractors across the UK saving hours every week.</p>
+  <a href="/signup" class="btn-cta-white">Start your free trial →</a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Sub<em>Sync</em></div>
+  <p class="footer-note">© 2026 SubSync · Built for UK Subcontractors</p>
+</footer>
+
+</body>
+</html>
