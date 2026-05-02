@@ -420,6 +420,22 @@ def handle_log(from_number, incoming_msg):
         if not site_name:
             site_name = match_site(incoming_msg, projects)
 
+        # Ask for type clarification if ambiguous
+        needs_type_clarification = data.get("needs_clarification", False)
+        if needs_type_clarification and not from_number in pending_selections:
+            pending_selections[from_number] = {
+                "pending_log": insert_data,
+                "projects": projects,
+                "awaiting_type": True,
+            }
+            return _reply(
+                data.get("confirmation_message", "✅ Got it!") + "\n\n"
+                "Is this a:\n"
+                "1. *Variation* — extra work not in the contract\n"
+                "2. *Daywork* — time-based extra work\n\n"
+                "Reply 1 or 2"
+            )
+
         if site_name:
             insert_data["site_name"] = site_name
             db_post("site_logs", insert_data)
