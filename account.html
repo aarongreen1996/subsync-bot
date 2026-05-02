@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Account — SubSync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --red: #d62828; --red-dark: #b01f1f; --red-light: #fce8e8;
+  --cream: #fff3e0; --ink: #0f0a00; --ink-light: #3d3020;
+  --muted: #8a7560; --border: #e8ddd0; --white: #fff; --bg: #faf8f5;
+  --green: #16a34a; --amber: #d97706;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg);
+       color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+/* Login */
+#login-screen { min-height: 100vh; display: flex; align-items: center;
+                justify-content: center; background: var(--cream); }
+.login-box { background: white; border: 1px solid var(--border);
+             border-radius: 20px; padding: 48px 44px; width: 100%; max-width: 380px; }
+.login-logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 900;
+              color: var(--ink); margin-bottom: 6px; }
+.login-logo em { color: var(--red); font-style: normal; }
+.login-box p { color: var(--muted); font-size: 14px; margin-bottom: 24px; font-weight: 300; }
+.login-box input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
+                   border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+                   outline: none; margin-bottom: 12px; }
+.login-box input:focus { border-color: var(--red); }
+
+/* App */
+#app { display: none; }
+header { background: white; border-bottom: 1px solid var(--border);
+         padding: 0 32px; height: 64px;
+         display: flex; align-items: center; justify-content: space-between;
+         position: sticky; top: 0; z-index: 100; }
+.header-logo { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 900; color: var(--ink); }
+.header-logo em { color: var(--red); font-style: normal; }
+.header-nav { display: flex; gap: 8px; }
+.nav-link { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+            color: var(--muted); text-decoration: none; transition: all 0.15s; }
+.nav-link:hover { background: var(--bg); color: var(--ink); }
+.nav-link.active { background: var(--red-light); color: var(--red); font-weight: 600; }
+.logout-btn { background: none; border: 1.5px solid var(--border); color: var(--ink-light);
+              padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+              font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+.logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
+
+/* Section */
+.section { background: white; border: 1px solid var(--border); border-radius: 16px;
+           overflow: hidden; margin-bottom: 20px; }
+.section-header { padding: 20px 28px; border-bottom: 1px solid var(--border);
+                  display: flex; align-items: center; justify-content: space-between; }
+.section-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 700;
+                 color: var(--ink); letter-spacing: -0.3px; }
+.section-body { padding: 28px; }
+
+/* Subscription card */
+.sub-card { display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px 24px; flex-wrap: wrap; gap: 16px; }
+.sub-status { display: flex; align-items: center; gap: 12px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.active   { background: var(--green); }
+.status-dot.trialing { background: var(--amber); }
+.status-dot.canceled { background: var(--red); }
+.sub-name { font-weight: 700; font-size: 15px; }
+.sub-detail { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* Form */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media(max-width:600px) { .form-grid { grid-template-columns: 1fr; } }
+.form-group { margin-bottom: 0; }
+.form-group label { display: block; font-size: 12px; font-weight: 600;
+                    color: var(--ink-light); margin-bottom: 6px; letter-spacing: 0.2px; }
+.form-group input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
+                    border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+                    outline: none; color: var(--ink); }
+.form-group input:focus { border-color: var(--red); }
+.color-row { display: flex; gap: 10px; align-items: center; }
+.color-row input[type="color"] { width: 44px; height: 44px; padding: 2px 3px;
+                                  border-radius: 10px; cursor: pointer; flex-shrink: 0; }
+.form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+
+/* Sites */
+.site-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.site-item { display: flex; align-items: center; justify-content: space-between;
+             background: var(--bg); border: 1px solid var(--border);
+             border-radius: 10px; padding: 12px 16px; }
+.site-item-info h4 { font-size: 14px; font-weight: 600; color: var(--ink); }
+.site-item-info p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.add-site-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;
+                 align-items: end; background: var(--bg);
+                 border: 1.5px dashed var(--border); border-radius: 12px; padding: 16px; }
+@media(max-width:600px) { .add-site-form { grid-template-columns: 1fr; } }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
+       border-radius: 8px; font-size: 14px; font-weight: 600; border: none;
+       cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+.btn-primary { background: var(--red); color: white; width: 100%;
+               justify-content: center; padding: 13px; }
+.btn-primary:hover { background: var(--red-dark); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-save { background: var(--ink); color: white; }
+.btn-save:hover { background: var(--red); }
+.btn-sm { padding: 7px 14px; font-size: 13px; }
+.btn-red-sm { background: var(--red-light); color: var(--red); border: none;
+              padding: 6px 12px; border-radius: 6px; font-size: 12px;
+              font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-red-sm:hover { background: var(--red); color: white; }
+.btn-outline { background: white; color: var(--ink); border: 1.5px solid var(--border); }
+.btn-outline:hover { border-color: var(--ink); }
+.btn-green { background: var(--green); color: white; }
+
+/* States */
+.loading { text-align: center; padding: 48px; color: var(--muted); }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 2.5px solid var(--border);
+           border-top-color: var(--red); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--ink); color: white;
+         padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 300;
+         box-shadow: 0 8px 24px rgba(0,0,0,0.15); animation: fadeUp 0.2s ease; }
+.toast.success { background: var(--green); }
+.toast.error   { background: var(--red); }
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.error-msg { color: var(--red); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Sub<em>Sync</em></div>
+    <p>Sign in to manage your account</p>
+    <input type="text" id="login-number" placeholder="Your WhatsApp number (+447...)" />
+    <input type="password" id="login-password" placeholder="Your password" />
+    <button class="btn btn-primary" onclick="doLogin()">Sign in →</button>
+    <p class="error-msg" id="login-error"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div class="header-logo">Sub<em>Sync</em></div>
+    <nav class="header-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/account" class="nav-link active">My Account</a>
+    </nav>
+    <button class="logout-btn" onclick="logout()">Sign out</button>
+  </header>
+
+  <main id="main-content">
+    <div class="loading"><div class="spinner"></div></div>
+  </main>
+</div>
+
+<script>
+let STATE = { password: "", number: "", data: null };
+
+async function doLogin() {
+  const number   = document.getElementById("login-number").value.trim();
+  const password = document.getElementById("login-password").value.trim();
+  if (!number || !password) { document.getElementById("login-error").textContent = "Please fill in both fields."; return; }
+
+  const r = await fetch("/api/auth", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    STATE.password = password; STATE.number = number;
+    localStorage.setItem("ss_password", password);
+    localStorage.setItem("ss_number", number);
+    showApp();
+  } else { document.getElementById("login-error").textContent = "Wrong password."; }
+}
+
+function logout() {
+  localStorage.removeItem("ss_password"); localStorage.removeItem("ss_number");
+  location.reload();
+}
+
+function apiFetch(url, opts = {}) {
+  return fetch(url, { ...opts, headers: { "Content-Type": "application/json",
+    "X-Dashboard-Password": STATE.password, ...(opts.headers||{}) } });
+}
+
+async function showApp() {
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  await loadAccount();
+}
+
+async function loadAccount() {
+  const r = await apiFetch(`/api/account?number=${encodeURIComponent(STATE.number)}`);
+  const d = await r.json();
+  STATE.data = d;
+  renderAccount(d);
+}
+
+function renderAccount(d) {
+  const c  = d.company || {};
+  const ps = d.projects || [];
+  const s  = d.stripe || {};
+
+  const subStatus = s.status || "unknown";
+  const dotClass  = subStatus === "active" ? "active" : subStatus === "trialing" ? "trialing" : "canceled";
+  const subLabel  = subStatus === "active" ? "Active subscription" : subStatus === "trialing" ? "Free trial" : subStatus;
+  const nextDate  = s.next_billing ? new Date(s.next_billing * 1000).toLocaleDateString("en-GB") : "—";
+  const trialDate = s.trial_end   ? new Date(s.trial_end * 1000).toLocaleDateString("en-GB") : null;
+
+  const sitesHtml = ps.length ? ps.map(p => `
+    <div class="site-item">
+      <div class="site-item-info">
+        <h4>📍 ${p.site_name}</h4>
+        <p>${p.client_name || "No client name set"}</p>
+      </div>
+      <button class="btn-red-sm" onclick="deleteSite(${p.id}, '${p.site_name}')">Remove</button>
+    </div>`).join("") : `<p style="color:var(--muted);font-size:14px;margin-bottom:16px">No sites added yet. Add your first site below.</p>`;
+
+  document.getElementById("main-content").innerHTML = `
+
+    <!-- Subscription -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Subscription</div>
+      </div>
+      <div class="section-body">
+        <div class="sub-card">
+          <div class="sub-status">
+            <div class="status-dot ${dotClass}"></div>
+            <div>
+              <div class="sub-name">SubSync Monthly — £49/month</div>
+              <div class="sub-detail">${subLabel}${trialDate ? " · Trial ends " + trialDate : ""}${subStatus === "active" ? " · Next billing " + nextDate : ""}</div>
+            </div>
+          </div>
+          ${s.billing_url ? `<a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <!-- Company Details -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Company Details</div>
+      </div>
+      <div class="section-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" id="f-company-name" value="${c.company_name || ""}" />
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="f-email" value="${c.email || ""}" />
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="f-phone" value="${c.phone || ""}" />
+          </div>
+          <div class="form-group">
+            <label>VAT Number</label>
+            <input type="text" id="f-vat" value="${c.vat_number || ""}" />
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Company Address</label>
+            <input type="text" id="f-address" value="${c.address || ""}" />
+          </div>
+          <div class="form-group">
+            <label>Brand Colour</label>
+            <div class="color-row">
+              <input type="color" id="f-color-picker" value="${c.primary_color || "#d62828"}"
+                     oninput="document.getElementById('f-color-hex').value=this.value" />
+              <input type="text" id="f-color-hex" value="${c.primary_color || "#d62828"}"
+                     oninput="document.getElementById('f-color-picker').value=this.value" />
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-save" onclick="saveCompany()">Save changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sites -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">My Sites</div>
+      </div>
+      <div class="section-body">
+        <div class="site-list" id="site-list">${sitesHtml}</div>
+        <div class="add-site-form">
+          <div class="form-group">
+            <label>Site Name</label>
+            <input type="text" id="new-site-name" placeholder="e.g. Brookfield Site" />
+          </div>
+          <div class="form-group">
+            <label>Client Name</label>
+            <input type="text" id="new-client-name" placeholder="e.g. Brookfield Developments Ltd" />
+          </div>
+          <button class="btn btn-green" onclick="addSite()">Add site</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WhatsApp info -->
+    <div class="section">
+      <div class="section-header"><div class="section-title">WhatsApp Bot</div></div>
+      <div class="section-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:16px;font-weight:300">
+          Your bot is connected to this WhatsApp number. Share the bot number with your team so they can log site activity.
+        </p>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px 20px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Your WhatsApp number</div>
+          <div style="font-size:16px;font-weight:700;color:var(--ink)">${c.whatsapp_number ? c.whatsapp_number.replace("whatsapp:", "") : "—"}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function saveCompany() {
+  const payload = {
+    company_name:  document.getElementById("f-company-name").value.trim(),
+    email:         document.getElementById("f-email").value.trim(),
+    phone:         document.getElementById("f-phone").value.trim(),
+    vat_number:    document.getElementById("f-vat").value.trim(),
+    address:       document.getElementById("f-address").value.trim(),
+    primary_color: document.getElementById("f-color-hex").value.trim(),
+  };
+
+  const r = await apiFetch(`/api/account/company?number=${encodeURIComponent(STATE.number)}`, {
+    method: "PATCH", body: JSON.stringify(payload)
+  });
+  const d = await r.json();
+  if (d.ok) { showToast("✓ Details saved!", "success"); }
+  else { showToast("❌ " + (d.error || "Failed to save"), "error"); }
+}
+
+async function addSite() {
+  const site_name   = document.getElementById("new-site-name").value.trim();
+  const client_name = document.getElementById("new-client-name").value.trim();
+  if (!site_name) { showToast("Please enter a site name", "error"); return; }
+
+  const r = await apiFetch(`/api/account/sites?number=${encodeURIComponent(STATE.number)}`, {
+    method: "POST", body: JSON.stringify({ site_name, client_name })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    showToast("✓ Site added!", "success");
+    document.getElementById("new-site-name").value = "";
+    document.getElementById("new-client-name").value = "";
+    await loadAccount();
+  } else { showToast("❌ " + (d.error || "Failed"), "error"); }
+}
+
+async function deleteSite(id, name) {
+  if (!confirm(`Remove "${name}" from your active sites?`)) return;
+  const r = await apiFetch(`/api/account/sites/${id}`, { method: "DELETE" });
+  const d = await r.json();
+  if (d.ok) { showToast("Site removed", "success"); await loadAccount(); }
+  else { showToast("❌ " + (d.error || "Failed"), "error"); }
+}
+
+function showToast(msg, type = "") {
+  const t = document.createElement("div");
+  t.className = `toast ${type}`; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const pw  = localStorage.getItem("ss_password");
+  const num = localStorage.getItem("ss_number");
+  if (pw && num) { STATE.password = pw; STATE.number = num; showApp(); }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && document.getElementById("login-screen").style.display !== "none") doLogin();
+});
+</script>
+</body>
+</html>
