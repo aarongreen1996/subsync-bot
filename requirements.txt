@@ -7,3 +7,4 @@ gunicorn==22.0.0
 requests==2.31.0
 reportlab==4.2.2
 stripe==8.9.0
+groq==0.9.0
