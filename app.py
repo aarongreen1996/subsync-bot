@@ -8,6 +8,7 @@ import anthropic
 from supabase import create_client
 from datetime import datetime
 import requests as http_requests
+import base64
 from pdf_generator import generate_pdf
 from dashboard import dashboard_bp
 from onboarding import onboarding_bp
@@ -213,14 +214,57 @@ def read_html(filename):
     with open(filepath, "r", encoding="utf-8") as f:
         return f.read()
 
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+def transcribe_voice(media_url):
+    """Download voice note from Twilio and transcribe via Groq Whisper."""
+    try:
+        # Download the audio file from Twilio
+        twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
+        if audio_r.status_code != 200:
+            return None
+
+        # Send to Groq Whisper
+        files = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
+        data  = {"model": "whisper-large-v3", "language": "en"}
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+
+        groq_r = http_requests.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers=headers, files=files, data=data, timeout=30
+        )
+        if groq_r.status_code == 200:
+            return groq_r.json().get("text", "").strip()
+        return None
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        return None
+
 # ── Webhook ───────────────────────────────────────────────────────────────────
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg = request.form.get("Body", "").strip()
-    from_number  = request.form.get("From", "")
+    incoming_msg  = request.form.get("Body", "").strip()
+    from_number   = request.form.get("From", "")
+    num_media     = int(request.form.get("NumMedia", 0))
+    media_url     = request.form.get("MediaUrl0", "")
+    media_type    = request.form.get("MediaContentType0", "")
+
+    # ── Voice note handling ───────────────────────────────────────────────────
+    if num_media > 0 and media_url and "audio" in media_type:
+        transcript = transcribe_voice(media_url)
+        if transcript:
+            incoming_msg = transcript
+        else:
+            return _reply(
+                "⚠️ I couldn't transcribe that voice note. "
+                "Please try again or type your message instead."
+            )
 
     if not incoming_msg:
-        return _reply("Send me a message about what happened on site today 👷")
+        return _reply("Send me a message or voice note about what happened on site today 👷")
 
     if from_number in pending_selections:
         return handle_site_selection(from_number, incoming_msg)
