@@ -12,11 +12,15 @@ from pdf_generator import generate_pdf
 from dashboard import dashboard_bp
 from onboarding import onboarding_bp
 from admin import admin_bp
+from scheduler import start_scheduler
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
+
+# Start background scheduler
+start_scheduler()
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -125,9 +129,13 @@ GENERATE_KEYWORDS = [
 ]
 
 HELP_KEYWORDS = ["help", "guide", "how do i", "what can you do", "commands"]
+DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
 
 def is_generate_command(msg):
     return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
+
+def is_dashboard_command(msg):
+    return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
 
 def is_help_command(msg):
     return any(kw in msg.lower() for kw in HELP_KEYWORDS)
@@ -215,6 +223,9 @@ def webhook():
     if from_number in pending_selections:
         return handle_site_selection(from_number, incoming_msg)
 
+    if is_dashboard_command(incoming_msg):
+        return handle_dashboard_command(from_number)
+
     if is_help_command(incoming_msg):
         return _reply(HELP_TEXT)
 
@@ -223,6 +234,25 @@ def webhook():
 
     return handle_log(from_number, incoming_msg)
 
+
+
+def handle_dashboard_command(from_number):
+    """Reply with dashboard link and password when customer asks."""
+    app_url = os.environ.get('APP_URL', 'https://www.subsync.co.uk')
+    password = os.environ.get('DASHBOARD_PASSWORD', 'changeme')
+    return _reply(
+        f'📊 *Your SubSync Dashboard*
+
+'
+        f'Link: {app_url}/dashboard
+'
+        f'Number: {from_number.replace("whatsapp:", "")}
+'
+        f'Password: {password}
+
+'
+        f'Bookmark the link so you can check in anytime 👍'
+    )
 
 def handle_site_selection(from_number, msg):
     state    = pending_selections[from_number]
