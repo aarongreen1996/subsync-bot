@@ -248,6 +248,28 @@ function renderAccount(d) {
       </div>
     </div>
 
+    <!-- Logo Upload -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Company Logo</div>
+      </div>
+      <div class="section-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:16px;font-weight:300">
+          Your logo will appear on all branded PDF documents sent to clients.
+        </p>
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+          ${c.logo_url ? `<img src="${c.logo_url}" style="max-height:60px;max-width:200px;border:1px solid var(--border);border-radius:8px;padding:8px;background:white" alt="Logo" />` : `<div style="width:120px;height:60px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">No logo</div>`}
+          <div>
+            <input type="file" id="logo-file" accept="image/*" style="display:none" onchange="uploadLogo(this)" />
+            <button class="btn btn-outline" onclick="document.getElementById('logo-file').click()">
+              ${c.logo_url ? 'Change logo' : 'Upload logo'}
+            </button>
+            <p style="font-size:11px;color:var(--muted);margin-top:6px">PNG, JPG or SVG · Max 2MB · Transparent background recommended</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Company Details -->
     <div class="section">
       <div class="section-header">
@@ -369,6 +391,35 @@ async function deleteSite(id, name) {
   const d = await r.json();
   if (d.ok) { showToast("Site removed", "success"); await loadAccount(); }
   else { showToast("❌ " + (d.error || "Failed"), "error"); }
+}
+
+async function uploadLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showToast("File too large. Max 2MB.", "error"); return; }
+
+  showToast("Uploading logo...", "");
+
+  const r = await apiFetch(`/api/account/logo?number=${encodeURIComponent(STATE.number)}`, {
+    method: "POST",
+    headers: { "X-Dashboard-Password": STATE.password },
+    body: await fileToBase64(file, file.type),
+  });
+
+  const d = await r.json();
+  if (d.ok) { showToast("✓ Logo uploaded!", "success"); await loadAccount(); }
+  else { showToast("❌ " + (d.error || "Upload failed"), "error"); }
+}
+
+function fileToBase64(file, mimeType) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const blob = new Blob([reader.result], { type: mimeType });
+      resolve(blob);
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 function showToast(msg, type = "") {
