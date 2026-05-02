@@ -145,25 +145,33 @@ CRITICAL RULE for VARIATION vs DAYWORK:
 - If the message mentions hours worked but does NOT clearly say someone requested it, set needs_clarification to true
 - When in ANY doubt between VARIATION and DAYWORK, set needs_clarification to true
 
-Respond ONLY with a valid JSON object. No explanation, no markdown, just raw JSON.
+The message may contain ONE item or MULTIPLE items listed together.
 
-JSON structure:
+If the message contains MULTIPLE separate items (separated by line breaks, numbers, bullet points, or commas listing different tasks), respond with a JSON array of objects.
+If it is a SINGLE item, respond with a single JSON object.
+
+Respond ONLY with valid JSON. No explanation, no markdown, just raw JSON.
+
+Single item structure:
 {
   "type": "VARIATION",
-  "description": "Short clear description of the task or item",
+  "description": "Short clear description",
   "hours": 2.5,
   "cost_estimate": 40.00,
   "location": "Room 4",
-  "site_name": "Site name if clearly mentioned in message, otherwise null",
+  "site_name": "Site name if clearly mentioned, otherwise null",
   "requested_by": "Name of person who asked (if mentioned)",
-  "worker_name": "Name of worker logging this (if mentioned)",
-  "materials": ["item 1", "item 2"],
-  "supplier": "Supplier name if mentioned",
+  "worker_name": "Name of worker (if mentioned)",
+  "materials": ["item 1"],
+  "supplier": "Supplier if mentioned",
   "needs_clarification": false,
-  "confirmation_message": "A friendly WhatsApp reply summarising what was captured. Start with ✅. Under 3 lines. Use £ for currency."
+  "confirmation_message": "Friendly ✅ summary. Under 3 lines. Use £."
 }
 
-Only include fields relevant to the type. Always include needs_clarification and confirmation_message.
+Multiple items: return a JSON array [...] of the above objects, one per item.
+Each item gets its own type, description, hours, cost etc.
+For multiple items, set confirmation_message only on the LAST item in the array, summarising the total count.
+Always include needs_clarification on every item.
 """
 
 # ── Command keywords ──────────────────────────────────────────────────────────
