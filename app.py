@@ -237,22 +237,16 @@ def webhook():
 
 
 def handle_dashboard_command(from_number):
-    """Reply with dashboard link and password when customer asks."""
-    app_url = os.environ.get('APP_URL', 'https://www.subsync.co.uk')
-    password = os.environ.get('DASHBOARD_PASSWORD', 'changeme')
-    return _reply(
-        f'📊 *Your SubSync Dashboard*
-
-'
-        f'Link: {app_url}/dashboard
-'
-        f'Number: {from_number.replace("whatsapp:", "")}
-'
-        f'Password: {password}
-
-'
-        f'Bookmark the link so you can check in anytime 👍'
+    app_url  = os.environ.get("APP_URL", "https://www.subsync.co.uk")
+    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+    number   = from_number.replace("whatsapp:", "")
+    msg = (
+        "Dashboard link: " + app_url + "/dashboard\n"
+        "Number: " + number + "\n"
+        "Password: " + password + "\n\n"
+        "Bookmark it so you can check in anytime"
     )
+    return _reply(msg)
 
 def handle_site_selection(from_number, msg):
     state    = pending_selections[from_number]
