@@ -34,7 +34,7 @@ def check_auth():
 # ── Serve admin HTML ───────────────────────────────────────────────────────────
 @admin_bp.route("/admin")
 def serve_admin():
-    return send_file("admin.html")
+    return send_file(os.path.join(os.path.dirname(__file__), "admin.html"))
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
