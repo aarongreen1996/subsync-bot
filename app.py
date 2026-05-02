@@ -1,6 +1,5 @@
 import os
 import json
-import uuid
 import re
 from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
@@ -8,7 +7,6 @@ import anthropic
 from supabase import create_client
 from datetime import datetime
 import requests as http_requests
-import base64
 from pdf_generator import generate_pdf
 from dashboard import dashboard_bp
 from onboarding import onboarding_bp
@@ -21,8 +19,6 @@ app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(account_bp)
-
-# Start background scheduler
 start_scheduler()
 
 # ── Clients ───────────────────────────────────────────────────────────────────
@@ -33,7 +29,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── DB helpers ────────────────────────────────────────────────────────────────
 def sb_headers():
     return {
         "apikey": SUPABASE_KEY,
@@ -61,18 +57,20 @@ def db_patch(path, payload):
         headers={**sb_headers(), "Prefer": "return=minimal"}
     )
 
-def encode_number(number):
-    return number.replace("+", "%2B")
+def encode_number(n):
+    return n.replace("+", "%2B")
 
 def encode_text(text):
     from urllib.parse import quote
     return quote(str(text), safe="")
 
+# ── Project helpers ───────────────────────────────────────────────────────────
 def get_projects(from_number):
-    return db_get(
+    result = db_get(
         f"projects?whatsapp_number=eq.{encode_number(from_number)}"
         f"&status=eq.active&order=site_name.asc"
     )
+    return result if isinstance(result, list) else []
 
 def match_site(msg, projects):
     msg_lower = msg.lower()
@@ -83,30 +81,41 @@ def match_site(msg, projects):
             return p["site_name"]
     return None
 
+def create_site(from_number, site_name):
+    """Auto-create a new site for this company."""
+    whatsapp_raw = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
+    try:
+        db_post("projects", {
+            "whatsapp_number": whatsapp_raw,
+            "site_name":       site_name,
+            "client_name":     "",
+            "status":          "active",
+        })
+    except Exception as e:
+        print(f"Site create error: {e}")
+
 def format_project_list(projects):
-    lines = ["Which site is this for? Reply with the number:\n"]
+    lines = ["Which site is this for?\n"]
     for i, p in enumerate(projects, 1):
         lines.append(f"{i}. {p['site_name']}")
-    lines.append("\nOr type the site name directly.")
+    lines.append("\nReply with a number, or type a new site name and I'll add it automatically.")
     return "\n".join(lines)
 
+# ── Pending state ─────────────────────────────────────────────────────────────
 pending_selections = {}
 
 # ── Voice transcription ───────────────────────────────────────────────────────
 def transcribe_voice(media_url):
-    """Download voice note from Twilio and transcribe via Groq Whisper."""
     try:
         twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
         twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
         audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
         if audio_r.status_code != 200:
             return None
-
         files   = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
         data    = {"model": "whisper-large-v3", "language": "en"}
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-
-        groq_r = http_requests.post(
+        groq_r  = http_requests.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers=headers, files=files, data=data, timeout=30
         )
@@ -124,18 +133,17 @@ Workers send you informal voice-note transcriptions or text messages from site.
 Your job is to extract structured data and classify each message.
 
 Classify into one of:
-- VARIATION      → Extra work requested by client or site manager, not in original contract
-- DAYWORK        → Time-based extra work; worker logging hours spent on an extra task
+- VARIATION      → Extra work explicitly requested BY a client or site manager
+- DAYWORK        → Worker logging time/hours they have spent on extra work
 - MATERIAL_ORDER → Request to order materials, fixings, tools or equipment
 - TIMESHEET      → Worker logging their standard hours for the day/week
 - UNKNOWN        → Cannot classify
 
-VARIATION vs DAYWORK guide:
-- VARIATION: Client/site manager explicitly asked for extra work (they mentioned the client or manager asked)
-- DAYWORK: Worker is logging time/hours spent on any extra task
-- IMPORTANT: If the message mentions hours worked AND does NOT clearly say a client/manager requested it, set needs_clarification to true
-- Only classify as VARIATION if the message explicitly says someone asked or requested the work
-- When in doubt, set needs_clarification to true
+CRITICAL RULE for VARIATION vs DAYWORK:
+- Only use VARIATION if the message EXPLICITLY states a client, site manager, or customer ASKED for or REQUESTED the work (e.g. "site manager asked", "client wants", "been asked to")
+- Use DAYWORK if the worker is simply logging hours or work they did, even if it was extra work
+- If the message mentions hours worked but does NOT clearly say someone requested it, set needs_clarification to true
+- When in ANY doubt between VARIATION and DAYWORK, set needs_clarification to true
 
 Respond ONLY with a valid JSON object. No explanation, no markdown, just raw JSON.
 
@@ -155,23 +163,20 @@ JSON structure:
   "confirmation_message": "A friendly WhatsApp reply summarising what was captured. Start with ✅. Under 3 lines. Use £ for currency."
 }
 
-Set needs_clarification to true ONLY when the message could genuinely be either VARIATION or DAYWORK.
-Only include fields relevant to the type. Always include confirmation_message and needs_clarification.
+Only include fields relevant to the type. Always include needs_clarification and confirmation_message.
 """
 
-# ── Command detection ─────────────────────────────────────────────────────────
-GENERATE_KEYWORDS = [
-    "generate", "create invoice", "make invoice", "send invoice",
-    "variation report", "daywork report", "material report",
-    "weekly report", "end of day report", "end of week",
-    "produce report", "get variations", "send variations"
-]
+# ── Command keywords ──────────────────────────────────────────────────────────
+GENERATE_KEYWORDS  = ["generate", "create invoice", "make invoice", "send invoice",
+                      "variation report", "daywork report", "material report",
+                      "weekly report", "end of day", "end of week",
+                      "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
 DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
 
 def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
-def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
 def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
+def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -207,44 +212,41 @@ def upload_pdf(pdf_bytes, filename):
     }
     r = http_requests.post(url, data=pdf_bytes, headers=headers)
     if r.status_code not in (200, 201):
-        raise Exception(f"Storage upload failed {r.status_code}: {r.text}")
+        raise Exception(f"Storage upload failed: {r.text}")
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
 HELP_TEXT = """👷 *SubSync Bot — Quick Guide*
 
 *LOGGING ITEMS*
-Just describe what happened naturally:
+Just describe what happened — text or voice note:
 • "Site manager asked me to fit extra sockets in room 4, 2 hrs, £40 materials"
-• "Need to order 50 joist hangers from Travis Perkins"
-• "Logged 8 hours today on Brookfield Site"
-
-You can also send a *voice note* and I'll transcribe it automatically 🎤
+• "Need to order 50 joist hangers from Screwfix"
+• "Boarded loft flat 5, 3 hours, £80 materials"
 
 *MENTIONING THE SITE*
-Include the site name in your message:
-• "Variation on Brookfield Site — extra spotlights kitchen"
-• "Flat 3 Refurb — boarded loft, 3 hrs, £60"
+Say the site name and I'll tag it automatically:
+• "Brookfield Site — extra consumer unit in garage"
+• "Flat 3 Refurb — extra spotlights kitchen"
 
-If you forget, I'll ask you which site it's for.
+If you forget, I'll ask. Type a new site name and I'll create it.
 
 *GENERATING DOCUMENTS*
 • "Generate variations for Brookfield Site"
 • "Generate dayworks for Flat 3 Refurb"
-• "Generate purchase orders for Brookfield Site"
+• "Generate purchase orders"
 
 *OTHER COMMANDS*
 • Reply *Dashboard* — get your login link
 • Reply *Help* — see this guide
 
 *DOCUMENT TYPES*
-• *Variation Order (VO)* — extra work not in contract
-• *Daywork Sheet (DS)* — time-based extra work
+• *Variation Order (VO)* — client requested extra work
+• *Daywork Sheet (DS)* — time-based extra work you logged
 • *Purchase Order (PO)* — materials & equipment"""
 
 def read_html(filename):
     base = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(base, filename)
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(os.path.join(base, filename), "r", encoding="utf-8") as f:
         return f.read()
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
@@ -256,22 +258,19 @@ def webhook():
     media_url    = request.form.get("MediaUrl0", "")
     media_type   = request.form.get("MediaContentType0", "")
 
-    # ── Voice note handling ───────────────────────────────────────────────────
+    # Voice note
     if num_media > 0 and media_url and "audio" in media_type:
         transcript = transcribe_voice(media_url)
         if transcript:
             incoming_msg = transcript
         else:
-            return _reply(
-                "⚠️ I couldn't transcribe that voice note. "
-                "Please try again or type your message instead."
-            )
+            return _reply("⚠️ Couldn't transcribe that voice note. Please try again or type it.")
 
     if not incoming_msg:
         return _reply("Send me a message or voice note about what happened on site today 👷")
 
     if from_number in pending_selections:
-        return handle_site_selection(from_number, incoming_msg)
+        return handle_pending(from_number, incoming_msg)
 
     if is_dashboard_command(incoming_msg):
         return handle_dashboard_command(from_number)
@@ -285,30 +284,13 @@ def webhook():
     return handle_log(from_number, incoming_msg)
 
 
-# ── Dashboard command ─────────────────────────────────────────────────────────
-def handle_dashboard_command(from_number):
-    app_url  = os.environ.get("APP_URL", "https://www.subsync.co.uk")
-    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
-    number   = from_number.replace("whatsapp:", "")
-    lines = [
-        "📊 *Your SubSync Dashboard*",
-        "",
-        "Link: " + app_url + "/dashboard",
-        "Number: " + number,
-        "Password: " + password,
-        "",
-        "Bookmark it so you can check in anytime 👍"
-    ]
-    return _reply("\n".join(lines))
-
-
-# ── Site selection + type clarification handler ───────────────────────────────
-def handle_site_selection(from_number, msg):
+# ── Pending handler (type clarification + site selection) ─────────────────────
+def handle_pending(from_number, msg):
     state    = pending_selections[from_number]
     projects = state["projects"]
     log_data = state["pending_log"]
 
-    # Handle type clarification (1 = VARIATION, 2 = DAYWORK)
+    # Step 1: type clarification
     if state.get("awaiting_type"):
         if msg.strip() == "1":
             log_data["type"] = "VARIATION"
@@ -317,22 +299,19 @@ def handle_site_selection(from_number, msg):
         else:
             return _reply("Please reply *1* for Variation or *2* for Daywork")
 
-        # Now check if we need to ask for site too
+        # Move to site selection if needed
         site_name = match_site(log_data.get("raw_message", ""), projects)
         if site_name:
             log_data["site_name"] = site_name
             del pending_selections[from_number]
             db_post("site_logs", log_data)
-            return _reply(
-                f"✅ Logged as *{log_data['type']}* for *{site_name}*!\n"
-                f"{log_data.get('description', 'Item')} saved."
-            )
+            return _reply(f"✅ Logged as *{log_data['type']}* for *{site_name}*!")
         elif projects:
-            # Ask for site next
             pending_selections[from_number] = {
-                "pending_log": log_data,
-                "projects":    projects,
-                "awaiting_type": False,
+                "pending_log":    log_data,
+                "projects":       projects,
+                "awaiting_type":  False,
+                "awaiting_site":  True,
             }
             return _reply(format_project_list(projects))
         else:
@@ -340,37 +319,58 @@ def handle_site_selection(from_number, msg):
             db_post("site_logs", log_data)
             return _reply(f"✅ Logged as *{log_data['type']}*!")
 
-    # Handle site selection
-    site_name = None
-    if msg.strip().isdigit():
-        idx = int(msg.strip()) - 1
-        if 0 <= idx < len(projects):
-            site_name = projects[idx]["site_name"]
+    # Step 2: site selection
+    if state.get("awaiting_site"):
+        site_name = None
 
-    if not site_name:
-        msg_lower = msg.lower()
-        for p in projects:
-            if p["site_name"].lower() in msg_lower or msg_lower in p["site_name"].lower():
-                site_name = p["site_name"]
-                break
+        # Try number selection
+        if msg.strip().isdigit():
+            idx = int(msg.strip()) - 1
+            if 0 <= idx < len(projects):
+                site_name = projects[idx]["site_name"]
 
-    if not site_name:
-        return _reply(
-            "I didn't recognise that site. Please reply with a number:\n\n"
-            + "\n".join([f"{i+1}. {p['site_name']}" for i, p in enumerate(projects)])
-        )
+        # Try name match
+        if not site_name:
+            msg_lower = msg.lower()
+            for p in projects:
+                if p["site_name"].lower() in msg_lower or msg_lower in p["site_name"].lower():
+                    site_name = p["site_name"]
+                    break
 
-    log_data["site_name"] = site_name
+        # Auto-create if no match — no blockers
+        if not site_name:
+            site_name = msg.strip().title()
+            create_site(from_number, site_name)
+
+        log_data["site_name"] = site_name
+        del pending_selections[from_number]
+
+        try:
+            db_post("site_logs", log_data)
+            return _reply(
+                f"✅ Logged for *{site_name}*!\n"
+                f"{log_data.get('description', 'Item')} saved."
+            )
+        except Exception as e:
+            return _reply(f"⚠️ Couldn't save. ({str(e)[:80]})")
+
+    # Fallback
     del pending_selections[from_number]
+    return _reply("Something went wrong. Please try sending that again.")
 
-    try:
-        db_post("site_logs", log_data)
-        return _reply(
-            f"✅ Logged for *{site_name}*!\n"
-            f"{log_data.get('description', 'Item')} saved."
-        )
-    except Exception as e:
-        return _reply(f"⚠️ Couldn't save. Please try again. ({str(e)[:80]})")
+
+# ── Dashboard command ─────────────────────────────────────────────────────────
+def handle_dashboard_command(from_number):
+    app_url  = os.environ.get("APP_URL", "https://www.subsync.co.uk")
+    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+    number   = from_number.replace("whatsapp:", "")
+    return _reply(
+        "📊 *Your SubSync Dashboard*\n\n"
+        f"Link: {app_url}/dashboard\n"
+        f"Number: {number}\n"
+        f"Password: {password}\n\n"
+        "Bookmark it so you can check in anytime 👍"
+    )
 
 
 # ── Generate handler ──────────────────────────────────────────────────────────
@@ -387,17 +387,19 @@ def handle_generate(from_number, msg):
         site_name  = match_site(msg, projects)
         site_label = site_name or "All Sites"
 
-        query = (f"site_logs?from_number=eq.{encode_number(from_number)}"
-                 f"&status=eq.pending&order=created_at.asc")
+        query = (
+            f"site_logs?from_number=eq.{encode_number(from_number)}"
+            f"&status=eq.pending&order=created_at.asc"
+        )
         if site_name:
             query += f"&site_name=eq.{encode_text(site_name)}"
 
         logs = db_get(query)
-
-        if not logs:
-            if site_name:
-                return _reply(f"📋 No pending items for *{site_name}*.")
-            return _reply("📋 No pending items found.")
+        if not isinstance(logs, list) or not logs:
+            return _reply(
+                f"📋 No pending items{' for *' + site_name + '*' if site_name else ''}.\n"
+                f"Log some site activity first then ask me to generate."
+            )
 
         doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
         company["site_label"] = site_label
@@ -418,7 +420,7 @@ def handle_generate(from_number, msg):
         return Response(str(resp), mimetype="application/xml")
 
     except Exception as e:
-        return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:150]}")
+        return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
 
 
 # ── Log handler ───────────────────────────────────────────────────────────────
@@ -455,54 +457,52 @@ def handle_log(from_number, incoming_msg):
         if data.get("materials"):     insert_data["materials"]     = json.dumps(data["materials"])
         if data.get("supplier"):      insert_data["supplier"]      = str(data["supplier"])
 
-        ai_site  = data.get("site_name")
-        projects = get_projects(from_number)
+        projects            = get_projects(from_number)
         needs_clarification = data.get("needs_clarification", False)
+        confirmation        = data.get("confirmation_message", "✅ Got it!")
 
-        site_name = None
-        if ai_site:
-            site_name = match_site(ai_site, projects)
+        # Match site from message
+        site_name = match_site(data.get("site_name") or "", projects)
         if not site_name:
             site_name = match_site(incoming_msg, projects)
 
-        confirmation = data.get("confirmation_message", "✅ Got it!")
-
-        # Ask for type clarification first if ambiguous
+        # Step 1: Ask type if ambiguous
         if needs_clarification:
             pending_selections[from_number] = {
                 "pending_log":   insert_data,
                 "projects":      projects,
                 "awaiting_type": True,
+                "awaiting_site": False,
             }
             return _reply(
                 confirmation + "\n\n"
                 "Is this a:\n"
-                "1. *Variation* — extra work the client requested\n"
-                "2. *Daywork* — time-based extra work you're logging\n\n"
+                "1. *Variation* — extra work the client/manager requested\n"
+                "2. *Daywork* — hours you logged on extra work\n\n"
                 "Reply 1 or 2"
             )
 
+        # Step 2: Save with site or ask
         if site_name:
             insert_data["site_name"] = site_name
             db_post("site_logs", insert_data)
-            reply = confirmation + f"\n📍 Site: *{site_name}*"
+            return _reply(confirmation + f"\n📍 Site: *{site_name}*")
         elif projects:
             pending_selections[from_number] = {
-                "pending_log": insert_data,
-                "projects":    projects,
+                "pending_log":   insert_data,
+                "projects":      projects,
                 "awaiting_type": False,
+                "awaiting_site": True,
             }
-            reply = confirmation + "\n\n" + format_project_list(projects)
+            return _reply(confirmation + "\n\n" + format_project_list(projects))
         else:
             db_post("site_logs", insert_data)
-            reply = confirmation
+            return _reply(confirmation)
 
     except json.JSONDecodeError:
-        reply = "⚠️ I couldn't read that clearly. Try rephrasing."
+        return _reply("⚠️ I couldn't read that clearly. Try rephrasing.")
     except Exception as e:
-        reply = f"⚠️ Something went wrong. ({str(e)[:100]})"
-
-    return _reply(reply)
+        return _reply(f"⚠️ Something went wrong. ({str(e)[:100]})")
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
