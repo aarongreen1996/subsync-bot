@@ -60,7 +60,6 @@ def encode_text(text):
     from urllib.parse import quote
     return quote(str(text), safe="")
 
-# ── Get active projects for a company ─────────────────────────────────────────
 def get_projects(from_number):
     return db_get(
         f"projects?whatsapp_number=eq.{encode_number(from_number)}"
@@ -83,7 +82,6 @@ def format_project_list(projects):
     lines.append("\nOr type the site name directly.")
     return "\n".join(lines)
 
-# ── Pending selection state ───────────────────────────────────────────────────
 pending_selections = {}
 
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
@@ -119,7 +117,6 @@ JSON structure:
 Only include fields relevant to the type. Always include confirmation_message.
 """
 
-# ── Command detection ─────────────────────────────────────────────────────────
 GENERATE_KEYWORDS = [
     "generate", "create invoice", "make invoice", "send invoice",
     "variation report", "daywork report", "material report",
@@ -143,7 +140,6 @@ def detect_doc_type(msg):
         return "MATERIAL_ORDER", "Purchase Order", "PO"
     return "VARIATION", "Variation Order", "VO"
 
-# ── Reference number + filename ───────────────────────────────────────────────
 def slugify(text):
     text = text.strip().replace(" ", "_")
     return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
@@ -161,7 +157,6 @@ def make_doc_ref_and_filename(company, logs, prefix, site_name):
     filename     = f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
     return ref_str, filename
 
-# ── Supabase Storage ──────────────────────────────────────────────────────────
 def upload_pdf(pdf_bytes, filename):
     url = f"{SUPABASE_URL}/storage/v1/object/documents/{filename}"
     headers = {
@@ -174,7 +169,6 @@ def upload_pdf(pdf_bytes, filename):
         raise Exception(f"Storage upload failed {r.status_code}: {r.text}")
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
-# ── Help message ──────────────────────────────────────────────────────────────
 HELP_TEXT = """👷 *SubSync Bot — Quick Guide*
 
 *LOGGING ITEMS*
@@ -200,13 +194,14 @@ If you forget, I'll ask you which site it's for.
 • *Daywork Sheet (DS)* — time-based extra work
 • *Purchase Order (PO)* — materials & equipment
 
-*TIPS*
-✅ Log things as they happen — don't wait
-✅ Always mention the site name
-✅ One message per item is fine
-✅ Voice notes work too
-
 Reply *Help* anytime to see this guide again."""
+
+def read_html(filename):
+    """Read an HTML file from the same directory as this script."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(base, filename)
+    with open(filepath, "r", encoding="utf-8") as f:
+        return f.read()
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
 @app.route("/webhook", methods=["POST"])
@@ -260,8 +255,7 @@ def handle_site_selection(from_number, msg):
         db_post("site_logs", log_data)
         return _reply(
             f"✅ Logged for *{site_name}*!\n"
-            f"{log_data.get('description', 'Item')} saved. "
-            f"I'll include this in the next document for that site."
+            f"{log_data.get('description', 'Item')} saved."
         )
     except Exception as e:
         return _reply(f"⚠️ Couldn't save. Please try again. ({str(e)[:80]})")
@@ -269,23 +263,19 @@ def handle_site_selection(from_number, msg):
 
 def handle_generate(from_number, msg):
     try:
-        companies = db_get(
-            f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1"
-        )
+        companies = db_get(f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1")
         if not companies:
             return _reply("⚠️ Your company isn't registered yet. Contact your admin.")
         company = companies[0]
         company["whatsapp_number"] = from_number
 
         log_type, doc_title, prefix = detect_doc_type(msg)
-        projects  = get_projects(from_number)
-        site_name = match_site(msg, projects)
+        projects   = get_projects(from_number)
+        site_name  = match_site(msg, projects)
         site_label = site_name or "All Sites"
 
-        query = (
-            f"site_logs?from_number=eq.{encode_number(from_number)}"
-            f"&status=eq.pending&order=created_at.asc"
-        )
+        query = (f"site_logs?from_number=eq.{encode_number(from_number)}"
+                 f"&status=eq.pending&order=created_at.asc")
         if site_name:
             query += f"&site_name=eq.{encode_text(site_name)}"
 
@@ -293,8 +283,8 @@ def handle_generate(from_number, msg):
 
         if not logs:
             if site_name:
-                return _reply(f"📋 No pending items found for *{site_name}*.\nLog some activity for that site first.")
-            return _reply("📋 No pending items found.\nLog some site activity first, then ask me to generate again.")
+                return _reply(f"📋 No pending items for *{site_name}*.")
+            return _reply("📋 No pending items found.")
 
         doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
         company["site_label"] = site_label
@@ -370,26 +360,44 @@ def handle_log(from_number, incoming_msg):
                 "pending_log": insert_data,
                 "projects":    projects,
             }
-            reply = (
-                data.get("confirmation_message", "✅ Got it!") + "\n\n"
-                + format_project_list(projects)
-            )
+            reply = (data.get("confirmation_message", "✅ Got it!") + "\n\n"
+                     + format_project_list(projects))
         else:
             db_post("site_logs", insert_data)
             reply = data.get("confirmation_message", "✅ Logged!")
 
     except json.JSONDecodeError:
-        reply = "⚠️ I couldn't read that clearly. Try rephrasing — e.g. 'Variation on Brookfield Site: fitted 3 extra sockets room 4, 2 hours, £40'"
+        reply = "⚠️ I couldn't read that clearly. Try rephrasing."
     except Exception as e:
-        reply = f"⚠️ Something went wrong. Please try again. ({str(e)[:100]})"
+        reply = f"⚠️ Something went wrong. ({str(e)[:100]})"
 
     return _reply(reply)
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
-@app.route("/health", methods=["GET"])
+# ── Pages served directly from app.py ────────────────────────────────────────
+@app.route("/")
+def landing():
+    return Response(read_html("landing.html"), mimetype="text/html")
+
+@app.route("/signup")
+def signup():
+    return Response(read_html("signup.html"), mimetype="text/html")
+
+@app.route("/dashboard")
+def dashboard_page():
+    return Response(read_html("dashboard.html"), mimetype="text/html")
+
+@app.route("/admin")
+def admin_page():
+    return Response(read_html("admin.html"), mimetype="text/html")
+
+@app.route("/welcome")
+def welcome():
+    return Response(read_html("welcome.html"), mimetype="text/html")
+
+@app.route("/health")
 def health():
-    return "SubSync Bot is running ✅", 200
+    return "SubSync is running ✅", 200
 
 
 def _reply(msg):
