@@ -37,46 +37,6 @@ def db_post(path, payload):
     return r
 
 
-# ── Serve pages ───────────────────────────────────────────────────────────────
-@onboarding_bp.route("/")
-def landing():
-    return send_file(os.path.join(os.path.dirname(__file__), "landing.html"))
-
-def signup_page():
-    return send_file(os.path.join(os.path.dirname(__file__), "signup.html"))
-
-
-@onboarding_bp.route("/welcome")
-def welcome_page():
-    return """
-    <!DOCTYPE html><html><head><meta charset="UTF-8">
-    <title>Welcome to SubSync!</title>
-    <style>
-      body { font-family: -apple-system, sans-serif; display: flex;
-             align-items: center; justify-content: center; min-height: 100vh;
-             background: #f8fafc; margin: 0; }
-      .box { background: white; border-radius: 16px; padding: 48px;
-             text-align: center; max-width: 480px; box-shadow: 0 4px 24px rgba(0,0,0,.1); }
-      h1 { color: #1a3a6b; font-size: 28px; margin-bottom: 12px; }
-      p { color: #64748b; line-height: 1.7; margin-bottom: 16px; }
-      .highlight { color: #10b981; font-weight: 700; font-size: 18px; }
-      a { display: inline-block; background: #1a3a6b; color: white;
-          padding: 14px 28px; border-radius: 8px; text-decoration: none;
-          font-weight: 700; margin-top: 16px; }
-    </style></head><body>
-    <div class="box">
-      <div style="font-size:56px;margin-bottom:16px">🎉</div>
-      <h1>You're all set!</h1>
-      <p class="highlight">Check WhatsApp — your bot is ready.</p>
-      <p>We've sent you a welcome message with everything you need to get started. 
-      Log your first variation in the next 60 seconds — it really is that easy.</p>
-      <p>Your dashboard is ready at:</p>
-      <a href="/dashboard">Open Dashboard →</a>
-    </div></body></html>
-    """
-
-
-# ── Sign up API ───────────────────────────────────────────────────────────────
 @onboarding_bp.route("/api/signup", methods=["POST"])
 def api_signup():
     data = request.json or {}
