@@ -31,6 +31,7 @@ supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABAS
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def sb_headers():
@@ -91,6 +92,31 @@ def format_project_list(projects):
 
 pending_selections = {}
 
+# ── Voice transcription ───────────────────────────────────────────────────────
+def transcribe_voice(media_url):
+    """Download voice note from Twilio and transcribe via Groq Whisper."""
+    try:
+        twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
+        if audio_r.status_code != 200:
+            return None
+
+        files   = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
+        data    = {"model": "whisper-large-v3", "language": "en"}
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+
+        groq_r = http_requests.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers=headers, files=files, data=data, timeout=30
+        )
+        if groq_r.status_code == 200:
+            return groq_r.json().get("text", "").strip()
+        return None
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        return None
+
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
 You are an admin assistant for UK construction subcontractors.
@@ -103,6 +129,12 @@ Classify into one of:
 - MATERIAL_ORDER → Request to order materials, fixings, tools or equipment
 - TIMESHEET      → Worker logging their standard hours for the day/week
 - UNKNOWN        → Cannot classify
+
+VARIATION vs DAYWORK guide:
+- VARIATION: Client/site manager asked for extra work beyond the contract scope
+- DAYWORK: Worker is logging time spent on an extra task (often used for billing time + materials)
+- If the message mentions "site manager asked" or "client wants" it is usually VARIATION
+- If it is ambiguous between VARIATION and DAYWORK, set needs_clarification to true
 
 Respond ONLY with a valid JSON object. No explanation, no markdown, just raw JSON.
 
@@ -118,30 +150,27 @@ JSON structure:
   "worker_name": "Name of worker logging this (if mentioned)",
   "materials": ["item 1", "item 2"],
   "supplier": "Supplier name if mentioned",
+  "needs_clarification": false,
   "confirmation_message": "A friendly WhatsApp reply summarising what was captured. Start with ✅. Under 3 lines. Use £ for currency."
 }
 
-Only include fields relevant to the type. Always include confirmation_message.
+Set needs_clarification to true ONLY when the message could genuinely be either VARIATION or DAYWORK.
+Only include fields relevant to the type. Always include confirmation_message and needs_clarification.
 """
 
+# ── Command detection ─────────────────────────────────────────────────────────
 GENERATE_KEYWORDS = [
     "generate", "create invoice", "make invoice", "send invoice",
     "variation report", "daywork report", "material report",
     "weekly report", "end of day report", "end of week",
     "produce report", "get variations", "send variations"
 ]
-
-HELP_KEYWORDS = ["help", "guide", "how do i", "what can you do", "commands"]
+HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
 DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
 
-def is_generate_command(msg):
-    return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
-
-def is_dashboard_command(msg):
-    return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
-
-def is_help_command(msg):
-    return any(kw in msg.lower() for kw in HELP_KEYWORDS)
+def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
+def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
+def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -188,6 +217,8 @@ Just describe what happened naturally:
 • "Need to order 50 joist hangers from Travis Perkins"
 • "Logged 8 hours today on Brookfield Site"
 
+You can also send a *voice note* and I'll transcribe it automatically 🎤
+
 *MENTIONING THE SITE*
 Include the site name in your message:
 • "Variation on Brookfield Site — extra spotlights kitchen"
@@ -200,57 +231,29 @@ If you forget, I'll ask you which site it's for.
 • "Generate dayworks for Flat 3 Refurb"
 • "Generate purchase orders for Brookfield Site"
 
+*OTHER COMMANDS*
+• Reply *Dashboard* — get your login link
+• Reply *Help* — see this guide
+
 *DOCUMENT TYPES*
 • *Variation Order (VO)* — extra work not in contract
 • *Daywork Sheet (DS)* — time-based extra work
-• *Purchase Order (PO)* — materials & equipment
-
-Reply *Help* anytime to see this guide again."""
+• *Purchase Order (PO)* — materials & equipment"""
 
 def read_html(filename):
-    """Read an HTML file from the same directory as this script."""
     base = os.path.dirname(os.path.abspath(__file__))
     filepath = os.path.join(base, filename)
     with open(filepath, "r", encoding="utf-8") as f:
         return f.read()
 
-
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-
-def transcribe_voice(media_url):
-    """Download voice note from Twilio and transcribe via Groq Whisper."""
-    try:
-        # Download the audio file from Twilio
-        twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
-        if audio_r.status_code != 200:
-            return None
-
-        # Send to Groq Whisper
-        files = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
-        data  = {"model": "whisper-large-v3", "language": "en"}
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-
-        groq_r = http_requests.post(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            headers=headers, files=files, data=data, timeout=30
-        )
-        if groq_r.status_code == 200:
-            return groq_r.json().get("text", "").strip()
-        return None
-    except Exception as e:
-        print(f"Transcription error: {e}")
-        return None
-
 # ── Webhook ───────────────────────────────────────────────────────────────────
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg  = request.form.get("Body", "").strip()
-    from_number   = request.form.get("From", "")
-    num_media     = int(request.form.get("NumMedia", 0))
-    media_url     = request.form.get("MediaUrl0", "")
-    media_type    = request.form.get("MediaContentType0", "")
+    incoming_msg = request.form.get("Body", "").strip()
+    from_number  = request.form.get("From", "")
+    num_media    = int(request.form.get("NumMedia", 0))
+    media_url    = request.form.get("MediaUrl0", "")
+    media_type   = request.form.get("MediaContentType0", "")
 
     # ── Voice note handling ───────────────────────────────────────────────────
     if num_media > 0 and media_url and "audio" in media_type:
@@ -281,24 +284,62 @@ def webhook():
     return handle_log(from_number, incoming_msg)
 
 
-
+# ── Dashboard command ─────────────────────────────────────────────────────────
 def handle_dashboard_command(from_number):
     app_url  = os.environ.get("APP_URL", "https://www.subsync.co.uk")
     password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
     number   = from_number.replace("whatsapp:", "")
-    msg = (
-        "Dashboard link: " + app_url + "/dashboard\n"
-        "Number: " + number + "\n"
-        "Password: " + password + "\n\n"
-        "Bookmark it so you can check in anytime"
-    )
-    return _reply(msg)
+    lines = [
+        "📊 *Your SubSync Dashboard*",
+        "",
+        "Link: " + app_url + "/dashboard",
+        "Number: " + number,
+        "Password: " + password,
+        "",
+        "Bookmark it so you can check in anytime 👍"
+    ]
+    return _reply("\n".join(lines))
 
+
+# ── Site selection + type clarification handler ───────────────────────────────
 def handle_site_selection(from_number, msg):
     state    = pending_selections[from_number]
     projects = state["projects"]
     log_data = state["pending_log"]
 
+    # Handle type clarification (1 = VARIATION, 2 = DAYWORK)
+    if state.get("awaiting_type"):
+        if msg.strip() == "1":
+            log_data["type"] = "VARIATION"
+        elif msg.strip() == "2":
+            log_data["type"] = "DAYWORK"
+        else:
+            return _reply("Please reply *1* for Variation or *2* for Daywork")
+
+        # Now check if we need to ask for site too
+        site_name = match_site(log_data.get("raw_message", ""), projects)
+        if site_name:
+            log_data["site_name"] = site_name
+            del pending_selections[from_number]
+            db_post("site_logs", log_data)
+            return _reply(
+                f"✅ Logged as *{log_data['type']}* for *{site_name}*!\n"
+                f"{log_data.get('description', 'Item')} saved."
+            )
+        elif projects:
+            # Ask for site next
+            pending_selections[from_number] = {
+                "pending_log": log_data,
+                "projects":    projects,
+                "awaiting_type": False,
+            }
+            return _reply(format_project_list(projects))
+        else:
+            del pending_selections[from_number]
+            db_post("site_logs", log_data)
+            return _reply(f"✅ Logged as *{log_data['type']}*!")
+
+    # Handle site selection
     site_name = None
     if msg.strip().isdigit():
         idx = int(msg.strip()) - 1
@@ -331,6 +372,7 @@ def handle_site_selection(from_number, msg):
         return _reply(f"⚠️ Couldn't save. Please try again. ({str(e)[:80]})")
 
 
+# ── Generate handler ──────────────────────────────────────────────────────────
 def handle_generate(from_number, msg):
     try:
         companies = db_get(f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1")
@@ -378,6 +420,7 @@ def handle_generate(from_number, msg):
         return _reply(f"⚠️ Couldn't generate document. Error: {str(e)[:150]}")
 
 
+# ── Log handler ───────────────────────────────────────────────────────────────
 def handle_log(from_number, incoming_msg):
     try:
         ai_response = anthropic_client.messages.create(
@@ -413,6 +456,7 @@ def handle_log(from_number, incoming_msg):
 
         ai_site  = data.get("site_name")
         projects = get_projects(from_number)
+        needs_clarification = data.get("needs_clarification", False)
 
         site_name = None
         if ai_site:
@@ -420,37 +464,37 @@ def handle_log(from_number, incoming_msg):
         if not site_name:
             site_name = match_site(incoming_msg, projects)
 
-        # Ask for type clarification if ambiguous
-        needs_type_clarification = data.get("needs_clarification", False)
-        if needs_type_clarification and not from_number in pending_selections:
+        confirmation = data.get("confirmation_message", "✅ Got it!")
+
+        # Ask for type clarification first if ambiguous
+        if needs_clarification:
             pending_selections[from_number] = {
-                "pending_log": insert_data,
-                "projects": projects,
+                "pending_log":   insert_data,
+                "projects":      projects,
                 "awaiting_type": True,
             }
             return _reply(
-                data.get("confirmation_message", "✅ Got it!") + "\n\n"
+                confirmation + "\n\n"
                 "Is this a:\n"
-                "1. *Variation* — extra work not in the contract\n"
-                "2. *Daywork* — time-based extra work\n\n"
+                "1. *Variation* — extra work the client requested\n"
+                "2. *Daywork* — time-based extra work you're logging\n\n"
                 "Reply 1 or 2"
             )
 
         if site_name:
             insert_data["site_name"] = site_name
             db_post("site_logs", insert_data)
-            reply = data.get("confirmation_message", "✅ Logged!")
-            reply += f"\n📍 Site: *{site_name}*"
+            reply = confirmation + f"\n📍 Site: *{site_name}*"
         elif projects:
             pending_selections[from_number] = {
                 "pending_log": insert_data,
                 "projects":    projects,
+                "awaiting_type": False,
             }
-            reply = (data.get("confirmation_message", "✅ Got it!") + "\n\n"
-                     + format_project_list(projects))
+            reply = confirmation + "\n\n" + format_project_list(projects)
         else:
             db_post("site_logs", insert_data)
-            reply = data.get("confirmation_message", "✅ Logged!")
+            reply = confirmation
 
     except json.JSONDecodeError:
         reply = "⚠️ I couldn't read that clearly. Try rephrasing."
@@ -460,7 +504,7 @@ def handle_log(from_number, incoming_msg):
     return _reply(reply)
 
 
-# ── Pages served directly from app.py ────────────────────────────────────────
+# ── Pages ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def landing():
     return Response(read_html("landing.html"), mimetype="text/html")
