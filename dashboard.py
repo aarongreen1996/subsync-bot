@@ -61,7 +61,7 @@ def normalise(number):
 # ── Serve dashboard ────────────────────────────────────────────────────────────
 @dashboard_bp.route("/dashboard")
 def serve_dashboard():
-    return send_file("dashboard.html")
+    return send_file(os.path.join(os.path.dirname(__file__), "dashboard.html"))
 
 
 # ── Debug (temporary) ─────────────────────────────────────────────────────────
