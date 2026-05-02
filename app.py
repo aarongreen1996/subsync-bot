@@ -131,10 +131,11 @@ Classify into one of:
 - UNKNOWN        → Cannot classify
 
 VARIATION vs DAYWORK guide:
-- VARIATION: Client/site manager asked for extra work beyond the contract scope
-- DAYWORK: Worker is logging time spent on an extra task (often used for billing time + materials)
-- If the message mentions "site manager asked" or "client wants" it is usually VARIATION
-- If it is ambiguous between VARIATION and DAYWORK, set needs_clarification to true
+- VARIATION: Client/site manager explicitly asked for extra work (they mentioned the client or manager asked)
+- DAYWORK: Worker is logging time/hours spent on any extra task
+- IMPORTANT: If the message mentions hours worked AND does NOT clearly say a client/manager requested it, set needs_clarification to true
+- Only classify as VARIATION if the message explicitly says someone asked or requested the work
+- When in doubt, set needs_clarification to true
 
 Respond ONLY with a valid JSON object. No explanation, no markdown, just raw JSON.
 
