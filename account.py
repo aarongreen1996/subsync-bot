@@ -166,3 +166,43 @@ def delete_site(site_id):
 
     ok = db_patch(f"projects?id=eq.{site_id}", {"status": "archived"})
     return jsonify({"ok": ok})
+
+
+# ── Logo upload ───────────────────────────────────────────────────────────────
+@account_bp.route("/api/account/logo", methods=["POST"])
+def upload_logo():
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    number = request.args.get("number", "")
+    encoded = encode_number(number)
+    if not encoded.startswith("whatsapp:"):
+        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
+
+    # Get file from request
+    file_data    = request.data
+    content_type = request.headers.get("Content-Type", "image/png")
+
+    if not file_data:
+        return jsonify({"error": "No file data received"}), 400
+
+    # Upload to Supabase Storage logos bucket
+    ext      = "png" if "png" in content_type else "jpg" if "jpg" in content_type else "png"
+    filename = f"{encoded.replace('whatsapp:', '').replace('+', '').replace('%2B', '')}.{ext}"
+
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/logos/{filename}"
+    headers = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  content_type,
+        "x-upsert":      "true",
+    }
+    r = http_requests.post(upload_url, data=file_data, headers=headers)
+    if r.status_code not in (200, 201):
+        return jsonify({"error": f"Storage error: {r.text}"}), 500
+
+    logo_url = f"{SUPABASE_URL}/storage/v1/object/public/logos/{filename}"
+
+    # Save URL to company record
+    ok = db_patch(f"companies?whatsapp_number=eq.{encoded}", {"logo_url": logo_url})
+    return jsonify({"ok": ok, "logo_url": logo_url})
