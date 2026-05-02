@@ -175,9 +175,9 @@ Always include needs_clarification on every item.
 """
 
 # ── Command keywords ──────────────────────────────────────────────────────────
-GENERATE_KEYWORDS  = ["generate", "create invoice", "make invoice", "send invoice",
+GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purchase",
+                      "generate report", "create invoice", "make invoice", "send invoice",
                       "variation report", "daywork report", "material report",
-                      "weekly report", "end of day", "end of week",
                       "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
 DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
