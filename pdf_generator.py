@@ -2,10 +2,25 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from io import BytesIO
 from datetime import datetime
+import requests
+import os
+
+
+def fetch_logo(logo_url):
+    """Download logo from URL and return as BytesIO, or None if unavailable."""
+    if not logo_url:
+        return None
+    try:
+        r = requests.get(logo_url, timeout=5)
+        if r.status_code == 200 and len(r.content) > 0:
+            return BytesIO(r.content)
+    except Exception as e:
+        print(f"Logo fetch error: {e}")
+    return None
 
 
 def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", site_label=None):
@@ -24,7 +39,7 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
 
     story = []
 
-    # ── Header: two-column layout (company left, ref right) ───────────────────
+    # ── Header: logo left OR company name, doc info right ─────────────────────
     name_style = ParagraphStyle(
         "name", fontSize=18, textColor=brand,
         fontName="Helvetica-Bold", leading=22
@@ -47,24 +62,45 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
     ]))
     vat_line = f"VAT No: {company['vat_number']}" if company.get("vat_number") else ""
 
-    left_col = [
-        Paragraph(company.get("company_name", "Company Name"), name_style),
-        Paragraph(company.get("address", ""), sub_style),
-        Paragraph(contact_line, sub_style),
-        Paragraph(vat_line, sub_style),
-    ]
+    # Try to fetch logo
+    logo_img = None
+    logo_url = company.get("logo_url")
+    logo_data = fetch_logo(logo_url)
+    if logo_data:
+        try:
+            logo_img = Image(logo_data, width=40*mm, height=20*mm, kind="proportional")
+        except Exception:
+            logo_img = None
+
+    # Build left column — logo OR company name text
+    if logo_img:
+        left_col = [
+            logo_img,
+            Spacer(1, 2*mm),
+            Paragraph(company.get("company_name", ""), sub_style),
+            Paragraph(company.get("address", ""), sub_style),
+            Paragraph(contact_line, sub_style),
+            Paragraph(vat_line, sub_style),
+        ]
+    else:
+        left_col = [
+            Paragraph(company.get("company_name", "Company Name"), name_style),
+            Paragraph(company.get("address", ""), sub_style),
+            Paragraph(contact_line, sub_style),
+            Paragraph(vat_line, sub_style),
+        ]
+
     right_col = [
         Paragraph(doc_title.upper(), ref_style),
         Paragraph(f"Ref: {doc_ref}", ref_sub_style),
         Paragraph(f"Date: {datetime.now().strftime('%d %B %Y')}", ref_sub_style),
     ]
+    if site_label:
+        right_col.append(Paragraph(f"Site: {site_label}", ref_sub_style))
 
-    header_table = Table(
-        [[left_col, right_col]],
-        colWidths=[110*mm, 65*mm]
-    )
+    header_table = Table([[left_col, right_col]], colWidths=[110*mm, 65*mm])
     header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING",  (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
@@ -92,7 +128,6 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
             f"£{cost:.2f}" if cost else "—",
         ])
 
-    # Totals row
     table_data.append([
         "", "", "",
         f"{total_hours:.1f}" if total_hours else "—",
@@ -104,26 +139,21 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
     row_count = len(table_data)
 
     tbl.setStyle(TableStyle([
-        # Header row
         ("BACKGROUND",    (0, 0),  (-1, 0),           brand),
         ("TEXTCOLOR",     (0, 0),  (-1, 0),           colors.white),
         ("FONTNAME",      (0, 0),  (-1, 0),           "Helvetica-Bold"),
         ("FONTSIZE",      (0, 0),  (-1, 0),           9),
         ("BOTTOMPADDING", (0, 0),  (-1, 0),           6),
         ("TOPPADDING",    (0, 0),  (-1, 0),           6),
-        # Data rows
         ("FONTSIZE",      (0, 1),  (-1, -1),          9),
         ("TOPPADDING",    (0, 1),  (-1, -1),          5),
         ("BOTTOMPADDING", (0, 1),  (-1, -1),          5),
         ("ROWBACKGROUNDS",(0, 1),  (-1, row_count-2), [colors.white, light_grey]),
-        # Totals row
         ("BACKGROUND",    (0, -1), (-1, -1),          light_grey),
         ("FONTNAME",      (0, -1), (-1, -1),          "Helvetica-Bold"),
         ("LINEABOVE",     (0, -1), (-1, -1),          1.5, brand),
-        # Alignment
         ("ALIGN",         (3, 0),  (-1, -1),          "RIGHT"),
         ("VALIGN",        (0, 0),  (-1, -1),          "MIDDLE"),
-        # Grid
         ("GRID",          (0, 0),  (-1, -1),          0.4, mid_grey),
         ("LEFTPADDING",   (0, 0),  (-1, -1),          6),
         ("RIGHTPADDING",  (0, 0),  (-1, -1),          6),
@@ -132,7 +162,7 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
     story.append(tbl)
     story.append(Spacer(1, 6*mm))
 
-    # ── Summary box ───────────────────────────────────────────────────────────
+    # ── Summary ───────────────────────────────────────────────────────────────
     summary_data = [
         ["Total Items:",     str(len(logs))],
         ["Total Hours:",     f"{total_hours:.1f} hrs" if total_hours else "—"],
@@ -147,13 +177,12 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LINEBELOW",     (0, -1),(-1, -1), 1.5, brand),
     ]))
-
     wrapper = Table([[None, sum_tbl]], colWidths=[85*mm, 90*mm])
     wrapper.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(wrapper)
     story.append(Spacer(1, 10*mm))
 
-    # ── Signature section ─────────────────────────────────────────────────────
+    # ── Signatures ────────────────────────────────────────────────────────────
     sig_data = [
         ["Authorised by:", "", "Client signature:", ""],
         [" ", "", " ", ""],
