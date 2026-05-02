@@ -40,12 +40,10 @@ def db_post(path, payload):
 # ── Serve pages ───────────────────────────────────────────────────────────────
 @onboarding_bp.route("/")
 def landing():
-    return send_file("landing.html")
+    return send_file(os.path.join(os.path.dirname(__file__), "landing.html"))
 
-
-@onboarding_bp.route("/signup")
 def signup_page():
-    return send_file("signup.html")
+    return send_file(os.path.join(os.path.dirname(__file__), "signup.html"))
 
 
 @onboarding_bp.route("/welcome")
