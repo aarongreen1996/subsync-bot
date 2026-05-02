@@ -31,11 +31,6 @@ def check_auth():
     return request.headers.get("X-Admin-Password", "") == ADMIN_PASSWORD
 
 
-# ── Serve admin HTML ───────────────────────────────────────────────────────────
-@admin_bp.route("/admin")
-def serve_admin():
-    return send_file(os.path.join(os.path.dirname(__file__), "admin.html"))
-
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 @admin_bp.route("/api/admin/auth", methods=["POST"])
