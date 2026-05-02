@@ -48,20 +48,10 @@ def slugify(text):
 
 def normalise(number):
     """Ensure number is in whatsapp:+44... format and URL-safe."""
-    number = number.strip()
-    # Remove whatsapp: prefix temporarily to clean the number
-    if number.startswith("whatsapp:"):
-        number = number[9:]
-    # Remove any leading spaces and ensure + prefix
-    number = number.lstrip(" +")
-    number = "whatsapp:+" + number
+    if not number.startswith("whatsapp:"):
+        number = "whatsapp:" + number
     return number.replace("+", "%2B")
 
-
-# ── Serve dashboard ────────────────────────────────────────────────────────────
-@dashboard_bp.route("/dashboard")
-def serve_dashboard():
-    return send_file(os.path.join(os.path.dirname(__file__), "dashboard.html"))
 
 
 # ── Debug (temporary) ─────────────────────────────────────────────────────────
