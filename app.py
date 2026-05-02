@@ -13,11 +13,13 @@ from dashboard import dashboard_bp
 from onboarding import onboarding_bp
 from admin import admin_bp
 from scheduler import start_scheduler
+from account import account_bp
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(account_bp)
 
 # Start background scheduler
 start_scheduler()
@@ -418,6 +420,10 @@ def admin_page():
 @app.route("/welcome")
 def welcome():
     return Response(read_html("welcome.html"), mimetype="text/html")
+
+@app.route("/account")
+def account_page():
+    return Response(read_html("account.html"), mimetype="text/html")
 
 @app.route("/health")
 def health():
