@@ -41,16 +41,15 @@ body{
   overflow-x:hidden;
   transition:background .4s,color .4s;
   cursor:auto;
+}
 
-/* ─── CUSTOM CURSOR ──────────────────────────────────────────── */
-#cursor{position:fixed;width:10px;height:10px;background:var(--amber);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:transform .1s,width .2s,height .2s,opacity .2s;}
+/* ─── CUSTOM CURSOR (desktop only) ──────────────────────────── */
 @media(pointer:fine){
   body{cursor:none;}
   #cursor{position:fixed;width:10px;height:10px;background:var(--amber);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:transform .1s,width .2s,height .2s,opacity .2s;}
   #cursor-ring{position:fixed;width:36px;height:36px;border:1.5px solid var(--amber);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:transform .12s ease-out,width .2s,height .2s,opacity .2s,border-color .2s;opacity:0.5;}
   body:hover #cursor{opacity:1;}
 }
-.magnetic:hover ~ #cursor{width:20px;height:20px;}
 
 /* ─── NOISE TEXTURE ──────────────────────────────────────────── */
 body::before{
@@ -454,4 +453,4 @@ h1 .accent::after{
   content:'';position:absolute;top:-50%;right:-50%;
   width:200%;height:200%;
   background:radial-gradient(circle,rgba(245,158,11,0.1),transparent 60%);
-  
+  a
