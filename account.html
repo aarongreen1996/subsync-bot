@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+const _t=localStorage.getItem('n2q-theme');
+if(_t){document.documentElement.setAttribute('data-theme',_t);}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Account — Note2Quote</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+
+
 <style>
 :root {
   --red: #d62828; --red-dark: #b01f1f; --red-light: #fce8e8;
@@ -15,7 +22,7 @@
   --green: #16a34a; --amber: #d97706;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'DM Sans', sans-serif; background: #0a0a0a;
+body { font-family: 'Manrope', sans-serif; background: #0a0a0a;
        color: #ffffff; min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
 /* Login */
@@ -23,12 +30,12 @@ body { font-family: 'DM Sans', sans-serif; background: #0a0a0a;
                 justify-content: center; background: #111111; }
 .login-box { background: white; border: 1px solid #222222;
              border-radius: 20px; padding: 48px 44px; width: 100%; max-width: 380px; }
-.login-logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 900;
+.login-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; font-weight: 900;
               color: #ffffff; margin-bottom: 6px; }
 .login-logo em { color: #f59e0b; font-style: normal; }
 .login-box p { color: #888888; font-size: 14px; margin-bottom: 24px; font-weight: 300; }
 .login-box input { width: 100%; padding: 11px 14px; border: 1.5px solid #222222;
-                   border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+                   border-radius: 10px; font-size: 14px; font-family: 'Manrope', sans-serif;
                    outline: none; margin-bottom: 12px; }
 .login-box input:focus { border-color: #f59e0b; }
 
@@ -38,7 +45,7 @@ header { background: white; border-bottom: 1px solid #222222;
          padding: 0 32px; height: 64px;
          display: flex; align-items: center; justify-content: space-between;
          position: sticky; top: 0; z-index: 100; }
-.header-logo { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 900; color: #ffffff; }
+.header-logo { font-family: 'Bebas Neue', sans-serif; font-size: 20px; font-weight: 900; color: #ffffff; }
 .header-logo em { color: #f59e0b; font-style: normal; }
 .header-nav { display: flex; gap: 8px; }
 .nav-link { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
@@ -47,7 +54,7 @@ header { background: white; border-bottom: 1px solid #222222;
 .nav-link.active { background: #1a1500; color: #f59e0b; font-weight: 600; }
 .logout-btn { background: none; border: 1.5px solid #222222; color: #cccccc;
               padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
-              font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+              font-family: 'Manrope', sans-serif; transition: all 0.15s; }
 .logout-btn:hover { border-color: #f59e0b; color: #f59e0b; }
 
 main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
@@ -57,7 +64,7 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
            overflow: hidden; margin-bottom: 20px; }
 .section-header { padding: 20px 28px; border-bottom: 1px solid #222222;
                   display: flex; align-items: center; justify-content: space-between; }
-.section-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 700;
+.section-title { font-family: 'Bebas Neue', sans-serif; font-size: 18px; font-weight: 700;
                  color: #ffffff; letter-spacing: -0.3px; }
 .section-body { padding: 28px; }
 
@@ -80,7 +87,7 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 .form-group label { display: block; font-size: 12px; font-weight: 600;
                     color: #cccccc; margin-bottom: 6px; letter-spacing: 0.2px; }
 .form-group input { width: 100%; padding: 11px 14px; border: 1.5px solid #222222;
-                    border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+                    border-radius: 10px; font-size: 14px; font-family: 'Manrope', sans-serif;
                     outline: none; color: #ffffff; }
 .form-group input:focus { border-color: #f59e0b; }
 .color-row { display: flex; gap: 10px; align-items: center; }
@@ -103,7 +110,7 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
        border-radius: 8px; font-size: 14px; font-weight: 600; border: none;
-       cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+       cursor: pointer; font-family: 'Manrope', sans-serif; transition: all 0.15s; }
 .btn-primary { background: #f59e0b; color: white; width: 100%;
                justify-content: center; padding: 13px; }
 .btn-primary:hover { background: #d97706; }
@@ -113,7 +120,7 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 .btn-sm { padding: 7px 14px; font-size: 13px; }
 .btn-red-sm { background: #1a1500; color: #f59e0b; border: none;
               padding: 6px 12px; border-radius: 6px; font-size: 12px;
-              font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+              font-weight: 600; cursor: pointer; font-family: 'Manrope', sans-serif; }
 .btn-red-sm:hover { background: #f59e0b; color: white; }
 .btn-outline { background: white; color: #ffffff; border: 1.5px solid #222222; }
 .btn-outline:hover { border-color: #ffffff; }
@@ -134,11 +141,23 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 </style>
 </head>
 <body>
+<svg style="display:none">
+  <symbol id="n2q-logo" viewBox="0 0 40 40">
+    <path d="M20 5h10l9 9v18a2 2 0 01-2 2H20a2 2 0 01-2-2V7a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M30 5v9h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="23" y1="20" x2="35" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="23" y1="25" x2="31" y2="25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="3" y="11" width="10" height="14" rx="5" fill="#f59e0b"/>
+    <path d="M1 21.5a7 7 0 0014 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="8" y1="28.5" x2="8" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="5" y1="33" x2="11" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+</svg>
 
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">Note2Quote</div>
+    <div class="login-logo" style="display:flex;align-items:center;gap:8px;"><svg width="22" height="22" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
     <p>Sign in to manage your account</p>
     <input type="text" id="login-number" placeholder="Your WhatsApp number (+447...)" />
     <input type="password" id="login-password" placeholder="Your password" />
@@ -150,7 +169,7 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 <!-- APP -->
 <div id="app">
   <header>
-    <div class="header-logo">Note2Quote</div>
+    <div class="header-logo" style="display:flex;align-items:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
     <nav class="header-nav">
       <a href="/dashboard" class="nav-link">Dashboard</a>
       <a href="/account" class="nav-link active">My Account</a>
