@@ -349,16 +349,18 @@ def handle_pending(from_number, msg):
 
 # ── Dashboard command ─────────────────────────────────────────────────────────
 def handle_dashboard_command(from_number):
-    app_url  = os.environ.get("APP_URL", "https://www.subsync.co.uk")
-    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
-    number   = from_number.replace("whatsapp:", "")
-    return _reply(
-        "📊 *Your SubSync Dashboard*\n\n"
-        f"Link: {app_url}/dashboard\n"
-        f"Number: {number}\n"
-        f"Password: {password}\n\n"
-        "Bookmark it so you can check in anytime 👍"
-    )
+    try:
+        login_url = create_magic_token(from_number)
+        return _reply(
+            "📊 *Your SubSync Dashboard*\n\n"
+            "Tap this link to log in instantly:\n"
+            + login_url +
+            "\n\n⏰ Link expires in 10 minutes.\n"
+            "Send *Dashboard* anytime for a new link."
+        )
+    except Exception as e:
+        app_url = os.environ.get("APP_URL", "https://www.subsync.xyz")
+        return _reply(f"Your dashboard: {app_url}/dashboard")
 
 
 # ── Generate handler ──────────────────────────────────────────────────────────
