@@ -1,0 +1,92 @@
+import os
+import secrets
+from datetime import datetime, timezone, timedelta
+from flask import Blueprint, request, jsonify, redirect
+import requests as http_requests
+
+auth_bp = Blueprint("auth", __name__)
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+APP_URL       = os.environ.get("APP_URL", "https://www.subsync.xyz")
+
+
+def sb_headers():
+    return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"}
+
+def db_get(path):
+    r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
+    return r.json() if r.status_code == 200 else []
+
+def db_post(path, payload):
+    r = http_requests.post(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
+                           headers={**sb_headers(), "Prefer": "return=minimal"})
+    return r.status_code in (200, 201)
+
+def db_patch(path, payload):
+    http_requests.patch(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
+                        headers={**sb_headers(), "Prefer": "return=minimal"})
+
+
+def create_magic_token(whatsapp_number):
+    """Generate a secure token, store it, return the login URL."""
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+
+    db_post("auth_tokens", {
+        "token":      token,
+        "whatsapp":   whatsapp_number,
+        "expires_at": expires_at,
+        "used":       False,
+    })
+
+    return f"{APP_URL}/login?token={token}"
+
+
+def verify_token(token):
+    """Check token is valid, unused, and not expired. Returns whatsapp number or None."""
+    now = datetime.now(timezone.utc).isoformat()
+    results = db_get(
+        f"auth_tokens?token=eq.{token}&used=eq.false&expires_at=gt.{now}&limit=1"
+    )
+    if not isinstance(results, list) or not results:
+        return None
+
+    record = results[0]
+    # Mark as used
+    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
+    return record.get("whatsapp")
+
+
+# ── Magic link login route ────────────────────────────────────────────────────
+@auth_bp.route("/login")
+def magic_login():
+    token = request.args.get("token", "")
+    if not token:
+        return "<h2>Invalid link</h2><p>Please request a new login link from WhatsApp.</p>", 400
+
+    whatsapp = verify_token(token)
+    if not whatsapp:
+        return """
+        <!DOCTYPE html><html><head><meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,900&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+        <style>
+          body{font-family:'DM Sans',sans-serif;background:#fff3e0;min-height:100vh;
+               display:flex;align-items:center;justify-content:center;}
+          .box{background:white;border-radius:16px;padding:48px;text-align:center;max-width:400px;border:1px solid #e8ddd0;}
+          h2{font-family:'Fraunces',serif;color:#d62828;font-size:28px;margin-bottom:12px;}
+          p{color:#8a7560;font-weight:300;line-height:1.6;}
+        </style></head><body>
+        <div class="box">
+          <h2>Link expired</h2>
+          <p>This login link has expired or already been used.<br><br>
+          Send <strong>Dashboard</strong> to the SubSync bot on WhatsApp to get a new one.</p>
+        </div></body></html>
+        """, 401
+
+    # Clean the number for use as session identifier
+    number = whatsapp.replace("whatsapp:", "")
+
+    # Redirect to dashboard with auto-login via query param
+    return redirect(f"/dashboard?autologin={number}")
