@@ -157,7 +157,7 @@ GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purc
                       "variation report", "daywork report", "material report",
                       "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
-DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "open dashboard", "dashboard link", "my password", "get login", "login link", "sign in link"]
+DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
 
 def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
 def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
@@ -193,7 +193,7 @@ def upload_pdf(pdf_bytes, filename):
         raise Exception(f"Storage upload failed: {r.text}")
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
-HELP_TEXT = """👷 *SubSync Bot — Quick Guide*
+HELP_TEXT = """👷 *Note2Quote Bot — Quick Guide*
 
 *LOGGING ITEMS*
 Text or voice note — single or a list:
@@ -255,14 +255,10 @@ def webhook():
     if not incoming_msg:
         return _reply("Send me a message or voice note about what happened on site today 👷")
 
-   # Always check commands first, even mid-conversation
-    if is_dashboard_command(incoming_msg):
-        if from_number in pending_selections:
-            del pending_selections[from_number]
-        return handle_dashboard_command(from_number)
-
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
+
+    if is_dashboard_command(incoming_msg): return handle_dashboard_command(from_number)
     if is_help_command(incoming_msg):      return _reply(HELP_TEXT)
     if is_generate_command(incoming_msg):  return handle_generate(from_number, incoming_msg)
 
@@ -353,18 +349,16 @@ def handle_pending(from_number, msg):
 
 # ── Dashboard command ─────────────────────────────────────────────────────────
 def handle_dashboard_command(from_number):
-    try:
-        login_url = create_magic_token(from_number)
-        return _reply(
-            "📊 *Your SubSync Dashboard*\n\n"
-            "Tap this link to log in instantly:\n"
-            + login_url +
-            "\n\n⏰ Link expires in 10 minutes.\n"
-            "Send *Dashboard* anytime for a new link."
-        )
-    except Exception as e:
-        app_url = os.environ.get("APP_URL", "https://www.subsync.xyz")
-        return _reply(f"Your dashboard: {app_url}/dashboard")
+    app_url  = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
+    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+    number   = from_number.replace("whatsapp:", "")
+    return _reply(
+        "📊 *Your Note2Quote Dashboard*\n\n"
+        f"Link: {app_url}/dashboard\n"
+        f"Number: {number}\n"
+        f"Password: {password}\n\n"
+        "Bookmark it so you can check in anytime 👍"
+    )
 
 
 # ── Generate handler ──────────────────────────────────────────────────────────
@@ -550,7 +544,7 @@ def account_page():
 
 @app.route("/health")
 def health():
-    return "SubSync is running ✅", 200
+    return "Note2Quote is running ✅", 200
 
 
 def _reply(msg):
