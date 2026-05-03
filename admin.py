@@ -1,141 +1,190 @@
 import os
 import stripe
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify
 import requests as http_requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 admin_bp = Blueprint("admin", __name__)
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-changeme")
+SUPABASE_URL  = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
 
 def sb_headers():
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-    }
-
+    return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"}
 
 def db_get(path):
     r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
-    return r.json()
-
+    return r.json() if r.status_code == 200 else []
 
 def check_auth():
     return request.headers.get("X-Admin-Password", "") == ADMIN_PASSWORD
 
 
-
 # ── Auth ──────────────────────────────────────────────────────────────────────
 @admin_bp.route("/api/admin/auth", methods=["POST"])
-def auth():
+def admin_auth():
     data = request.json or {}
     if data.get("password") == ADMIN_PASSWORD:
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "Wrong password"}), 401
+    return jsonify({"ok": False}), 401
 
 
-# ── Overview stats ────────────────────────────────────────────────────────────
+# ── Overview ──────────────────────────────────────────────────────────────────
 @admin_bp.route("/api/admin/overview")
-def overview():
+def admin_overview():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    companies  = db_get("companies?order=created_at.desc")
-    all_logs   = db_get("site_logs?select=id,status,from_number,created_at")
-    all_projects = db_get("projects?select=id,whatsapp_number,site_name")
+    companies = db_get("companies?order=created_at.desc")
+    if not isinstance(companies, list):
+        companies = []
 
-    if not isinstance(companies, list):  companies = []
-    if not isinstance(all_logs, list):   all_logs = []
-    if not isinstance(all_projects, list): all_projects = []
+    all_logs  = db_get("site_logs?select=id,status,created_at,from_number")
+    all_projs = db_get("projects?select=id,whatsapp_number,site_name,status")
+    if not isinstance(all_logs,  list): all_logs  = []
+    if not isinstance(all_projs, list): all_projs = []
 
-    total_customers = len(companies)
-    total_logs      = len(all_logs)
-    total_sent      = sum(1 for l in all_logs if l.get("status") == "sent")
-    total_pending   = sum(1 for l in all_logs if l.get("status") == "pending")
+    now = datetime.now(timezone.utc)
 
-    # Get Stripe subscriptions
-    stripe_data = {}
-    trial_count = 0
+    customers    = []
+    mrr          = 0
     active_count = 0
-    mrr = 0.0
+    trial_count  = 0
 
-    try:
-        subs = stripe.Subscription.list(limit=100, status="all")
-        for sub in subs.auto_paging_iter():
-            customer_id = sub.get("customer")
-            stripe_data[customer_id] = {
-                "status":       sub.get("status"),
-                "trial_end":    sub.get("trial_end"),
-                "current_period_end": sub.get("current_period_end"),
-                "id":           sub.get("id"),
-            }
-            if sub.get("status") == "trialing":
-                trial_count += 1
-            elif sub.get("status") == "active":
-                active_count += 1
-                mrr += 49.0
-    except Exception:
-        pass
+    for c in companies:
+        wn   = c.get("whatsapp_number", "")
+        logs = [l for l in all_logs if l.get("from_number") == wn]
+        sent = [l for l in logs if l.get("status") == "sent"]
+        sites = [p for p in all_projs if p.get("whatsapp_number") == wn
+                 and p.get("status") == "active"]
 
-    # Build customer list with usage
-    customer_list = []
-    for company in companies:
-        number = company.get("whatsapp_number", "")
-        company_logs = [l for l in all_logs if l.get("from_number") == number]
-        company_projects = [p for p in all_projects if p.get("whatsapp_number") == number]
+        # Last log date
+        log_dates = [l.get("created_at") for l in logs if l.get("created_at")]
+        last_log  = max(log_dates) if log_dates else None
+        days_inactive = None
+        if last_log:
+            try:
+                dt = datetime.fromisoformat(last_log.replace("Z", "+00:00"))
+                days_inactive = (now - dt).days
+            except Exception:
+                pass
+        elif logs == []:
+            days_inactive = 999
 
-        # Try to find Stripe customer
+        # Stripe status
         stripe_status = "unknown"
         stripe_sub_id = None
+        email = c.get("email", "")
         try:
-            customers = stripe.Customer.list(email=company.get("email", ""), limit=1)
-            if customers.data:
-                cust = customers.data[0]
-                sd = stripe_data.get(cust.id, {})
-                stripe_status = sd.get("status", "no_subscription")
-                stripe_sub_id = sd.get("id")
+            if email and STRIPE_SECRET_KEY:
+                custs = stripe.Customer.list(email=email, limit=1)
+                if custs.data:
+                    subs = stripe.Subscription.list(
+                        customer=custs.data[0].id, limit=1, status="all"
+                    )
+                    if subs.data:
+                        stripe_status = subs.data[0].status
+                        stripe_sub_id = subs.data[0].id
         except Exception:
             pass
 
-        customer_list.append({
-            "id":             company.get("id"),
-            "company_name":   company.get("company_name", "Unknown"),
-            "email":          company.get("email", ""),
-            "phone":          company.get("phone", ""),
-            "whatsapp":       number,
-            "trade":          company.get("trade", ""),
-            "created_at":     company.get("created_at", ""),
-            "primary_color":  company.get("primary_color", "#1a3a6b"),
-            "total_logs":     len(company_logs),
-            "sent_docs":      sum(1 for l in company_logs if l.get("status") == "sent"),
-            "pending_items":  sum(1 for l in company_logs if l.get("status") == "pending"),
-            "sites":          len(company_projects),
-            "stripe_status":  stripe_status,
-            "stripe_sub_id":  stripe_sub_id,
+        if stripe_status == "active":
+            mrr          += 49
+            active_count += 1
+        elif stripe_status == "trialing":
+            trial_count  += 1
+
+        customers.append({
+            "id":            c.get("id"),
+            "company_name":  c.get("company_name", "Unknown"),
+            "email":         email,
+            "whatsapp_number": wn,
+            "trade":         c.get("trade", ""),
+            "created_at":    c.get("created_at"),
+            "stripe_status": stripe_status,
+            "stripe_sub_id": stripe_sub_id,
+            "total_logs":    len(logs),
+            "sent_docs":     len(sent),
+            "sites":         len(sites),
+            "last_log_date": last_log,
+            "days_inactive": days_inactive,
         })
 
     return jsonify({
-        "total_customers": total_customers,
-        "trial_count":     trial_count,
+        "customers":       customers,
+        "total_customers": len(customers),
         "active_count":    active_count,
+        "trial_count":     trial_count,
         "mrr":             mrr,
-        "total_logs":      total_logs,
-        "total_sent":      total_sent,
-        "total_pending":   total_pending,
-        "customers":       customer_list,
+        "total_logs":      len(all_logs),
+        "total_sent":      len([l for l in all_logs if l.get("status") == "sent"]),
     })
+
+
+# ── Health checks ─────────────────────────────────────────────────────────────
+@admin_bp.route("/api/admin/health")
+def admin_health():
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    results = {}
+
+    # Anthropic
+    try:
+        r = http_requests.get("https://status.anthropic.com/api/v2/status.json", timeout=5)
+        data = r.json()
+        results["anthropic"] = data.get("status", {}).get("indicator", "none") == "none"
+    except Exception:
+        results["anthropic"] = False
+
+    # Groq
+    try:
+        r = http_requests.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            timeout=5
+        )
+        results["groq"] = r.status_code == 200
+    except Exception:
+        results["groq"] = False
+
+    # Twilio
+    try:
+        sid   = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        r = http_requests.get(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json",
+            auth=(sid, token), timeout=5
+        )
+        results["twilio"] = r.status_code == 200
+    except Exception:
+        results["twilio"] = False
+
+    # Resend
+    try:
+        r = http_requests.get(
+            "https://api.resend.com/domains",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            timeout=5
+        )
+        results["resend"] = r.status_code == 200
+    except Exception:
+        results["resend"] = False
+
+    return jsonify(results)
 
 
 # ── Customer detail ───────────────────────────────────────────────────────────
 @admin_bp.route("/api/admin/customer/<int:company_id>")
-def customer_detail(company_id):
+def admin_customer(company_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -143,18 +192,34 @@ def customer_detail(company_id):
     if not isinstance(companies, list) or not companies:
         return jsonify({"error": "Not found"}), 404
 
-    company = companies[0]
-    number  = company.get("whatsapp_number", "").replace("+", "%2B")
-    logs    = db_get(f"site_logs?from_number=eq.{number}&order=created_at.desc&limit=50")
-    projects = db_get(f"projects?whatsapp_number=eq.{number}&order=site_name.asc")
+    company  = companies[0]
+    wn       = company.get("whatsapp_number", "")
+    projects = db_get(f"projects?whatsapp_number=eq.{wn.replace('+','%2B')}&status=eq.active")
+    logs     = db_get(f"site_logs?from_number=eq.{wn.replace('+','%2B')}&order=created_at.desc&limit=20")
 
-    if not isinstance(logs, list): logs = []
     if not isinstance(projects, list): projects = []
+    if not isinstance(logs,     list): logs     = []
+
+    # Stripe sub ID
+    stripe_sub_id = None
+    try:
+        email = company.get("email", "")
+        if email and STRIPE_SECRET_KEY:
+            custs = stripe.Customer.list(email=email, limit=1)
+            if custs.data:
+                subs = stripe.Subscription.list(
+                    customer=custs.data[0].id, limit=1, status="all"
+                )
+                if subs.data:
+                    stripe_sub_id = subs.data[0].id
+    except Exception:
+        pass
 
     return jsonify({
-        "company":  company,
-        "logs":     logs,
-        "projects": projects,
+        "company":       company,
+        "projects":      projects,
+        "logs":          logs,
+        "stripe_sub_id": stripe_sub_id,
     })
 
 
@@ -166,9 +231,8 @@ def cancel_subscription():
 
     data   = request.json or {}
     sub_id = data.get("subscription_id")
-
     if not sub_id:
-        return jsonify({"error": "No subscription ID provided"}), 400
+        return jsonify({"error": "subscription_id required"}), 400
 
     try:
         stripe.Subscription.cancel(sub_id)
