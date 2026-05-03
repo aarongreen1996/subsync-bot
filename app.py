@@ -157,7 +157,7 @@ GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purc
                       "variation report", "daywork report", "material report",
                       "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
-DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
+DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "open dashboard", "dashboard link", "my password", "get login", "login link", "sign in link"]
 
 def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
 def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
