@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+const _t=localStorage.getItem('n2q-theme');
+if(_t){document.documentElement.setAttribute('data-theme',_t);}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Note2Quote Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+
+
 <style>
 :root {
   --red:#d62828;--red-dark:#b01f1f;--red-light:#fce8e8;
@@ -135,10 +142,22 @@ main{max-width:1300px;margin:0 auto;padding:28px 20px;}
 </style>
 </head>
 <body>
+<svg style="display:none">
+  <symbol id="n2q-logo" viewBox="0 0 40 40">
+    <path d="M20 5h10l9 9v18a2 2 0 01-2 2H20a2 2 0 01-2-2V7a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M30 5v9h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="23" y1="20" x2="35" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="23" y1="25" x2="31" y2="25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="3" y="11" width="10" height="14" rx="5" fill="#f59e0b"/>
+    <path d="M1 21.5a7 7 0 0014 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="8" y1="28.5" x2="8" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="5" y1="33" x2="11" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+</svg>
 
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">Note2Quote</div>
+    <div class="login-logo" style="display:flex;align-items:center;gap:8px;"><svg width="22" height="22" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
     <p>Sign in to your dashboard</p>
     <input type="text" id="login-number" placeholder="WhatsApp number (+447...)" />
     <input type="password" id="login-password" placeholder="Password" />
@@ -150,7 +169,7 @@ main{max-width:1300px;margin:0 auto;padding:28px 20px;}
 <div id="app">
   <header>
     <div style="display:flex;align-items:center;">
-      <div class="header-logo">Note2Quote</div>
+      <div class="header-logo" style="display:flex;align-items:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
       <span class="header-company" id="company-name-header"></span>
     </div>
     <div class="header-right">
