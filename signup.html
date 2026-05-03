@@ -3,184 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Start Free Trial — SubSync</title>
+<title>Start Free Trial — Note2Quote</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root {
-  --red: #d62828; --red-dark: #b01f1f; --red-light: #fce8e8;
-  --cream: #fff3e0; --cream-dark: #ffe0b2;
-  --ink: #0f0a00; --ink-light: #3d3020; --muted: #8a7560;
-  --border: #e8ddd0; --white: #ffffff; --bg: #faf8f5;
-  --green: #16a34a;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'DM Sans', sans-serif;
-  background: var(--bg); color: var(--ink);
-  min-height: 100vh; -webkit-font-smoothing: antialiased;
-}
+:root{--amber:#f59e0b;--amber-light:#fbbf24;--amber-dim:rgba(245,158,11,0.1);--ink:#0a0a0a;--ink-2:#111111;--ink-3:#1a1a1a;--border:rgba(255,255,255,0.08);--border-amber:rgba(245,158,11,0.25);--white:#ffffff;--muted:#888888;--green:#22c55e;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--ink);color:var(--white);min-height:100vh;-webkit-font-smoothing:antialiased;}
+header{background:var(--ink-2);border-bottom:1px solid var(--border);padding:0 40px;height:60px;display:flex;align-items:center;justify-content:space-between;}
+.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--white);text-decoration:none;display:flex;align-items:center;gap:8px;}
+.logo-icon{width:24px;height:24px;background:var(--amber);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;}
+.header-note{font-size:12px;color:var(--muted);font-weight:300;}
+main{max-width:1060px;margin:0 auto;padding:48px 20px;display:grid;grid-template-columns:1fr 340px;gap:52px;align-items:start;}
+@media(max-width:860px){main{grid-template-columns:1fr;}.side-info{display:none;}}
 
-/* Header */
-header {
-  background: var(--white); border-bottom: 1px solid var(--border);
-  padding: 0 48px; height: 64px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.logo {
-  font-family: 'Fraunces', serif; font-size: 20px; font-weight: 900;
-  color: var(--ink); text-decoration: none;
-}
-.logo em { color: var(--red); font-style: normal; }
-.header-note { font-size: 13px; color: var(--muted); font-weight: 300; }
+.form-card{background:var(--ink-2);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+.form-card-header{background:var(--ink-3);padding:32px 36px;border-bottom:1px solid var(--border);}
+.form-card-header h1{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--white);letter-spacing:-0.5px;margin-bottom:6px;}
+.form-card-header p{font-size:14px;color:var(--muted);font-weight:300;}
+.trial-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;color:var(--green);margin-top:14px;}
+.form-body{padding:32px 36px;}
+.section-label{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--amber);margin:24px 0 14px;}
+.section-label:first-child{margin-top:0;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:600px){.form-row{grid-template-columns:1fr;}}
+.form-group{margin-bottom:12px;}
+.form-group label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:0.3px;text-transform:uppercase;}
+.form-group input,.form-group select{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'IBM Plex Sans',sans-serif;outline:none;transition:border .15s;background:var(--ink-3);color:var(--white);}
+.form-group input:focus,.form-group select:focus{border-color:var(--amber);}
+.form-group select option{background:var(--ink-3);}
+.form-group .hint{font-size:11px;color:var(--muted-2,#555);margin-top:4px;}
+.color-row{display:flex;gap:10px;align-items:center;}
+.color-row input[type="color"]{width:44px;height:40px;padding:2px 3px;border-radius:8px;cursor:pointer;flex-shrink:0;border:1px solid var(--border);background:var(--ink-3);}
+.divider{border:none;border-top:1px solid var(--border);margin:24px 0;}
+.btn-submit{width:100%;background:var(--amber);color:var(--ink);border:none;padding:14px;border-radius:8px;font-size:15px;font-weight:700;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all .2s;letter-spacing:-0.2px;}
+.btn-submit:hover{background:var(--amber-light);transform:translateY(-1px);}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.terms{font-size:11px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.6;font-weight:300;}
+.error-msg{color:#f87171;font-size:13px;margin-top:10px;display:none;}
 
-/* Layout */
-main {
-  max-width: 1100px; margin: 0 auto;
-  padding: 48px 24px;
-  display: grid; grid-template-columns: 1fr 420px; gap: 56px; align-items: start;
-}
-@media(max-width:900px) { main { grid-template-columns: 1fr; } .side-info { display: none; } }
-
-/* Form card */
-.form-card {
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-.form-card-header {
-  background: var(--cream);
-  padding: 36px 40px;
-  border-bottom: 1px solid var(--border);
-}
-
-.form-card-header h1 {
-  font-family: 'Fraunces', serif;
-  font-size: 32px; font-weight: 900;
-  letter-spacing: -1px; color: var(--ink);
-  margin-bottom: 6px;
-}
-.form-card-header p { font-size: 15px; color: var(--muted); font-weight: 300; }
-
-.trial-pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--white); border: 1px solid var(--border);
-  padding: 8px 16px; border-radius: 100px;
-  font-size: 13px; font-weight: 600; color: var(--green);
-  margin-top: 16px;
-}
-
-.form-body { padding: 36px 40px; }
-
-.form-section-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
-  text-transform: uppercase; color: var(--red);
-  margin: 28px 0 16px;
-}
-.form-section-label:first-child { margin-top: 0; }
-
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media(max-width:600px) { .form-row { grid-template-columns: 1fr; } }
-
-.form-group { margin-bottom: 14px; }
-.form-group label {
-  display: block; font-size: 12px; font-weight: 600;
-  color: var(--ink-light); margin-bottom: 6px; letter-spacing: 0.2px;
-}
-.form-group input, .form-group select {
-  width: 100%; padding: 11px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 10px; font-size: 14px;
-  font-family: 'DM Sans', sans-serif;
-  outline: none; transition: border 0.15s;
-  background: var(--white); color: var(--ink);
-  -webkit-appearance: none;
-}
-.form-group input:focus, .form-group select:focus { border-color: var(--red); }
-.form-group .hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
-
-.color-row { display: flex; gap: 10px; align-items: center; }
-.color-row input[type="color"] {
-  width: 44px; height: 44px; padding: 2px 3px;
-  border-radius: 10px; cursor: pointer; flex-shrink: 0;
-}
-
-.divider {
-  border: none; border-top: 1px solid var(--border);
-  margin: 28px 0;
-}
-
-.btn-submit {
-  width: 100%; background: var(--red); color: white;
-  border: none; padding: 15px;
-  border-radius: 10px; font-size: 15px; font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
-  cursor: pointer; transition: all 0.2s; letter-spacing: -0.2px;
-}
-.btn-submit:hover { background: var(--red-dark); transform: translateY(-1px); }
-.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-.terms {
-  font-size: 12px; color: var(--muted);
-  text-align: center; margin-top: 14px; line-height: 1.5;
-  font-weight: 300;
-}
-.error-msg { color: var(--red); font-size: 13px; margin-top: 10px; display: none; }
-
-/* Side info */
-.side-info { padding-top: 8px; }
-
-.side-title {
-  font-family: 'Fraunces', serif;
-  font-size: 22px; font-weight: 900;
-  color: var(--ink); letter-spacing: -0.5px;
-  margin-bottom: 24px;
-}
-
-.benefit {
-  display: flex; gap: 16px;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--border);
-}
-.benefit:last-of-type { border-bottom: none; }
-.benefit-icon {
-  width: 40px; height: 40px;
-  background: var(--cream); border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-}
-.benefit h4 {
-  font-size: 15px; font-weight: 600; color: var(--ink);
-  margin-bottom: 4px; letter-spacing: -0.2px;
-}
-.benefit p { font-size: 13px; color: var(--muted); line-height: 1.6; font-weight: 300; }
-
-.testimonial-card {
-  background: var(--ink);
-  border-radius: 16px; padding: 28px;
-  margin-top: 28px;
-}
-.testimonial-card p {
-  font-family: 'Fraunces', serif;
-  font-size: 17px; font-weight: 400; font-style: italic;
-  color: white; line-height: 1.6; margin-bottom: 16px;
-}
-.testimonial-card cite {
-  font-size: 12px; color: rgba(255,255,255,0.45);
-  font-style: normal; letter-spacing: 0.3px;
-}
+.side-info{padding-top:8px;}
+.side-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--white);letter-spacing:-0.3px;margin-bottom:20px;}
+.benefit{display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--border);}
+.benefit:last-of-type{border-bottom:none;}
+.benefit-icon{width:36px;height:36px;background:var(--amber-dim);border:1px solid var(--border-amber);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.benefit h4{font-size:14px;font-weight:600;color:var(--white);margin-bottom:3px;}
+.benefit p{font-size:12px;color:var(--muted);line-height:1.6;font-weight:300;}
+.testimonial-card{background:var(--ink-3);border:1px solid var(--border);border-radius:12px;padding:24px;margin-top:24px;}
+.testimonial-card p{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--white);line-height:1.5;margin-bottom:12px;}
+.testimonial-card cite{font-size:11px;color:var(--muted);font-style:normal;letter-spacing:0.3px;}
 </style>
 </head>
 <body>
-
 <header>
-  <a href="/" class="logo">Sub<em>Sync</em></a>
+  <a href="/" class="logo"><div class="logo-icon">🎙</div>Note2Quote</a>
   <span class="header-note">14-day free trial · No card charged upfront</span>
 </header>
-
 <main>
   <div class="form-card">
     <div class="form-card-header">
@@ -188,57 +67,30 @@ main {
       <p>Set up takes 2 minutes. No card charged for 14 days.</p>
       <div class="trial-pill">✓ 14 days free, then £49/month. Cancel anytime.</div>
     </div>
-
     <div class="form-body">
-      <div class="form-section-label">Your Details</div>
+      <div class="section-label">Your Details</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Your Name</label>
-          <input type="text" id="owner-name" placeholder="John Smith" required />
-        </div>
-        <div class="form-group">
-          <label>Email Address</label>
-          <input type="email" id="email" placeholder="john@smithelectrical.co.uk" required />
-        </div>
+        <div class="form-group"><label>Your Name</label><input type="text" id="owner-name" placeholder="John Smith" required /></div>
+        <div class="form-group"><label>Email Address</label><input type="email" id="email" placeholder="john@smithelectrical.co.uk" required /></div>
       </div>
-
-      <div class="form-section-label">Your Company</div>
+      <div class="section-label">Your Company</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Company Name</label>
-          <input type="text" id="company-name" placeholder="Smith Electrical Ltd" required />
-        </div>
-        <div class="form-group">
-          <label>Trade</label>
+        <div class="form-group"><label>Company Name</label><input type="text" id="company-name" placeholder="Smith Electrical Ltd" required /></div>
+        <div class="form-group"><label>Trade</label>
           <select id="trade" required>
             <option value="">Select your trade...</option>
-            <option>Electrical</option>
-            <option>Plumbing</option>
-            <option>Carpentry / Joinery</option>
-            <option>Plastering</option>
-            <option>Bricklaying</option>
-            <option>Roofing</option>
-            <option>Painting & Decorating</option>
-            <option>HVAC / Gas</option>
-            <option>Groundworks</option>
-            <option>General Building</option>
-            <option>Other</option>
+            <option>Electrical</option><option>Plumbing</option><option>Carpentry / Joinery</option>
+            <option>Plastering</option><option>Bricklaying</option><option>Roofing</option>
+            <option>Painting & Decorating</option><option>HVAC / Gas</option>
+            <option>Groundworks</option><option>General Building</option><option>Other</option>
           </select>
         </div>
       </div>
-
       <div class="form-row">
-        <div class="form-group">
-          <label>VAT Number <span style="font-weight:300;color:var(--muted)">(optional)</span></label>
-          <input type="text" id="vat" placeholder="GB123456789" />
-        </div>
-        <div class="form-group">
-          <label>Company Address</label>
-          <input type="text" id="address" placeholder="123 High Street, London" />
-        </div>
+        <div class="form-group"><label>VAT Number <span style="font-weight:300;opacity:.5">(optional)</span></label><input type="text" id="vat" placeholder="GB123456789" /></div>
+        <div class="form-group"><label>Company Address</label><input type="text" id="address" placeholder="123 High Street, London" /></div>
       </div>
-
-      <div class="form-section-label">WhatsApp & Branding</div>
+      <div class="section-label">WhatsApp & Branding</div>
       <div class="form-row">
         <div class="form-group">
           <label>WhatsApp Number</label>
@@ -248,20 +100,14 @@ main {
         <div class="form-group">
           <label>Brand Colour</label>
           <div class="color-row">
-            <input type="color" id="color-picker" value="#d62828"
-                   oninput="document.getElementById('color-hex').value=this.value" />
-            <input type="text" id="color-hex" value="#d62828"
-                   oninput="document.getElementById('color-picker').value=this.value" />
+            <input type="color" id="color-picker" value="#f59e0b" oninput="document.getElementById('color-hex').value=this.value" />
+            <input type="text" id="color-hex" value="#f59e0b" oninput="document.getElementById('color-picker').value=this.value" />
           </div>
           <div class="hint">Appears on all your branded documents</div>
         </div>
       </div>
-
       <hr class="divider">
-
-      <button class="btn-submit" onclick="handleSignup()" id="submit-btn">
-        Continue to payment →
-      </button>
+      <button class="btn-submit" onclick="handleSignup()" id="submit-btn">Continue to payment →</button>
       <div class="error-msg" id="error-msg"></div>
       <p class="terms">By signing up you agree to our terms of service.<br>Your card will not be charged during the 14-day free trial.</p>
     </div>
@@ -269,92 +115,38 @@ main {
 
   <div class="side-info">
     <h2 class="side-title">What you get from day one</h2>
-
-    <div class="benefit">
-      <div class="benefit-icon">💬</div>
-      <div>
-        <h4>Instant WhatsApp bot</h4>
-        <p>Ready to use the moment you sign up. Just send a message.</p>
-      </div>
-    </div>
-    <div class="benefit">
-      <div class="benefit-icon">📄</div>
-      <div>
-        <h4>Branded PDF documents</h4>
-        <p>Your logo and colours on every variation order, daywork sheet and purchase order.</p>
-      </div>
-    </div>
-    <div class="benefit">
-      <div class="benefit-icon">📊</div>
-      <div>
-        <h4>Boss dashboard</h4>
-        <p>See all pending items by site. Generate and send documents in one click.</p>
-      </div>
-    </div>
-    <div class="benefit">
-      <div class="benefit-icon">📍</div>
-      <div>
-        <h4>Multi-site tracking</h4>
-        <p>Every log tagged to the right client and site. No mixing, no confusion.</p>
-      </div>
-    </div>
-    <div class="benefit">
-      <div class="benefit-icon">🔒</div>
-      <div>
-        <h4>Completely private</h4>
-        <p>Your data is yours. Each company is completely separate and secure.</p>
-      </div>
-    </div>
-
+    <div class="benefit"><div class="benefit-icon">🎙</div><div><h4>Voice note logging</h4><p>Send a voice note and we transcribe it instantly. No typing on site.</p></div></div>
+    <div class="benefit"><div class="benefit-icon">📄</div><div><h4>Branded PDF documents</h4><p>Your logo and colours on every variation order, daywork sheet and purchase order.</p></div></div>
+    <div class="benefit"><div class="benefit-icon">📊</div><div><h4>Boss dashboard</h4><p>Edit entries, generate and send documents in one click.</p></div></div>
+    <div class="benefit"><div class="benefit-icon">📍</div><div><h4>Multi-site tracking</h4><p>Every log tagged to the right client and site automatically.</p></div></div>
+    <div class="benefit"><div class="benefit-icon">🔒</div><div><h4>Completely private</h4><p>Your data is yours. Each company completely separate and secure.</p></div></div>
     <div class="testimonial-card">
       <p>"I used to spend three hours every Sunday doing paperwork. Now it takes ten minutes."</p>
       <cite>Beta tester · Electrical subcontractor · Essex</cite>
     </div>
   </div>
 </main>
-
 <script>
-async function handleSignup() {
-  const btn = document.getElementById("submit-btn");
-  const errEl = document.getElementById("error-msg");
-  errEl.style.display = "none";
-
-  const name     = document.getElementById("owner-name").value.trim();
-  const email    = document.getElementById("email").value.trim();
-  const company  = document.getElementById("company-name").value.trim();
-  const trade    = document.getElementById("trade").value;
-  const whatsapp = document.getElementById("whatsapp").value.trim();
-  const vat      = document.getElementById("vat").value.trim();
-  const address  = document.getElementById("address").value.trim();
-  const color    = document.getElementById("color-hex").value.trim();
-
-  if (!name || !email || !company || !trade || !whatsapp) {
-    errEl.textContent = "Please fill in all required fields.";
-    errEl.style.display = "block"; return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = "Setting up your account...";
-
-  try {
-    const r = await fetch("/api/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, company_name: company, trade,
-                             whatsapp, vat, address, primary_color: color })
-    });
-    const d = await r.json();
-    if (d.checkout_url) {
-      window.location.href = d.checkout_url;
-    } else {
-      throw new Error(d.error || "Something went wrong");
-    }
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = "block";
-    btn.disabled = false;
-    btn.textContent = "Continue to payment →";
-  }
+async function handleSignup(){
+  const btn=document.getElementById("submit-btn");
+  const errEl=document.getElementById("error-msg");
+  errEl.style.display="none";
+  const name=document.getElementById("owner-name").value.trim();
+  const email=document.getElementById("email").value.trim();
+  const company=document.getElementById("company-name").value.trim();
+  const trade=document.getElementById("trade").value;
+  const whatsapp=document.getElementById("whatsapp").value.trim();
+  const vat=document.getElementById("vat").value.trim();
+  const address=document.getElementById("address").value.trim();
+  const color=document.getElementById("color-hex").value.trim();
+  if(!name||!email||!company||!trade||!whatsapp){errEl.textContent="Please fill in all required fields.";errEl.style.display="block";return;}
+  btn.disabled=true;btn.textContent="Setting up your account...";
+  try{
+    const r=await fetch("/api/signup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,email,company_name:company,trade,whatsapp,vat,address,primary_color:color})});
+    const d=await r.json();
+    if(d.checkout_url){window.location.href=d.checkout_url;}
+    else{throw new Error(d.error||"Something went wrong");}
+  }catch(e){errEl.textContent=e.message;errEl.style.display="block";btn.disabled=false;btn.textContent="Continue to payment →";}
 }
 </script>
 </body>
