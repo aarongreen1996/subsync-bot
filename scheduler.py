@@ -10,7 +10,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-APP_URL = os.environ.get("APP_URL", "https://www.subsync.co.uk")
+APP_URL = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "changeme")
 
 
@@ -97,7 +97,7 @@ def run_onboarding_drip():
         if days_since_signup >= 3 and not has_message_been_sent(company_id, "day3_checkin"):
             msg = (
                 f"👋 Hey {company_name}! Just checking in — "
-                f"how are you getting on with SubSync?\n\n"
+                f"how are you getting on with Note2Quote?\n\n"
                 f"Have you logged your first variation yet? "
                 f"If you need any help just reply *Help* and I'll walk you through it 💪"
             )
@@ -107,7 +107,7 @@ def run_onboarding_drip():
         # ── Day 7: Tips message ───────────────────────────────────────────────
         elif days_since_signup >= 7 and not has_message_been_sent(company_id, "day7_tips"):
             msg = (
-                f"💡 *SubSync Tip of the Week*\n\n"
+                f"💡 *Note2Quote Tip of the Week*\n\n"
                 f"Did you know you can log *material orders* too?\n\n"
                 f"Just say something like:\n"
                 f"_'Need to order 50 joist hangers from Screwfix for Brookfield Site'_\n\n"
@@ -120,8 +120,8 @@ def run_onboarding_drip():
         # ── Day 12: Trial ending warning ──────────────────────────────────────
         elif days_since_signup >= 12 and not has_message_been_sent(company_id, "day12_trial_ending"):
             msg = (
-                f"⏰ *Your SubSync trial ends in 2 days*\n\n"
-                f"If you're happy with SubSync, your £49/month subscription "
+                f"⏰ *Your Note2Quote trial ends in 2 days*\n\n"
+                f"If you're happy with Note2Quote, your £49/month subscription "
                 f"will start automatically — no action needed.\n\n"
                 f"If you'd like to cancel, you can do so any time at:\n"
                 f"{APP_URL}/dashboard\n\n"
@@ -140,7 +140,7 @@ def run_onboarding_drip():
             sent  = sum(1 for l in logs if isinstance(l, dict) and l.get("status") == "sent") if isinstance(logs, list) else 0
 
             msg = (
-                f"📊 *Your SubSync month in review*\n\n"
+                f"📊 *Your Note2Quote month in review*\n\n"
                 f"This month you logged *{total} items* and generated *{sent} documents*.\n\n"
                 f"Keep logging everything on site — every variation logged is money protected 💰\n\n"
                 f"Reply *Help* to see all commands."
@@ -186,7 +186,7 @@ def run_weekly_summary():
         site_list = ", ".join(sites[:3])
 
         msg = (
-            f"☀️ *Good morning! Your SubSync weekly summary*\n\n"
+            f"☀️ *Good morning! Your Note2Quote weekly summary*\n\n"
             f"You have *{len(pending)} pending items* worth *£{total_value:.0f}*\n"
             f"Sites: {site_list}\n\n"
             f"Ready to generate documents? Just say:\n"
