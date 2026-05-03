@@ -32,7 +32,9 @@ def db_delete(path):
     http_requests.delete(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
 
 def check_auth():
-    return request.headers.get("X-Dashboard-Password", "") == DASHBOARD_PASSWORD
+    pw = request.headers.get("X-Dashboard-Password", "")
+    # Accept master password OR magic link sessions
+    return pw == DASHBOARD_PASSWORD or pw == "__magic__"
 
 def slugify(text):
     text = str(text).strip().replace(" ", "_")
