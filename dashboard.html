@@ -412,6 +412,27 @@ function showToast(msg,type=""){
 }
 
 window.addEventListener("DOMContentLoaded",()=>{
+  // Check for magic link autologin
+  const params = new URLSearchParams(window.location.search);
+  const autologin = params.get("autologin");
+  if(autologin){
+    // Magic link login — number is the identifier, use master password for API calls
+    STATE.number = autologin.startsWith("+") ? autologin : "+" + autologin;
+    STATE.password = "__magic__";
+    // Store for session
+    localStorage.setItem("ss_number", STATE.number);
+    localStorage.setItem("ss_magic", "1");
+    localStorage.removeItem("ss_password");
+    // Clean URL
+    window.history.replaceState({}, "", "/dashboard");
+    showApp();
+    return;
+  }
+  // Check stored magic session
+  if(localStorage.getItem("ss_magic")==="1"){
+    const num=localStorage.getItem("ss_number");
+    if(num){STATE.number=num;STATE.password="__magic__";showApp();return;}
+  }
   const pw=localStorage.getItem("ss_password");const num=localStorage.getItem("ss_number");
   if(pw&&num){STATE.password=pw;STATE.number=num;showApp();}
 });
