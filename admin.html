@@ -1,131 +1,138 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Note2Quote — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script>
-const _t=localStorage.getItem('n2q-theme');
-if(_t){document.documentElement.setAttribute('data-theme',_t);}
-</script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Note2Quote Admin</title>
 <style>
-  :root {
-    --brand: #1a3a6b; --brand-light: #2a5298; --accent: #f59e0b;
-    --green: #10b981; --red: #ef4444; --orange: #f97316;
-    --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0;
-    --text: #1e293b; --muted: #64748b;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: #0a0a0a; color: var(--text); min-height: 100vh; }
+:root{--amber:#f59e0b;--amber-dark:#d97706;--amber-dim:rgba(245,158,11,0.1);--amber-glow:rgba(245,158,11,0.15);}
+[data-theme="dark"]{--bg:#0d0f14;--bg-2:#161820;--bg-3:#1e2028;--text:#f1f0ed;--text-2:#d1cdc7;--muted:#9ca3af;--faint:#6b7280;--border:rgba(255,255,255,0.08);--card:#161820;--green:#22c55e;--red:#ef4444;}
+[data-theme="light"]{--bg:#f8f7f4;--bg-2:#ffffff;--bg-3:#f0ede8;--text:#0d0f14;--text-2:#374151;--muted:#6b7280;--faint:#9ca3af;--border:#e5e2dd;--card:#ffffff;--green:#16a34a;--red:#dc2626;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;transition:background .3s,color .3s;}
 
-  /* Login */
-  #login-screen { min-height: 100vh; display: flex; align-items: center;
-                  justify-content: center;
-                  background: linear-gradient(135deg, #0f2447, #1a3a6b); }
-  .login-box { background: white; border-radius: 16px; padding: 48px 40px;
-               width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-  .login-box h1 { font-size: 22px; color: var(--brand); margin-bottom: 4px; }
-  .login-box p  { color: #888888; font-size: 13px; margin-bottom: 24px; }
-  .login-box input { width: 100%; padding: 11px 14px; border: 1.5px solid #222222;
-                     border-radius: 8px; font-size: 15px; margin-bottom: 12px; outline: none; }
-  .login-box input:focus { border-color: var(--brand); }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
-         border-radius: 8px; font-size: 14px; font-weight: 600; border: none;
-         cursor: pointer; transition: all .15s; }
-  .btn-primary { background: var(--brand); color: white; width: 100%;
-                 justify-content: center; padding: 13px; }
-  .btn-primary:hover { background: var(--brand-light); }
-  .btn-red { background: #f59e0b; color: white; font-size: 12px; padding: 6px 12px; }
-  .btn-red:hover { opacity: .85; }
-  .btn-outline { background: white; color: var(--brand); border: 1.5px solid var(--brand);
-                 font-size: 12px; padding: 6px 12px; }
-  .error-msg { color: #f59e0b; font-size: 13px; margin-top: 8px; }
+/* Login */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:48px 40px;width:100%;max-width:380px;}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:10px;}
+.login-box p{font-size:13px;color:var(--muted);margin-bottom:24px;font-weight:300;}
+.login-box input{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:'Manrope',sans-serif;outline:none;margin-bottom:12px;background:var(--bg-3);color:var(--text);transition:border .15s;}
+.login-box input:focus{border-color:var(--amber);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:'Manrope',sans-serif;transition:all .15s;letter-spacing:0.3px;}
+.btn-primary{background:var(--amber);color:#0d0f14;width:100%;justify-content:center;padding:13px;font-size:14px;}
+.btn-primary:hover{background:#fbbf24;}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn-outline{background:transparent;color:var(--muted);border:1px solid var(--border);}
+.btn-outline:hover{border-color:var(--amber);color:var(--amber);}
+.btn-red{background:rgba(239,68,68,0.1);color:var(--red);border:1px solid rgba(239,68,68,0.2);font-size:11px;padding:5px 10px;}
+.btn-red:hover{background:var(--red);color:white;}
+.error-msg{color:var(--red);font-size:12px;margin-top:8px;}
 
-  /* App */
-  #app { display: none; }
-  header { background: var(--brand); color: white; padding: 0 28px; height: 60px;
-           display: flex; align-items: center; justify-content: space-between;
-           position: sticky; top: 0; z-index: 100; }
-  header h1 { font-size: 18px; font-weight: 700; }
-  .logout-btn { background: rgba(255,255,255,.15); border: none; color: white;
-                padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+/* App */
+#app{display:none;}
+header{background:var(--bg-2);border-bottom:1px solid var(--border);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;transition:background .3s,border-color .3s;}
+.header-logo{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--text);display:flex;align-items:center;gap:8px;}
+.header-badge{background:var(--amber-dim);border:1px solid rgba(245,158,11,0.25);color:var(--amber);font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;letter-spacing:1px;text-transform:uppercase;margin-left:8px;}
+.header-right{display:flex;align-items:center;gap:8px;}
+.theme-toggle{width:32px;height:32px;border-radius:7px;border:1px solid var(--border);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;}
+.theme-toggle:hover{border-color:var(--amber);}
+.logout-btn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-family:'Manrope',sans-serif;font-weight:600;transition:all .15s;}
+.logout-btn:hover{border-color:var(--red);color:var(--red);}
 
-  main { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+main{max-width:1300px;margin:0 auto;padding:28px 20px;}
 
-  /* Stats */
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-  @media(max-width:700px) { .stats { grid-template-columns: repeat(2,1fr); } }
-  .stat-card { background: var(--card); border-radius: 12px; padding: 20px 22px;
-               border: 1px solid #222222; }
-  .stat-label { font-size: 12px; color: #888888; text-transform: uppercase;
-                letter-spacing: .5px; margin-bottom: 6px; }
-  .stat-value { font-size: 30px; font-weight: 800; color: var(--brand); }
-  .stat-sub   { font-size: 12px; color: #888888; margin-top: 3px; }
-  .stat-value.green { color: var(--green); }
-  .stat-value.amber { color: var(--accent); }
+/* KPI cards */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:24px;transition:background .3s,border-color .3s;}
+@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+.kpi{background:var(--card);padding:22px 24px;transition:background .3s;}
+.kpi-label{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
+.kpi-value{font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:1px;color:var(--text);line-height:1;transition:color .3s;}
+.kpi-value.amber{color:var(--amber);}
+.kpi-value.green{color:var(--green);}
+.kpi-value.red{color:var(--red);}
+.kpi-sub{font-size:11px;color:var(--faint);margin-top:4px;font-weight:400;}
 
-  /* Section */
-  .section-title { font-size: 16px; font-weight: 700; color: var(--brand);
-                   margin: 0 0 14px; }
+/* Section */
+.section-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+@media(max-width:900px){.section-row{grid-template-columns:1fr;}}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:background .3s,border-color .3s;}
+.panel-full{grid-column:1/-1;}
+.panel-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;transition:border-color .3s;}
+.panel-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--text);transition:color .3s;}
+.panel-body{padding:20px;}
 
-  /* Table */
-  .table-wrap { background: var(--card); border-radius: 12px; border: 1px solid #222222;
-                overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: #f8fafc; color: #888888; font-size: 11px; text-transform: uppercase;
-       letter-spacing: .4px; padding: 10px 16px; text-align: left; }
-  td { padding: 12px 16px; border-bottom: 1px solid #222222; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #fafafa; cursor: pointer; }
+/* System health */
+.health-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.health-item{display:flex;align-items:center;justify-content:space-between;background:var(--bg-3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;transition:background .3s,border-color .3s;}
+.health-name{font-size:13px;font-weight:600;color:var(--text-2);transition:color .3s;}
+.health-status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.dot-green{background:var(--green);box-shadow:0 0 6px rgba(34,197,94,0.4);}
+.dot-amber{background:var(--amber);box-shadow:0 0 6px var(--amber-glow);}
+.dot-red{background:var(--red);box-shadow:0 0 6px rgba(239,68,68,0.4);}
 
-  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 3px 8px;
-           border-radius: 20px; text-transform: uppercase; }
-  .badge-green   { background: #d1fae5; color: #065f46; }
-  .badge-amber   { background: #fef3c7; color: #92400e; }
-  .badge-red     { background: #fee2e2; color: #991b1b; }
-  .badge-grey    { background: #f1f5f9; color: #475569; }
+/* Cost breakdown */
+.cost-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);transition:border-color .3s;}
+.cost-row:last-child{border-bottom:none;}
+.cost-service{font-size:13px;font-weight:500;color:var(--text-2);transition:color .3s;}
+.cost-amount{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--amber);}
+.cost-note{font-size:11px;color:var(--faint);}
 
-  .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
-               border: 1px solid rgba(0,0,0,.1); vertical-align: middle; margin-right: 6px; }
+/* Churn alerts */
+.alert-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);transition:border-color .3s;}
+.alert-item:last-child{border-bottom:none;}
+.alert-company{font-size:13px;font-weight:600;color:var(--text);transition:color .3s;}
+.alert-detail{font-size:11px;color:var(--faint);margin-top:2px;}
+.alert-days{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;color:var(--red);}
+.alert-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;}
+.alert-badge-red{background:rgba(239,68,68,0.1);color:var(--red);}
+.alert-badge-amber{background:var(--amber-dim);color:var(--amber-dark);}
 
-  /* Modal */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45);
-                   display: flex; align-items: flex-start; justify-content: center;
-                   z-index: 200; padding: 40px 20px; overflow-y: auto; }
-  .modal { background: white; border-radius: 14px; padding: 32px;
-           width: 100%; max-width: 700px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-  .modal h3 { font-size: 18px; color: var(--brand); margin-bottom: 4px; }
-  .modal-sub { color: #888888; font-size: 13px; margin-bottom: 20px; }
-  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-  .info-item label { display: block; font-size: 11px; color: #888888;
-                     text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px; }
-  .info-item span { font-size: 14px; font-weight: 600; }
+/* Customer table */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1.5px;background:var(--bg-3);border-bottom:1px solid var(--border);transition:background .3s,border-color .3s,color .3s;}
+td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text-2);transition:border-color .3s,color .3s;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg-3);cursor:pointer;}
+.status-badge{display:inline-block;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;text-transform:uppercase;letter-spacing:0.5px;}
+.status-active{background:rgba(34,197,94,0.1);color:var(--green);}
+.status-trialing{background:var(--amber-dim);color:var(--amber-dark);}
+.status-canceled{background:rgba(239,68,68,0.1);color:var(--red);}
+.status-unknown{background:var(--bg-3);color:var(--faint);}
+.usage-bar{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.usage-fill{height:100%;background:var(--amber);border-radius:3px;transition:width .5s;}
 
-  .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-  .mini-table th { background: #f8fafc; padding: 7px 10px; text-align: left;
-                   font-size: 10px; color: #888888; text-transform: uppercase; }
-  .mini-table td { padding: 7px 10px; border-bottom: 1px solid #222222; }
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;z-index:200;padding:40px 20px;overflow-y:auto;}
+.modal{background:var(--card);border-radius:16px;padding:32px;width:100%;max-width:680px;border:1px solid var(--border);transition:background .3s,border-color .3s;}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;color:var(--text);margin-bottom:4px;}
+.modal p{font-size:13px;color:var(--muted);margin-bottom:20px;font-weight:300;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.info-item label{display:block;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+.info-item span{font-size:14px;font-weight:600;color:var(--text);transition:color .3s;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;}
+.mini-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+.mini-table th{background:var(--bg-3);padding:7px 10px;text-align:left;font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:1px;transition:background .3s;}
+.mini-table td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text-2);transition:border-color .3s,color .3s;}
 
-  /* Misc */
-  .loading { text-align: center; padding: 60px; color: #888888; }
-  .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e2e8f0;
-             border-top-color: var(--brand); border-radius: 50%;
-             animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--brand);
-           color: white; padding: 12px 20px; border-radius: 10px; font-size: 14px;
-           z-index: 300; box-shadow: 0 4px 20px rgba(0,0,0,.25); }
-  .toast.success { background: var(--green); }
-  .toast.error   { background: #f59e0b; }
-  .empty { text-align: center; padding: 32px; color: #888888; font-size: 14px; }
+/* Misc */
+.loading{text-align:center;padding:60px;color:var(--faint);}
+.spinner{display:inline-block;width:26px;height:26px;border:2.5px solid var(--border);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:12px 20px;border-radius:10px;font-size:13px;z-index:300;box-shadow:0 8px 24px rgba(0,0,0,.2);font-weight:600;}
+.toast.success{border-color:var(--green);color:var(--green);}
+.toast.error{border-color:var(--red);color:var(--red);}
+.empty{text-align:center;padding:32px;color:var(--faint);font-size:13px;}
+.mrr-target{font-size:11px;color:var(--faint);margin-top:4px;}
+.progress-bar{height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--amber);border-radius:2px;transition:width .8s;}
 </style>
 </head>
 <body>
+
 <svg style="display:none">
   <symbol id="n2q-logo" viewBox="0 0 40 40">
     <path d="M20 5h10l9 9v18a2 2 0 01-2 2H20a2 2 0 01-2-2V7a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
@@ -142,10 +149,14 @@ if(_t){document.documentElement.setAttribute('data-theme',_t);}
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <h1>🎙 Note2Quote Admin</h1>
-    <p>Internal admin panel — authorised access only</p>
+    <div class="login-logo">
+      <svg width="24" height="24" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>
+      Note2Quote
+      <span class="header-badge">Admin</span>
+    </div>
+    <p>Founder access only</p>
     <input type="password" id="admin-password" placeholder="Admin password" />
-    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    <button class="btn btn-primary" onclick="doLogin()">Sign in →</button>
     <p class="error-msg" id="login-error"></p>
   </div>
 </div>
@@ -153,235 +164,363 @@ if(_t){document.documentElement.setAttribute('data-theme',_t);}
 <!-- APP -->
 <div id="app">
   <header>
-    <h1>🎙 Note2Quote Admin</h1>
-    <button class="logout-btn" onclick="logout()">Sign Out</button>
-  </header>
-  <main>
-    <div id="content">
-      <div class="loading"><div class="spinner"></div><br><br>Loading...</div>
+    <div style="display:flex;align-items:center;">
+      <div class="header-logo">
+        <svg width="20" height="20" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>
+        Note2Quote
+      </div>
+      <span class="header-badge">Admin</span>
     </div>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">☀️</button>
+      <button class="logout-btn" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="content"><div class="loading"><div class="spinner"></div></div></div>
   </main>
 </div>
 
 <!-- CUSTOMER MODAL -->
 <div class="modal-overlay" id="customer-modal" style="display:none">
   <div class="modal">
-    <h3 id="modal-company-name">Company</h3>
-    <div class="modal-sub" id="modal-company-sub"></div>
-    <div class="modal-grid" id="modal-info"></div>
-    <div style="margin-bottom:12px">
-      <strong style="font-size:13px;color:var(--brand)">📍 Active Sites</strong>
+    <h3 id="modal-name">Company</h3>
+    <p id="modal-sub"></p>
+    <div class="info-grid" id="modal-info"></div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Active Sites</div>
       <div id="modal-sites"></div>
     </div>
     <div>
-      <strong style="font-size:13px;color:var(--brand)">📋 Recent Logs (last 10)</strong>
+      <div style="font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Recent Logs</div>
       <div id="modal-logs"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-red" id="cancel-sub-btn" onclick="cancelSubscription()" style="display:none">
-        Cancel Subscription
-      </button>
-      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-red btn-sm" id="cancel-sub-btn" onclick="cancelSubscription()" style="display:none">Cancel Subscription</button>
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
     </div>
   </div>
 </div>
 
 <script>
-  let STATE = { password: "", data: null, currentCustomer: null };
+let STATE = { password: "", data: null, currentCustomer: null };
 
-  async function doLogin() {
-    const pw = document.getElementById("admin-password").value.trim();
-    const r  = await fetch("/api/admin/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pw })
-    });
-    const d = await r.json();
-    if (d.ok) {
-      STATE.password = pw;
-      localStorage.setItem("ss_admin_pw", pw);
-      showApp();
-    } else {
-      document.getElementById("login-error").textContent = "Wrong password.";
-    }
-  }
+async function doLogin(){
+  const pw = document.getElementById("admin-password").value.trim();
+  const r  = await fetch("/api/admin/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})});
+  const d  = await r.json();
+  if(d.ok){ STATE.password=pw; localStorage.setItem("n2q_admin_pw",pw); showApp(); }
+  else { document.getElementById("login-error").textContent="Wrong password."; }
+}
 
-  function logout() {
-    localStorage.removeItem("ss_admin_pw");
-    location.reload();
-  }
+function logout(){ localStorage.removeItem("n2q_admin_pw"); location.reload(); }
 
-  function apiFetch(url, opts = {}) {
-    return fetch(url, {
-      ...opts,
-      headers: { "Content-Type": "application/json",
-                 "X-Admin-Password": STATE.password, ...(opts.headers||{}) }
-    });
-  }
+function apiFetch(url,opts={}){
+  return fetch(url,{...opts,headers:{"Content-Type":"application/json","X-Admin-Password":STATE.password,...(opts.headers||{})}});
+}
 
-  async function showApp() {
-    document.getElementById("login-screen").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    await loadOverview();
-  }
+async function showApp(){
+  document.getElementById("login-screen").style.display="none";
+  document.getElementById("app").style.display="block";
+  await loadOverview();
+}
 
-  async function loadOverview() {
-    document.getElementById("content").innerHTML =
-      `<div class="loading"><div class="spinner"></div><br><br>Loading customers...</div>`;
-    const r = await apiFetch("/api/admin/overview");
-    const d = await r.json();
-    STATE.data = d;
-    renderOverview(d);
-  }
+async function loadOverview(){
+  document.getElementById("content").innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
+  const r = await apiFetch("/api/admin/overview");
+  const d = await r.json();
+  STATE.data = d;
+  renderOverview(d);
+}
 
-  function renderOverview(d) {
-    const statusBadge = (s) => {
-      if (s === "active")    return `<span class="badge badge-green">Active</span>`;
-      if (s === "trialing")  return `<span class="badge badge-amber">Trial</span>`;
-      if (s === "canceled")  return `<span class="badge badge-red">Cancelled</span>`;
-      return `<span class="badge badge-grey">${s || "Unknown"}</span>`;
-    };
+function renderOverview(d){
+  const customers  = d.customers || [];
+  const mrr        = d.mrr || 0;
+  const mrrTarget  = 5000;
+  const mrrPct     = Math.min(100, Math.round((mrr/mrrTarget)*100));
 
-    let rows = "";
-    for (const c of (d.customers || [])) {
-      const date = c.created_at ? new Date(c.created_at).toLocaleDateString("en-GB") : "—";
-      rows += `
-        <tr onclick="openCustomer(${c.id})">
-          <td>
-            <span class="color-dot" style="background:${c.primary_color}"></span>
-            <strong>${c.company_name}</strong>
-          </td>
-          <td>${c.email || "—"}</td>
-          <td>${statusBadge(c.stripe_status)}</td>
-          <td>${c.sites}</td>
-          <td>${c.total_logs}</td>
-          <td>${c.sent_docs}</td>
-          <td><span class="${c.pending_items > 0 ? 'badge badge-amber' : ''}">${c.pending_items || 0}</span></td>
-          <td>${date}</td>
-        </tr>`;
-    }
+  // Churn risk: no logs in 7+ days
+  const now = Date.now();
+  const churnRisk = customers.filter(c => {
+    if(!c.last_log_date) return c.total_logs === 0;
+    const days = Math.floor((now - new Date(c.last_log_date).getTime()) / 86400000);
+    return days >= 7;
+  }).sort((a,b) => (b.days_inactive||99) - (a.days_inactive||99));
 
-    document.getElementById("content").innerHTML = `
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-label">Total Customers</div>
-          <div class="stat-value">${d.total_customers}</div>
-          <div class="stat-sub">${d.active_count} active · ${d.trial_count} trialing</div>
+  // Sort customers by usage
+  const byUsage = [...customers].sort((a,b) => b.total_logs - a.total_logs);
+
+  // Estimated costs (rough)
+  const aiCostPerLog    = 0.001; // ~£0.001 per Claude call
+  const voiceCostPerLog = 0.0006; // ~£0.0006 per Groq transcription
+  const totalLogs       = d.total_logs || 0;
+  const estimatedAI     = (totalLogs * aiCostPerLog).toFixed(2);
+  const estimatedVoice  = (totalLogs * voiceCostPerLog * 0.3).toFixed(2); // ~30% voice
+  const estimatedTotal  = (parseFloat(estimatedAI) + parseFloat(estimatedVoice) + 5).toFixed(2); // +£5 infra
+
+  const statusBadge = s => {
+    const map = {active:'status-active',trialing:'status-trialing',canceled:'status-canceled'};
+    return `<span class="status-badge ${map[s]||'status-unknown'}">${s||'unknown'}</span>`;
+  };
+
+  let customerRows = byUsage.map(c => {
+    const maxLogs = Math.max(...customers.map(x=>x.total_logs),1);
+    const pct     = Math.round((c.total_logs/maxLogs)*100);
+    const date    = c.created_at ? new Date(c.created_at).toLocaleDateString("en-GB") : "—";
+    return `<tr onclick="openCustomer(${c.id})">
+      <td><strong>${c.company_name}</strong></td>
+      <td>${c.email||"—"}</td>
+      <td>${statusBadge(c.stripe_status)}</td>
+      <td>${c.sites}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--amber)">${c.total_logs}</span>
+          <div class="usage-bar"><div class="usage-fill" style="width:${pct}%"></div></div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Monthly Revenue</div>
-          <div class="stat-value green">£${(d.mrr||0).toFixed(0)}</div>
-          <div class="stat-sub">MRR from active subscriptions</div>
+      </td>
+      <td>${c.sent_docs}</td>
+      <td>${date}</td>
+    </tr>`;
+  }).join("");
+
+  let churnRows = churnRisk.length ? churnRisk.slice(0,5).map(c => `
+    <div class="alert-item">
+      <div>
+        <div class="alert-company">${c.company_name}</div>
+        <div class="alert-detail">${c.email||""} · ${c.total_logs} total logs</div>
+      </div>
+      <div style="text-align:right">
+        <div class="alert-days">${c.days_inactive||"7+"}D</div>
+        <span class="alert-badge ${(c.days_inactive||7)>14?'alert-badge-red':'alert-badge-amber'}">${(c.days_inactive||7)>14?'HIGH RISK':'AT RISK'}</span>
+      </div>
+    </div>`).join("") : `<div class="empty">✅ No churn risk detected</div>`;
+
+  document.getElementById("content").innerHTML = `
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Monthly Revenue</div>
+        <div class="kpi-value amber">£${mrr.toFixed(0)}</div>
+        <div class="kpi-sub">MRR · ${d.active_count||0} active</div>
+        <div class="mrr-target">Target: £${mrrTarget.toLocaleString()}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${mrrPct}%"></div></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Total Customers</div>
+        <div class="kpi-value">${d.total_customers||0}</div>
+        <div class="kpi-sub">${d.trial_count||0} trialing · ${d.active_count||0} active</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Total Logs</div>
+        <div class="kpi-value">${d.total_logs||0}</div>
+        <div class="kpi-sub">${d.total_sent||0} converted to docs</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Churn Risk</div>
+        <div class="kpi-value ${churnRisk.length>0?'red':'green'}">${churnRisk.length}</div>
+        <div class="kpi-sub">Inactive 7+ days</div>
+      </div>
+    </div>
+
+    <div class="section-row">
+      <!-- System Health -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">System Health</div>
+          <button class="btn btn-outline btn-sm" onclick="checkHealth()">Refresh</button>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Logs</div>
-          <div class="stat-value amber">${d.total_logs}</div>
-          <div class="stat-sub">${d.total_sent} sent · ${d.total_pending} pending</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Trials Active</div>
-          <div class="stat-value">${d.trial_count}</div>
-          <div class="stat-sub">Converting in 14 days</div>
+        <div class="panel-body">
+          <div class="health-grid" id="health-grid">
+            <div class="health-item"><span class="health-name">Railway (App)</span><span class="health-status"><span class="dot dot-green"></span>Online</span></div>
+            <div class="health-item"><span class="health-name">Supabase (DB)</span><span class="health-status"><span class="dot dot-green"></span>Online</span></div>
+            <div class="health-item"><span class="health-name">Anthropic (AI)</span><span class="health-status" id="h-anthropic"><span class="dot dot-amber"></span>Checking...</span></div>
+            <div class="health-item"><span class="health-name">Groq (Voice)</span><span class="health-status" id="h-groq"><span class="dot dot-amber"></span>Checking...</span></div>
+            <div class="health-item"><span class="health-name">Twilio (WhatsApp)</span><span class="health-status" id="h-twilio"><span class="dot dot-amber"></span>Checking...</span></div>
+            <div class="health-item"><span class="health-name">Resend (Email)</span><span class="health-status" id="h-resend"><span class="dot dot-amber"></span>Checking...</span></div>
+          </div>
         </div>
       </div>
 
-      <div class="section-title">👥 All Customers</div>
-      <div class="table-wrap">
-        ${d.customers?.length ? `
-        <table>
+      <!-- Cost Tracking -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Est. Monthly Costs</div></div>
+        <div class="panel-body">
+          <div class="cost-row">
+            <div><div class="cost-service">Railway Hosting</div><div class="cost-note">Hobby plan</div></div>
+            <div class="cost-amount">£5</div>
+          </div>
+          <div class="cost-row">
+            <div><div class="cost-service">Anthropic (AI)</div><div class="cost-note">~${totalLogs} API calls</div></div>
+            <div class="cost-amount">£${estimatedAI}</div>
+          </div>
+          <div class="cost-row">
+            <div><div class="cost-service">Groq (Voice)</div><div class="cost-note">~${Math.round(totalLogs*0.3)} transcriptions</div></div>
+            <div class="cost-amount">£${estimatedVoice}</div>
+          </div>
+          <div class="cost-row">
+            <div><div class="cost-service">Twilio (WhatsApp)</div><div class="cost-note">Per message</div></div>
+            <div class="cost-amount">~£2</div>
+          </div>
+          <div class="cost-row" style="border-top:2px solid var(--amber);margin-top:4px;padding-top:12px;">
+            <div><div class="cost-service" style="font-weight:700;color:var(--text)">Total Est. Cost</div></div>
+            <div class="cost-amount">£${estimatedTotal}</div>
+          </div>
+          <div style="margin-top:12px;padding:10px 14px;background:var(--amber-dim);border-radius:8px;font-size:12px;color:var(--amber-dark);">
+            💰 Est. margin: <strong>£${(mrr - parseFloat(estimatedTotal)).toFixed(0)}/mo</strong> (${mrr > 0 ? Math.round(((mrr-parseFloat(estimatedTotal))/mrr)*100) : 0}%)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-row">
+      <!-- Churn Alerts -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">⚠️ Churn Alerts</div>
+          <span style="font-size:11px;color:var(--faint)">Inactive 7+ days</span>
+        </div>
+        <div class="panel-body">
+          ${churnRows}
+        </div>
+      </div>
+
+      <!-- Revenue breakdown -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Revenue Breakdown</div></div>
+        <div class="panel-body">
+          <div class="cost-row">
+            <div><div class="cost-service">Active subscriptions</div><div class="cost-note">${d.active_count||0} × £49/mo</div></div>
+            <div class="cost-amount">£${((d.active_count||0)*49).toFixed(0)}</div>
+          </div>
+          <div class="cost-row">
+            <div><div class="cost-service">Trialing</div><div class="cost-note">${d.trial_count||0} converting soon</div></div>
+            <div class="cost-amount" style="color:var(--amber-dark)">+£${((d.trial_count||0)*49).toFixed(0)}</div>
+          </div>
+          <div class="cost-row" style="border-top:2px solid var(--amber);margin-top:4px;padding-top:12px;">
+            <div><div class="cost-service" style="font-weight:700;color:var(--text)">Potential MRR</div></div>
+            <div class="cost-amount">£${(((d.active_count||0)+(d.trial_count||0))*49).toFixed(0)}</div>
+          </div>
+          <div style="margin-top:16px;">
+            <div style="font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">To reach £5,000 MRR</div>
+            <div style="font-size:13px;color:var(--text-2)">Need <strong style="color:var(--amber)">${Math.max(0,Math.ceil((5000-mrr)/49))}</strong> more paying customers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Customer Table -->
+    <div class="panel panel-full">
+      <div class="panel-header">
+        <div class="panel-title">All Customers</div>
+        <span style="font-size:11px;color:var(--faint)">Click to view details</span>
+      </div>
+      <div style="overflow-x:auto;">
+        ${customers.length ? `<table>
           <thead><tr>
             <th>Company</th><th>Email</th><th>Status</th>
-            <th>Sites</th><th>Total Logs</th><th>Docs Sent</th>
-            <th>Pending</th><th>Joined</th>
+            <th>Sites</th><th>Total Logs</th><th>Docs Sent</th><th>Joined</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${customerRows}</tbody>
         </table>` : `<div class="empty">No customers yet. Share your landing page to get started!</div>`}
-      </div>`;
-  }
+      </div>
+    </div>`;
 
-  async function openCustomer(id) {
-    const r = await apiFetch(`/api/admin/customer/${id}`);
-    const d = await r.json();
-    STATE.currentCustomer = d;
+  // Check health async
+  checkHealth();
+}
 
-    const c = d.company;
-    document.getElementById("modal-company-name").textContent = c.company_name;
-    document.getElementById("modal-company-sub").textContent =
-      `${c.email} · ${c.phone || "No phone"} · Joined ${new Date(c.created_at).toLocaleDateString("en-GB")}`;
-
-    document.getElementById("modal-info").innerHTML = `
-      <div class="info-item"><label>Trade</label><span>${c.trade || "—"}</span></div>
-      <div class="info-item"><label>WhatsApp</label><span>${c.whatsapp_number}</span></div>
-      <div class="info-item"><label>VAT Number</label><span>${c.vat_number || "—"}</span></div>
-      <div class="info-item"><label>Address</label><span>${c.address || "—"}</span></div>
-    `;
-
-    // Sites
-    const sites = d.projects || [];
-    document.getElementById("modal-sites").innerHTML = sites.length
-      ? sites.map(s => `<span class="badge badge-grey" style="margin:4px 4px 0 0">📍 ${s.site_name}</span>`).join("")
-      : `<p style="color:#888888;font-size:13px;margin-top:6px">No sites added yet</p>`;
-
-    // Logs
-    const logs = (d.logs || []).slice(0, 10);
-    document.getElementById("modal-logs").innerHTML = logs.length ? `
-      <table class="mini-table">
-        <thead><tr><th>Type</th><th>Description</th><th>Site</th><th>Status</th><th>Date</th></tr></thead>
-        <tbody>${logs.map(l => `
-          <tr>
-            <td>${l.type || "—"}</td>
-            <td>${l.description || "—"}</td>
-            <td>${l.site_name || "—"}</td>
-            <td>${l.status}</td>
-            <td>${new Date(l.created_at).toLocaleDateString("en-GB")}</td>
-          </tr>`).join("")}
-        </tbody>
-      </table>` : `<p style="color:#888888;font-size:13px;margin-top:6px">No logs yet</p>`;
-
-    document.getElementById("customer-modal").style.display = "flex";
-  }
-
-  async function cancelSubscription() {
-    if (!confirm("Are you sure you want to cancel this subscription?")) return;
-    const subId = STATE.currentCustomer?.stripe_sub_id;
-    if (!subId) { showToast("No subscription found", "error"); return; }
-
-    const r = await apiFetch("/api/admin/cancel-subscription", {
-      method: "POST",
-      body: JSON.stringify({ subscription_id: subId })
-    });
-    const d = await r.json();
-    if (d.ok) {
-      showToast("Subscription cancelled", "success");
-      closeModal();
-      await loadOverview();
-    } else {
-      showToast("Error: " + d.error, "error");
+async function checkHealth(){
+  const r = await apiFetch("/api/admin/health");
+  const d = await r.json();
+  const map = {
+    "h-anthropic": d.anthropic,
+    "h-groq":      d.groq,
+    "h-twilio":    d.twilio,
+    "h-resend":    d.resend,
+  };
+  for(const [id, status] of Object.entries(map)){
+    const el = document.getElementById(id);
+    if(el){
+      const cls  = status ? "dot-green" : "dot-red";
+      const text = status ? "Online" : "Issue";
+      el.innerHTML = `<span class="dot ${cls}"></span>${text}`;
     }
   }
+}
 
-  function closeModal() {
-    document.getElementById("customer-modal").style.display = "none";
-  }
+async function openCustomer(id){
+  const r = await apiFetch(`/api/admin/customer/${id}`);
+  const d = await r.json();
+  STATE.currentCustomer = d;
+  const c = d.company;
 
-  function showToast(msg, type = "") {
-    const t = document.createElement("div");
-    t.className = `toast ${type}`;
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3500);
-  }
+  document.getElementById("modal-name").textContent = c.company_name;
+  document.getElementById("modal-sub").textContent  = `${c.email||""} · ${c.phone||""} · Joined ${new Date(c.created_at).toLocaleDateString("en-GB")}`;
 
-  // Auto login
-  window.addEventListener("DOMContentLoaded", () => {
-    const pw = localStorage.getItem("ss_admin_pw");
-    if (pw) { STATE.password = pw; showApp(); }
-  });
+  document.getElementById("modal-info").innerHTML = `
+    <div class="info-item"><label>Trade</label><span>${c.trade||"—"}</span></div>
+    <div class="info-item"><label>WhatsApp</label><span>${c.whatsapp_number||"—"}</span></div>
+    <div class="info-item"><label>VAT</label><span>${c.vat_number||"—"}</span></div>
+    <div class="info-item"><label>Address</label><span>${c.address||"—"}</span></div>`;
 
-  document.addEventListener("keydown", e => {
-    if (e.key === "Enter") doLogin();
-    if (e.key === "Escape") closeModal();
-  });
+  const sites = d.projects||[];
+  document.getElementById("modal-sites").innerHTML = sites.length
+    ? sites.map(s=>`<span style="display:inline-block;background:var(--amber-dim);border:1px solid rgba(245,158,11,0.2);color:var(--amber-dark);font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;margin:3px 3px 0 0">📍 ${s.site_name}</span>`).join("")
+    : `<span style="color:var(--faint);font-size:13px">No sites added yet</span>`;
+
+  const logs = (d.logs||[]).slice(0,8);
+  document.getElementById("modal-logs").innerHTML = logs.length ? `
+    <table class="mini-table">
+      <thead><tr><th>Type</th><th>Description</th><th>Site</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${logs.map(l=>`<tr>
+        <td>${l.type||"—"}</td>
+        <td>${l.description||"—"}</td>
+        <td>${l.site_name||"—"}</td>
+        <td>${l.status}</td>
+        <td>${new Date(l.created_at).toLocaleDateString("en-GB")}</td>
+      </tr>`).join("")}</tbody>
+    </table>` : `<span style="color:var(--faint);font-size:13px">No logs yet</span>`;
+
+  const cancelBtn = document.getElementById("cancel-sub-btn");
+  cancelBtn.style.display = STATE.currentCustomer?.stripe_sub_id ? "inline-flex" : "none";
+
+  document.getElementById("customer-modal").style.display="flex";
+}
+
+async function cancelSubscription(){
+  if(!confirm("Cancel this subscription in Stripe?")) return;
+  const subId = STATE.currentCustomer?.stripe_sub_id;
+  if(!subId){showToast("No subscription found","error");return;}
+  const r = await apiFetch("/api/admin/cancel-subscription",{method:"POST",body:JSON.stringify({subscription_id:subId})});
+  const d = await r.json();
+  if(d.ok){showToast("Subscription cancelled","success");closeModal();await loadOverview();}
+  else{showToast("Error: "+(d.error||"Failed"),"error");}
+}
+
+function closeModal(){document.getElementById("customer-modal").style.display="none";}
+
+function showToast(msg,type=""){
+  const t=document.createElement("div");t.className=`toast ${type}`;t.textContent=msg;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),3500);
+}
+
+function toggleTheme(){
+  const html=document.documentElement;
+  const btn=document.getElementById("theme-btn");
+  const next = html.getAttribute("data-theme")==="dark"?"light":"dark";
+  html.setAttribute("data-theme",next);
+  btn.textContent = next==="dark"?"☀️":"🌙";
+  localStorage.setItem("n2q-theme",next);
+}
+
+window.addEventListener("DOMContentLoaded",()=>{
+  const saved=localStorage.getItem("n2q-theme");
+  if(saved){document.documentElement.setAttribute("data-theme",saved);document.getElementById("theme-btn").textContent=saved==="dark"?"☀️":"🌙";}
+  const pw=localStorage.getItem("n2q_admin_pw");
+  if(pw){STATE.password=pw;showApp();}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&document.getElementById("login-screen").style.display!=="none")doLogin();});
 </script>
 </body>
 </html>
