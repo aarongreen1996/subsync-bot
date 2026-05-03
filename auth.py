@@ -54,8 +54,6 @@ def verify_token(token):
         return None
 
     record = results[0]
-    # Mark as used
-    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
     return record.get("whatsapp")
 
 
