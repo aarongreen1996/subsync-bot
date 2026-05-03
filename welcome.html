@@ -1,20 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+const _t=localStorage.getItem('n2q-theme');
+if(_t){document.documentElement.setAttribute('data-theme',_t);}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Welcome to Note2Quote!</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,900;1,9..144,400&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+
 <style>
   :root { --red: #d62828; --cream: #fff3e0; --ink: #0f0a00; --muted: #8a7560; --border: #e8ddd0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'DM Sans', sans-serif; background: #111111;
+  body { font-family: 'Manrope', sans-serif; background: #111111;
          min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
   .box { background: white; border: 1px solid #222222; border-radius: 24px;
          padding: 56px 48px; text-align: center; max-width: 480px;
          box-shadow: 0 24px 48px rgba(0,0,0,0.06); }
   .emoji { font-size: 56px; margin-bottom: 20px; }
-  h1 { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 900;
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 36px; font-weight: 900;
        color: #ffffff; letter-spacing: -1px; margin-bottom: 12px; }
   .highlight { color: #f59e0b; font-weight: 600; font-size: 17px; margin-bottom: 16px; }
   p { color: #888888; line-height: 1.7; font-weight: 300; margin-bottom: 12px; }
@@ -25,6 +32,18 @@
 </style>
 </head>
 <body>
+<svg style="display:none">
+  <symbol id="n2q-logo" viewBox="0 0 40 40">
+    <path d="M20 5h10l9 9v18a2 2 0 01-2 2H20a2 2 0 01-2-2V7a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M30 5v9h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="23" y1="20" x2="35" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="23" y1="25" x2="31" y2="25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="3" y="11" width="10" height="14" rx="5" fill="#f59e0b"/>
+    <path d="M1 21.5a7 7 0 0014 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="8" y1="28.5" x2="8" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="5" y1="33" x2="11" y2="33" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+</svg>
 <div class="box">
   <div class="emoji">🎉</div>
   <h1>You're all set!</h1>
