@@ -139,7 +139,7 @@ def send_welcome_message(to_number, company_name):
             from_=TWILIO_WHATSAPP_NUMBER,
             to=to_number,
             body=(
-                f"👋 Welcome to SubSync, {company_name}!\n\n"
+                f"👋 Welcome to Note2Quote, {company_name}!\n\n"
                 f"Your AI admin assistant is ready. Here's how to get started:\n\n"
                 f"*LOG A VARIATION*\n"
                 f"Just text naturally — e.g:\n"
