@@ -32,7 +32,7 @@ def db_patch(path, payload):
 def create_magic_token(whatsapp_number):
     """Generate a secure token, store it, return the login URL."""
     token = secrets.token_urlsafe(32)
-    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
 
     db_post("auth_tokens", {
         "token":      token,
