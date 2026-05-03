@@ -13,12 +13,14 @@ from onboarding import onboarding_bp
 from admin import admin_bp
 from scheduler import start_scheduler
 from account import account_bp
+from auth import auth_bp, create_magic_token
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(account_bp)
+app.register_blueprint(auth_bp)
 start_scheduler()
 
 # ── Clients ───────────────────────────────────────────────────────────────────
