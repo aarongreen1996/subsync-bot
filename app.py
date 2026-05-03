@@ -255,10 +255,14 @@ def webhook():
     if not incoming_msg:
         return _reply("Send me a message or voice note about what happened on site today 👷")
 
+   # Always check commands first, even mid-conversation
+    if is_dashboard_command(incoming_msg):
+        if from_number in pending_selections:
+            del pending_selections[from_number]
+        return handle_dashboard_command(from_number)
+
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
-
-    if is_dashboard_command(incoming_msg): return handle_dashboard_command(from_number)
     if is_help_command(incoming_msg):      return _reply(HELP_TEXT)
     if is_generate_command(incoming_msg):  return handle_generate(from_number, incoming_msg)
 
