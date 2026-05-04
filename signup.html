@@ -190,6 +190,14 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
         </div>
       </div>
 
+      <div class="form-group" style="margin-top:4px">
+        <label>Company Logo <span style="font-weight:300;opacity:.5;text-transform:none">(optional — appears on all PDFs)</span></label>
+        <div id="logo-drop" onclick="document.getElementById('logo-file').click()" style="border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3)">
+          <div id="logo-preview" style="display:none;margin-bottom:8px"><img id="logo-img" style="max-height:48px;max-width:160px;border-radius:6px" /></div>
+          <div id="logo-placeholder"><div style="font-size:22px;margin-bottom:4px">🖼️</div><div style="font-size:12px;color:var(--muted)">Click to upload your logo</div><div style="font-size:10px;color:var(--faint);margin-top:2px">PNG, JPG or SVG · Max 2MB</div></div>
+        </div>
+        <input type="file" id="logo-file" accept="image/*" style="display:none" onchange="previewLogo(this)" />
+      </div>
       <hr>
       <button class="btn-submit" onclick="handleSignup()" id="submit-btn">Continue to payment →</button>
       <div class="error-msg" id="error-msg"></div>
@@ -236,6 +244,19 @@ function toggleTheme(){
 }
 var saved=localStorage.getItem('n2q-theme');
 if(saved){var tb=document.getElementById('theme-btn');if(tb)tb.textContent=saved==='dark'?'☀️':'🌙';}
+
+function previewLogo(input){
+  var file=input.files[0];if(!file)return;
+  if(file.size>2*1024*1024){alert('Logo too large. Max 2MB.');return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById('logo-img').src=e.target.result;
+    document.getElementById('logo-preview').style.display='block';
+    document.getElementById('logo-placeholder').style.display='none';
+    document.getElementById('logo-drop').style.borderColor='var(--amber)';
+  };
+  reader.readAsDataURL(file);
+}
 
 async function handleSignup(){
   var btn=document.getElementById('submit-btn');
