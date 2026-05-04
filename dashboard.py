@@ -252,3 +252,25 @@ def send_email():
     if r.status_code in (200, 201):
         return jsonify({"ok": True})
     return jsonify({"error": f"Email failed: {r.text[:200]}"}), 500
+
+
+# ── Manual log entry ──────────────────────────────────────────────────────────
+@dashboard_bp.route("/api/log/manual", methods=["POST"])
+def add_manual_log():
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    allowed = ["from_number","type","description","status","raw_message",
+               "site_name","hours","cost_estimate","location","supplier",
+               "materials","requested_by","worker_name"]
+    payload = {k: v for k, v in data.items() if k in allowed}
+    if "status" not in payload:
+        payload["status"] = "pending"
+    import requests as _r
+    import os as _os
+    SURL = _os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY = _os.environ.get("SUPABASE_KEY","")
+    r = _r.post(f"{SURL}/rest/v1/site_logs", json=payload,
+        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
+                 "Content-Type":"application/json","Prefer":"return=minimal"})
+    return jsonify({"ok": r.status_code in (200,201)})
