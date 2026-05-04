@@ -3,6 +3,11 @@ import json
 import re
 from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
+
+def _reply(text):
+    resp = MessagingResponse()
+    resp.message(text)
+    return str(resp)
 import anthropic
 from supabase import create_client
 from datetime import datetime
@@ -245,6 +250,7 @@ def build_insert(from_number, raw_message, item):
     return d
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
+@app.route("/whatsapp", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.form.get("Body", "").strip()
@@ -262,6 +268,17 @@ def webhook():
 
     if not incoming_msg:
         return _reply("Send me a message or voice note about what happened on site today 👷")
+
+    # Registration gate - only registered customers can use the bot
+    companies = db_get("companies?whatsapp_number=eq." + encode_number(from_number) + "&limit=1")
+    if not isinstance(companies, list) or not companies:
+        signup_url = os.environ.get("APP_URL", "https://www.note2quote.co.uk") + "/signup"
+        msg_lines = ["This is Note2Quote - the WhatsApp admin tool for UK subcontractors.",
+                     "", "It looks like you do not have an account yet.",
+                     "", "Start your 14-day free trial at:", signup_url]
+        return _reply("\n".join(msg_lines))
+
+
 
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
