@@ -274,3 +274,17 @@ def add_manual_log():
         headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
                  "Content-Type":"application/json","Prefer":"return=minimal"})
     return jsonify({"ok": r.status_code in (200,201)})
+
+
+# ── Client details ────────────────────────────────────────────────────────────
+@dashboard_bp.route("/api/client/<int:project_id>", methods=["PATCH"])
+def update_client(project_id):
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    data    = request.json or {}
+    allowed = ["client_name", "client_email", "client_phone"]
+    update  = {k: v for k, v in data.items() if k in allowed}
+    if not update:
+        return jsonify({"error": "Nothing to update"}), 400
+    db_patch(f"projects?id=eq.{project_id}", update)
+    return jsonify({"ok": True})
