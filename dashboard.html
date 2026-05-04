@@ -230,9 +230,10 @@ tr:hover td{background:var(--bg3);}
       <p>Sign in to your dashboard</p>
     </div>
     <div class="login-body">
-      <input type="text" id="ln" placeholder="WhatsApp number (+447...)" />
+      <input type="text" id="ln" placeholder="Username or WhatsApp number (+447...)" />
       <input type="password" id="lp" placeholder="Password" />
       <button class="btn-login" onclick="doLogin()">Sign in →</button>
+      <p style="text-align:center;margin-top:10px;font-size:12px;color:var(--faint)">Or <a href="#" onclick="requestMagicLink()" style="color:var(--amber);text-decoration:none;font-weight:600">get a magic link via WhatsApp</a></p>
       <p class="err" id="lerr"></p>
     </div>
   </div>
@@ -395,19 +396,36 @@ if(saved){var tb=document.getElementById('theme-btn');if(tb)tb.textContent=(save
 
 // ── AUTH ───────────────────────────────────────────────────────────────────
 async function doLogin(){
-  var num=document.getElementById('ln').value.trim();
+  var login=document.getElementById('ln').value.trim();
   var pw=document.getElementById('lp').value.trim();
-  if(!num||!pw){document.getElementById('lerr').textContent='Fill in both fields.';return;}
-  var r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if(!login||!pw){document.getElementById('lerr').textContent='Fill in both fields.';return;}
+  // Try username login first, then fall back to master password
+  var r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login,password:pw})});
   var d=await r.json();
-  if(d.ok){S.pw=pw;S.num=num;localStorage.setItem('ss_password',pw);localStorage.setItem('ss_number',num);showApp();}
-  else{document.getElementById('lerr').textContent='Wrong password.';}
+  if(d.ok){
+    S.pw=d.session_token||pw;
+    S.num=d.whatsapp||login;
+    localStorage.setItem('ss_password',S.pw);
+    localStorage.setItem('ss_number',S.num);
+    showApp();
+  } else {
+    document.getElementById('lerr').textContent=d.error||'Wrong username or password.';
+  }
+}
+
+async function requestMagicLink(){
+  var login=document.getElementById('ln').value.trim();
+  if(!login){document.getElementById('lerr').textContent='Enter your WhatsApp number first.';return;}
+  var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login})});
+  var d=await r.json();
+  if(d.ok){document.getElementById('lerr').style.color='var(--green)';document.getElementById('lerr').textContent='Magic link sent to your WhatsApp!';}
+  else{document.getElementById('lerr').textContent=d.error||'Could not send magic link.';}
 }
 function logout(){localStorage.removeItem('ss_password');localStorage.removeItem('ss_number');localStorage.removeItem('ss_magic');S={pw:'',num:'',data:null,page:'overview',currentSite:null,currentPdf:null,charts:{},filters:{period:'month',site:'all',type:'all',status:'all',dateFrom:'',dateTo:''},sortCol:'',sortDir:1};document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';}
 
 function api(url,opts){
   opts=opts||{};
-  return fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json','X-Dashboard-Password':S.pw},opts.headers||{})}));
+  return fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json','X-Dashboard-Password':S.pw,'X-Dashboard-Number':S.num},opts.headers||{})}));
 }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
