@@ -1156,13 +1156,11 @@ def handle_status_update(from_number, msg):
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
-import os as _os
-from flask import send_from_directory as _sfd
-
-_HTML_DIR = _os.path.join(_os.path.dirname(__file__))
-
 def _html(fname):
-    return _sfd(_HTML_DIR, fname, mimetype='text/html')
+    import os as _os
+    path = _os.path.join(app.root_path, fname)
+    with open(path, 'r', encoding='utf-8') as f:
+        return Response(f.read(), mimetype='text/html')
 
 @app.route('/')
 def landing():      return _html('landing.html')
