@@ -215,6 +215,19 @@ hr{border:none;border-top:1px solid var(--border);margin:28px 0;}
 </main>
 
 <script>
+function previewLogo(input){
+  var file=input.files[0];if(!file)return;
+  if(file.size>2*1024*1024){alert('Logo too large. Max 2MB.');return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById('logo-img').src=e.target.result;
+    document.getElementById('logo-preview').style.display='block';
+    document.getElementById('logo-placeholder').style.display='none';
+    document.getElementById('logo-drop').style.borderColor='var(--amber)';
+  };
+  reader.readAsDataURL(file);
+}
+
 function toggleTheme(){
   var h=document.documentElement,b=document.getElementById('theme-btn');
   var n=h.getAttribute('data-theme')==='dark'?'light':'dark';
@@ -241,7 +254,17 @@ async function handleSignup(){
   try{
     var r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,company_name:company,trade,whatsapp,vat,address,primary_color:color})});
     var d=await r.json();
-    if(d.checkout_url){window.location.href=d.checkout_url;}
+    if(d.checkout_url){
+      // Upload logo if provided
+      var logoFile=document.getElementById('logo-file').files[0];
+      if(logoFile&&d.company_whatsapp){
+        try{
+          var fd=new FormData();fd.append('logo',logoFile);
+          await fetch('/api/signup/logo?whatsapp='+encodeURIComponent(d.company_whatsapp),{method:'POST',body:fd});
+        }catch(e){console.warn('Logo upload failed',e);}
+      }
+      window.location.href=d.checkout_url;
+    }
     else{throw new Error(d.error||'Something went wrong');}
   }catch(e){errEl.textContent=e.message;errEl.style.display='block';btn.disabled=false;btn.textContent='Continue to payment →';}
 }
