@@ -206,3 +206,33 @@ def upload_logo():
     # Save URL to company record
     ok = db_patch(f"companies?whatsapp_number=eq.{encoded}", {"logo_url": logo_url})
     return jsonify({"ok": ok, "logo_url": logo_url})
+
+
+# ── Login settings (username + password) ─────────────────────────────────────
+@account_bp.route("/api/account/login", methods=["PATCH"])
+def update_login():
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    number = request.args.get("number", "")
+    encoded = encode_number(number)
+    if not encoded.startswith("whatsapp:"):
+        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
+
+    data    = request.json or {}
+    allowed = ["username", "dashboard_password"]
+    update  = {k: v for k, v in data.items() if k in allowed}
+
+    if not update:
+        return jsonify({"error": "Nothing to update"}), 400
+
+    # Check username not already taken
+    if "username" in update:
+        existing = db_get(f"companies?username=eq.{update['username']}&limit=1")
+        if isinstance(existing, list) and existing:
+            existing_num = existing[0].get("whatsapp_number", "")
+            if existing_num != encoded.replace("%2B", "+").replace("whatsapp:", "whatsapp:+"):
+                return jsonify({"error": "Username already taken"}), 400
+
+    ok = db_patch(f"companies?whatsapp_number=eq.{encoded}", update)
+    return jsonify({"ok": ok})
