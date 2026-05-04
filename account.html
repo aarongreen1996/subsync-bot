@@ -358,6 +358,30 @@ function renderAccount(d) {
       </div>
     </div>
 
+    <!-- Login settings -->
+    <div class="section">
+      <div class="section-header"><div class="section-title">Dashboard Login</div></div>
+      <div class="section-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;font-weight:300">
+          Set a username so you can log in without typing your phone number. You can also set a personal password different from the shared one.
+        </p>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="f-username" placeholder="e.g. aaron.green" value="${c.username||''}" />
+            <div class="hint">Lowercase, no spaces. Used to log into your dashboard.</div>
+          </div>
+          <div class="form-group">
+            <label>New Password <span style="font-weight:300;opacity:.5">(leave blank to keep current)</span></label>
+            <input type="password" id="f-new-password" placeholder="Set a new password" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-save" onclick="saveLoginSettings()">Save login settings</button>
+        </div>
+      </div>
+    </div>
+
     <!-- WhatsApp info -->
     <div class="section">
       <div class="section-header"><div class="section-title">WhatsApp Bot</div></div>
@@ -372,6 +396,24 @@ function renderAccount(d) {
       </div>
     </div>
   `;
+}
+
+async function saveLoginSettings(){
+  const username = document.getElementById('f-username').value.trim();
+  const newPw    = document.getElementById('f-new-password').value.trim();
+  if(!username){showToast('Please enter a username','error');return;}
+  const payload = {username};
+  if(newPw) payload.dashboard_password = newPw;
+  const r = await apiFetch(`/api/account/login?number=${encodeURIComponent(STATE.number)}`,{
+    method:'PATCH', body:JSON.stringify(payload)
+  });
+  const d = await r.json();
+  if(d.ok){
+    showToast('✓ Login settings saved!','success');
+    if(newPw){showToast('Password updated — use it next time you log in','success');}
+  } else {
+    showToast('❌ '+(d.error||'Failed to save'),'error');
+  }
 }
 
 async function saveCompany() {
