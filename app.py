@@ -162,7 +162,7 @@ GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purc
                       "variation report", "daywork report", "material report",
                       "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
-DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "dashboard link", "my password", "get login", "login link"]
+DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "dashboard link", "my password", "get login", "login link", "dashboard", "login", "log in", "sign in", "my login", "get link"]
 SUMMARY_KEYWORDS   = ["summary", "overview", "my summary", "show summary", "stats", "how am i doing", "my stats"]
 PENDING_KEYWORDS   = ["pending", "what's pending", "show pending", "outstanding", "not approved"]
 APPROVE_KEYWORDS   = ["approve", "approved", "mark approved"]
