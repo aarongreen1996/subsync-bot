@@ -1,148 +1,138 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script>
-const _t=localStorage.getItem('n2q-theme');
-if(_t){document.documentElement.setAttribute('data-theme',_t);}
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Account — Note2Quote</title>
-
-
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script>var _t=localStorage.getItem('n2q-theme');if(_t)document.documentElement.setAttribute('data-theme',_t);</script>
 <style>
-:root {
-  --red: #d62828; --red-dark: #b01f1f; --red-light: #fce8e8;
-  --cream: #fff3e0; --ink: #0f0a00; --ink-light: #3d3020;
-  --muted: #8a7560; --border: #e8ddd0; --white: #fff; --bg: #faf8f5;
-  --green: #16a34a; --amber: #d97706;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Manrope', sans-serif; background: #0a0a0a;
-       color: #ffffff; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+:root{--amber:#f59e0b;--amber-d:#d97706;--amber-l:#fbbf24;--amber-dim:rgba(245,158,11,0.12);--amber-g:rgba(245,158,11,0.2);}
+[data-theme="light"]{--bg:#f5f3ef;--bg2:#fff;--bg3:#eceae5;--text:#0c0d10;--text2:#374151;--muted:#6b7280;--faint:#a0a5b0;--border:#dddad4;--border2:#c8c4bc;--card:#fff;--nav-bg:#0c0d10;--shadow:rgba(0,0,0,0.06);--shadow2:rgba(0,0,0,0.14);--green:#16a34a;--red:#dc2626;}
+[data-theme="dark"]{--bg:#0c0d10;--bg2:#131419;--bg3:#1a1b22;--text:#f0ede8;--text2:#c8c4bc;--muted:#8b8fa8;--faint:#4a4d5e;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--card:#131419;--nav-bg:#080a0d;--shadow:rgba(0,0,0,0.4);--shadow2:rgba(0,0,0,0.6);--green:#22c55e;--red:#ef4444;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;transition:background .3s,color .3s;}
 
-/* Login */
-#login-screen { min-height: 100vh; display: flex; align-items: center;
-                justify-content: center; background: #111111; }
-.login-box { background: white; border: 1px solid #222222;
-             border-radius: 20px; padding: 48px 44px; width: 100%; max-width: 380px; }
-.login-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; font-weight: 900;
-              color: #ffffff; margin-bottom: 6px; }
-.login-logo em { color: #f59e0b; font-style: normal; }
-.login-box p { color: #888888; font-size: 14px; margin-bottom: 24px; font-weight: 300; }
-.login-box input { width: 100%; padding: 11px 14px; border: 1.5px solid #222222;
-                   border-radius: 10px; font-size: 14px; font-family: 'Manrope', sans-serif;
-                   outline: none; margin-bottom: 12px; }
-.login-box input:focus { border-color: #f59e0b; }
+/* LOGIN */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;overflow:hidden;width:100%;max-width:400px;box-shadow:0 32px 64px var(--shadow2);animation:fadeUp .6s cubic-bezier(.16,1,.3,1) both;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
+.login-top{background:linear-gradient(135deg,#0c0d10,#1a1b22);padding:36px 36px 28px;position:relative;overflow:hidden;}
+.login-top::after{content:'';position:absolute;top:-40%;right:-20%;width:220px;height:220px;background:radial-gradient(circle,rgba(245,158,11,0.14),transparent 65%);pointer-events:none;}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:#fff;display:flex;align-items:center;gap:10px;margin-bottom:4px;position:relative;z-index:1;}
+.login-top p{font-size:13px;color:rgba(255,255,255,.4);position:relative;z-index:1;}
+.login-body{padding:28px 36px;}
+.login-body input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:'Manrope',sans-serif;outline:none;margin-bottom:10px;background:var(--bg3);color:var(--text);transition:border-color .15s;}
+.login-body input:focus{border-color:var(--amber);}
+.btn-login{width:100%;background:var(--amber);color:#0c0d10;border:none;padding:13px;border-radius:10px;font-size:14px;font-weight:700;font-family:'Manrope',sans-serif;cursor:pointer;box-shadow:0 4px 0 var(--amber-d);transition:all .15s;}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 5px 0 var(--amber-d),0 10px 20px var(--amber-g);}
+.err{color:var(--red);font-size:12px;margin-top:6px;font-weight:500;}
 
-/* App */
-#app { display: none; }
-header { background: white; border-bottom: 1px solid #222222;
-         padding: 0 32px; height: 64px;
-         display: flex; align-items: center; justify-content: space-between;
-         position: sticky; top: 0; z-index: 100; }
-.header-logo { font-family: 'Bebas Neue', sans-serif; font-size: 20px; font-weight: 900; color: #ffffff; }
-.header-logo em { color: #f59e0b; font-style: normal; }
-.header-nav { display: flex; gap: 8px; }
-.nav-link { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
-            color: #888888; text-decoration: none; transition: all 0.15s; }
-.nav-link:hover { background: #0a0a0a; color: #ffffff; }
-.nav-link.active { background: #1a1500; color: #f59e0b; font-weight: 600; }
-.logout-btn { background: none; border: 1.5px solid #222222; color: #cccccc;
-              padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
-              font-family: 'Manrope', sans-serif; transition: all 0.15s; }
-.logout-btn:hover { border-color: #f59e0b; color: #f59e0b; }
+/* APP SHELL */
+#app{display:none;height:100vh;overflow:hidden;}
+.app-shell{display:flex;height:100%;}
 
-main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
+/* SIDEBAR */
+.sidebar{width:220px;flex-shrink:0;background:var(--nav-bg);display:flex;flex-direction:column;overflow-y:auto;}
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}
+.sidebar-logo a{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;color:#fff;text-decoration:none;display:flex;align-items:center;gap:8px;}
+.sidebar-company{font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px;padding-left:32px;}
+.sidebar-nav{flex:1;padding:12px 10px;}
+.nav-section{margin-bottom:20px;}
+.nav-section-label{font-size:9px;font-weight:700;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:2px;padding:0 10px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;color:rgba(255,255,255,.55);font-size:13px;font-weight:500;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:'Manrope',sans-serif;text-decoration:none;}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.nav-item.active{background:var(--amber);color:#0c0d10;font-weight:700;}
+.nav-icon{font-size:16px;flex-shrink:0;opacity:.7;}
+.nav-item.active .nav-icon{opacity:1;}
+.sidebar-bottom{padding:12px 10px;border-top:1px solid rgba(255,255,255,0.06);}
+.sidebar-actions{display:flex;gap:6px;padding:0 0 8px;}
+.sidebar-btn{flex:1;padding:7px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:none;color:rgba(255,255,255,.5);font-size:11px;font-family:'Manrope',sans-serif;font-weight:600;cursor:pointer;transition:all .15s;}
+.sidebar-btn:hover{background:rgba(255,255,255,0.08);color:#fff;}
+.sidebar-user{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:rgba(255,255,255,0.04);}
+.sidebar-avatar{width:30px;height:30px;background:var(--amber);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:#0c0d10;flex-shrink:0;}
+.sidebar-user-name{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sidebar-user-role{font-size:10px;color:rgba(255,255,255,.3);}
 
-/* Section */
-.section { background: white; border: 1px solid #222222; border-radius: 16px;
-           overflow: hidden; margin-bottom: 20px; }
-.section-header { padding: 20px 28px; border-bottom: 1px solid #222222;
-                  display: flex; align-items: center; justify-content: space-between; }
-.section-title { font-family: 'Bebas Neue', sans-serif; font-size: 18px; font-weight: 700;
-                 color: #ffffff; letter-spacing: -0.3px; }
-.section-body { padding: 28px; }
+/* MAIN */
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.topbar{padding:16px 28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;transition:background .3s,border-color .3s;}
+.topbar-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--text);}
+.topbar-right{display:flex;align-items:center;gap:8px;}
+.theme-btn{width:32px;height:32px;border-radius:7px;border:1px solid var(--border);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s;}
+.theme-btn:hover{border-color:var(--amber);}
+.page-content{padding:24px 28px;}
+@media(max-width:768px){.sidebar{display:none;}.page-content{padding:16px;}}
 
-/* Subscription card */
-.sub-card { display: flex; align-items: center; justify-content: space-between;
-            background: #0a0a0a; border: 1px solid #222222;
-            border-radius: 12px; padding: 20px 24px; flex-wrap: wrap; gap: 16px; }
-.sub-status { display: flex; align-items: center; gap: 12px; }
-.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.status-dot.active   { background: var(--green); }
-.status-dot.trialing { background: var(--amber); }
-.status-dot.canceled { background: #f59e0b; }
-.sub-name { font-weight: 700; font-size: 15px; }
-.sub-detail { font-size: 13px; color: #888888; margin-top: 2px; }
+/* SECTIONS */
+.section{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;transition:background .3s,border-color .3s;animation:fadeUp .5s cubic-bezier(.16,1,.3,1) both;}
+.section-header{padding:14px 20px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;transition:background .3s,border-color .3s;}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--text);transition:color .3s;}
+.section-body{padding:24px 20px;}
 
-/* Form */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media(max-width:600px) { .form-grid { grid-template-columns: 1fr; } }
-.form-group { margin-bottom: 0; }
-.form-group label { display: block; font-size: 12px; font-weight: 600;
-                    color: #cccccc; margin-bottom: 6px; letter-spacing: 0.2px; }
-.form-group input { width: 100%; padding: 11px 14px; border: 1.5px solid #222222;
-                    border-radius: 10px; font-size: 14px; font-family: 'Manrope', sans-serif;
-                    outline: none; color: #ffffff; }
-.form-group input:focus { border-color: #f59e0b; }
-.color-row { display: flex; gap: 10px; align-items: center; }
-.color-row input[type="color"] { width: 44px; height: 44px; padding: 2px 3px;
-                                  border-radius: 10px; cursor: pointer; flex-shrink: 0; }
-.form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+/* SUBSCRIPTION */
+.sub-card{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:18px 20px;flex-wrap:wrap;gap:12px;transition:background .3s,border-color .3s;}
+.sub-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.dot-active{background:var(--green);box-shadow:0 0 6px rgba(34,197,94,.4);}
+.dot-trialing{background:var(--amber);box-shadow:0 0 6px var(--amber-g);}
+.dot-canceled{background:var(--red);}
+.sub-name{font-weight:700;font-size:15px;color:var(--text);}
+.sub-detail{font-size:12px;color:var(--muted);margin-top:2px;}
+.sub-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
 
-/* Sites */
-.site-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-.site-item { display: flex; align-items: center; justify-content: space-between;
-             background: #0a0a0a; border: 1px solid #222222;
-             border-radius: 10px; padding: 12px 16px; }
-.site-item-info h4 { font-size: 14px; font-weight: 600; color: #ffffff; }
-.site-item-info p { font-size: 12px; color: #888888; margin-top: 2px; }
-.add-site-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;
-                 align-items: end; background: #0a0a0a;
-                 border: 1.5px dashed #222222; border-radius: 12px; padding: 16px; }
-@media(max-width:600px) { .add-site-form { grid-template-columns: 1fr; } }
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr;}}
+.form-group{margin-bottom:0;}
+.form-group label{display:block;font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.form-group input,.form-group select{width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:'Manrope',sans-serif;outline:none;background:var(--bg3);color:var(--text);transition:border-color .15s,box-shadow .15s;}
+.form-group input:focus,.form-group select:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-dim);}
+.hint{font-size:11px;color:var(--faint);margin-top:4px;}
+.color-row{display:flex;gap:10px;align-items:center;}
+.color-row input[type="color"]{width:42px;height:40px;padding:2px 3px;border-radius:9px;cursor:pointer;flex-shrink:0;border:1.5px solid var(--border);background:var(--bg3);}
+.form-actions{display:flex;justify-content:flex-end;margin-top:18px;}
 
-/* Buttons */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
-       border-radius: 8px; font-size: 14px; font-weight: 600; border: none;
-       cursor: pointer; font-family: 'Manrope', sans-serif; transition: all 0.15s; }
-.btn-primary { background: #f59e0b; color: white; width: 100%;
-               justify-content: center; padding: 13px; }
-.btn-primary:hover { background: #d97706; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-save { background: #ffffff; color: white; }
-.btn-save:hover { background: #f59e0b; }
-.btn-sm { padding: 7px 14px; font-size: 13px; }
-.btn-red-sm { background: #1a1500; color: #f59e0b; border: none;
-              padding: 6px 12px; border-radius: 6px; font-size: 12px;
-              font-weight: 600; cursor: pointer; font-family: 'Manrope', sans-serif; }
-.btn-red-sm:hover { background: #f59e0b; color: white; }
-.btn-outline { background: white; color: #ffffff; border: 1.5px solid #222222; }
-.btn-outline:hover { border-color: #ffffff; }
-.btn-green { background: var(--green); color: white; }
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:'Manrope',sans-serif;transition:all .15s;letter-spacing:.3px;}
+.btn-amber{background:var(--amber);color:#0c0d10;box-shadow:0 3px 0 var(--amber-d);}
+.btn-amber:hover{transform:translateY(-1px);box-shadow:0 4px 0 var(--amber-d),0 8px 16px var(--amber-g);}
+.btn-outline{background:var(--card);color:var(--text);border:1.5px solid var(--border);}
+.btn-outline:hover{border-color:var(--amber);color:var(--amber);}
+.btn-outline-amber{background:var(--card);color:var(--amber);border:1.5px solid var(--amber);}
+.btn-outline-amber:hover{background:var(--amber);color:#0c0d10;}
+.btn-outline-red{background:var(--card);color:var(--red);border:1.5px solid var(--red);}
+.btn-outline-red:hover{background:var(--red);color:#fff;}
+.btn-sm{padding:6px 12px;font-size:12px;}
 
-/* States */
-.loading { text-align: center; padding: 48px; color: #888888; }
-.spinner { display: inline-block; width: 24px; height: 24px; border: 2.5px solid #222222;
-           border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.toast { position: fixed; bottom: 24px; right: 24px; background: #ffffff; color: white;
-         padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 300;
-         box-shadow: 0 8px 24px rgba(0,0,0,0.15); animation: fadeUp 0.2s ease; }
-.toast.success { background: var(--green); }
-.toast.error   { background: #f59e0b; }
-@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-.error-msg { color: #f59e0b; font-size: 13px; margin-top: 8px; }
+/* SITES */
+.site-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}
+.site-item{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 16px;transition:background .3s,border-color .3s;}
+.site-item h4{font-size:14px;font-weight:600;color:var(--text);transition:color .3s;}
+.site-item p{font-size:12px;color:var(--muted);margin-top:2px;}
+.add-site-form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;background:var(--bg3);border:1.5px dashed var(--border);border-radius:10px;padding:14px;}
+@media(max-width:600px){.add-site-form{grid-template-columns:1fr;}}
+
+/* LOGO */
+.logo-upload-box{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3);}
+.logo-upload-box:hover{border-color:var(--amber);background:var(--amber-dim);}
+
+/* MISC */
+.spinner{display:inline-block;width:26px;height:26px;border:2.5px solid var(--border);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading{text-align:center;padding:48px;color:var(--faint);}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:11px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:300;box-shadow:0 8px 24px var(--shadow2);animation:toastIn .2s ease;}
+.toast.success{border-color:var(--green);color:var(--green);}
+.toast.error{border-color:var(--red);color:var(--red);}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 </style>
 </head>
 <body>
-<svg style="display:none">
-  <symbol id="n2q-logo" viewBox="0 0 40 40">
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="n2q" viewBox="0 0 40 40">
     <path d="M20 5h10l9 9v18a2 2 0 01-2 2H20a2 2 0 01-2-2V7a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
     <path d="M30 5v9h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
     <line x1="23" y1="20" x2="35" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -156,368 +146,282 @@ main { max-width: 900px; margin: 0 auto; padding: 36px 24px; }
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo" style="display:flex;align-items:center;gap:8px;"><svg width="22" height="22" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
-    <p>Sign in to manage your account</p>
-    <input type="text" id="login-number" placeholder="Your WhatsApp number (+447...)" />
-    <input type="password" id="login-password" placeholder="Your password" />
-    <button class="btn btn-primary" onclick="doLogin()">Sign in →</button>
-    <p class="error-msg" id="login-error"></p>
+  <div class="login-card">
+    <div class="login-top">
+      <div class="login-logo"><svg width="22" height="22" viewBox="0 0 40 40"><use href="#n2q" color="white"/></svg>Note2Quote</div>
+      <p>Sign in to manage your account</p>
+    </div>
+    <div class="login-body">
+      <input type="text" id="ln" placeholder="Username or WhatsApp number" />
+      <input type="password" id="lp" placeholder="Password" />
+      <button class="btn-login" onclick="doLogin()">Sign in →</button>
+      <p class="err" id="lerr"></p>
+    </div>
   </div>
 </div>
 
 <!-- APP -->
 <div id="app">
-  <header>
-    <div class="header-logo" style="display:flex;align-items:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 40 40"><use href="#n2q-logo" color="currentColor"/></svg>Note2Quote</div>
-    <nav class="header-nav">
-      <a href="/dashboard" class="nav-link">Dashboard</a>
-      <a href="/account" class="nav-link active">My Account</a>
-    </nav>
-    <button class="logout-btn" onclick="logout()">Sign out</button>
-  </header>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <a href="/"><svg width="18" height="18" viewBox="0 0 40 40"><use href="#n2q" color="white"/></svg>Note2Quote</a>
+        <div class="sidebar-company" id="sb-company"></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-label">Main</div>
+          <a href="/dashboard" class="nav-item"><span class="nav-icon">📊</span>Dashboard</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-label">Settings</div>
+          <button class="nav-item active"><span class="nav-icon">⚙️</span>My Account</button>
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-actions">
+          <button class="sidebar-btn" onclick="toggleTheme()" id="theme-btn">🌙 Theme</button>
+          <button class="sidebar-btn" onclick="logout()">Sign out</button>
+        </div>
+        <div class="sidebar-user">
+          <div class="sidebar-avatar" id="sb-avatar">?</div>
+          <div>
+            <div class="sidebar-user-name" id="sb-name">Loading...</div>
+            <div class="sidebar-user-role">Boss</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  <main id="main-content">
-    <div class="loading"><div class="spinner"></div></div>
-  </main>
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-title">My Account</div>
+        <div class="topbar-right">
+          <button class="theme-btn" onclick="toggleTheme()" id="theme-btn2">🌙</button>
+        </div>
+      </div>
+      <div class="page-content" id="page-content">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-let STATE = { password: "", number: "", data: null };
+var STATE={pw:'',num:'',data:null};
 
-async function doLogin() {
-  const number   = document.getElementById("login-number").value.trim();
-  const password = document.getElementById("login-password").value.trim();
-  if (!number || !password) { document.getElementById("login-error").textContent = "Please fill in both fields."; return; }
+function toggleTheme(){
+  var h=document.documentElement;
+  var n=h.getAttribute('data-theme')==='dark'?'light':'dark';
+  h.setAttribute('data-theme',n);
+  var icon=n==='dark'?'☀️':'🌙';
+  var b1=document.getElementById('theme-btn');var b2=document.getElementById('theme-btn2');
+  if(b1)b1.textContent=icon+' Theme';if(b2)b2.textContent=icon;
+  localStorage.setItem('n2q-theme',n);
+}
+var saved=localStorage.getItem('n2q-theme');
+if(saved){var tb=document.getElementById('theme-btn');var tb2=document.getElementById('theme-btn2');var icon=saved==='dark'?'☀️':'🌙';if(tb)tb.textContent=icon+' Theme';if(tb2)tb2.textContent=icon;}
 
-  const r = await fetch("/api/auth", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password })
-  });
-  const d = await r.json();
-  if (d.ok) {
-    STATE.password = password; STATE.number = number;
-    localStorage.setItem("ss_password", password);
-    localStorage.setItem("ss_number", number);
-    showApp();
-  } else { document.getElementById("login-error").textContent = "Wrong password."; }
+async function doLogin(){
+  var login=document.getElementById('ln').value.trim();
+  var pw=document.getElementById('lp').value.trim();
+  if(!login||!pw){document.getElementById('lerr').textContent='Fill in both fields.';return;}
+  var r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login,password:pw})});
+  var d=await r.json();
+  if(d.ok){STATE.pw=d.session_token||pw;STATE.num=d.whatsapp||login;localStorage.setItem('ss_password',STATE.pw);localStorage.setItem('ss_number',STATE.num);showApp();}
+  else{document.getElementById('lerr').textContent=d.error||'Wrong credentials.';}
 }
 
-function logout() {
-  localStorage.removeItem("ss_password"); localStorage.removeItem("ss_number");
-  location.reload();
+function logout(){localStorage.removeItem('ss_password');localStorage.removeItem('ss_number');localStorage.removeItem('ss_magic');STATE={pw:'',num:'',data:null};document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';}
+
+function apiFetch(url,opts){
+  opts=opts||{};
+  return fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json','X-Dashboard-Password':STATE.pw},opts.headers||{})}));
 }
 
-function apiFetch(url, opts = {}) {
-  return fetch(url, { ...opts, headers: { "Content-Type": "application/json",
-    "X-Dashboard-Password": STATE.password, ...(opts.headers||{}) } });
-}
-
-async function showApp() {
-  document.getElementById("login-screen").style.display = "none";
-  document.getElementById("app").style.display = "block";
+async function showApp(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
   await loadAccount();
 }
 
-async function loadAccount() {
-  const r = await apiFetch(`/api/account?number=${encodeURIComponent(STATE.number)}`);
-  const d = await r.json();
-  STATE.data = d;
+async function loadAccount(){
+  var r=await apiFetch('/api/account?number='+encodeURIComponent(STATE.num));
+  var d=await r.json();
+  STATE.data=d;
+  var c=d.company||{};
+  var name=c.company_name||'My Company';
+  document.getElementById('sb-company').textContent=name;
+  document.getElementById('sb-name').textContent=name;
+  document.getElementById('sb-avatar').textContent=name.charAt(0).toUpperCase();
   renderAccount(d);
 }
 
-function renderAccount(d) {
-  const c  = d.company || {};
-  const ps = d.projects || [];
-  const s  = d.stripe || {};
+function renderAccount(d){
+  var c=d.company||{};var ps=d.projects||[];var s=d.stripe||{};
+  var subStatus=s.status||'unknown';
+  var dotClass=subStatus==='active'?'dot-active':subStatus==='trialing'?'dot-trialing':'dot-canceled';
+  var subLabel=subStatus==='active'?'Active subscription':subStatus==='trialing'?'Free trial':subStatus;
+  var nextDate=s.next_billing?new Date(s.next_billing*1000).toLocaleDateString('en-GB'):'—';
+  var trialDate=s.trial_end?new Date(s.trial_end*1000).toLocaleDateString('en-GB'):null;
 
-  const subStatus = s.status || "unknown";
-  const dotClass  = subStatus === "active" ? "active" : subStatus === "trialing" ? "trialing" : "canceled";
-  const subLabel  = subStatus === "active" ? "Active subscription" : subStatus === "trialing" ? "Free trial" : subStatus;
-  const nextDate  = s.next_billing ? new Date(s.next_billing * 1000).toLocaleDateString("en-GB") : "—";
-  const trialDate = s.trial_end   ? new Date(s.trial_end * 1000).toLocaleDateString("en-GB") : null;
+  var sitesHtml=ps.length?ps.map(function(p){return '<div class="site-item"><div><h4>📍 '+p.site_name+'</h4><p>'+(p.client_name||'No client name set')+'</p></div><button class="btn btn-outline btn-sm" onclick="removeSite('+p.id+',\''+p.site_name+'\')">Remove</button></div>';}).join(''):'<p style="color:var(--muted);font-size:14px;margin-bottom:12px">No sites yet.</p>';
 
-  const sitesHtml = ps.length ? ps.map(p => `
-    <div class="site-item">
-      <div class="site-item-info">
-        <h4>📍 ${p.site_name}</h4>
-        <p>${p.client_name || "No client name set"}</p>
-      </div>
-      <button class="btn-red-sm" onclick="deleteSite(${p.id}, '${p.site_name}')">Remove</button>
-    </div>`).join("") : `<p style="color:#888888;font-size:14px;margin-bottom:16px">No sites added yet. Add your first site below.</p>`;
-
-  document.getElementById("main-content").innerHTML = `
-
-    <!-- Subscription -->
+  document.getElementById('page-content').innerHTML = `
     <div class="section">
-      <div class="section-header">
-        <div class="section-title">Subscription</div>
-      </div>
+      <div class="section-header"><div class="section-title">Subscription</div></div>
       <div class="section-body">
         <div class="sub-card">
-          <div class="sub-status">
-            <div class="status-dot ${dotClass}"></div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="sub-dot ${dotClass}"></div>
             <div>
               <div class="sub-name">Note2Quote Monthly — £49/month</div>
-              <div class="sub-detail">${subLabel}${trialDate ? " · Trial ends " + trialDate : ""}${subStatus === "active" ? " · Next billing " + nextDate : ""}</div>
+              <div class="sub-detail">${subLabel}${trialDate?' · Trial ends '+trialDate:''}${subStatus==='active'?' · Next billing '+nextDate:''}</div>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;flex-wrap:wrap">
-            ${s.billing_url ? `<a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>` : ""}
-            <button class="btn btn-outline btn-sm" style="color:var(--amber);border-color:var(--amber)" onclick="pauseSubscription()">⏸ Pause</button>
-            <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626" onclick="cancelSubscription()">✕ Cancel</button>
-          </div>
         </div>
-      </div>
+        <div class="sub-actions">
+          ${s.billing_url?`<a href="${s.billing_url}" target="_blank" class="btn btn-outline">Manage billing →</a>`:''}
+          <button class="btn btn-outline-amber" onclick="pauseSubscription()">⏸ Pause</button>
+          <button class="btn btn-outline-red" onclick="cancelSubscription()">✕ Cancel</button>
+        </div>
       </div>
     </div>
 
-    <!-- Logo Upload -->
     <div class="section">
-      <div class="section-header">
-        <div class="section-title">Company Logo</div>
-      </div>
+      <div class="section-header"><div class="section-title">Company Logo</div></div>
       <div class="section-body">
-        <p style="font-size:14px;color:#888888;margin-bottom:16px;font-weight:300">
-          Your logo will appear on all branded PDF documents sent to clients.
-        </p>
-        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-          ${c.logo_url ? `<img src="${c.logo_url}" style="max-height:60px;max-width:200px;border:1px solid #222222;border-radius:8px;padding:8px;background:white" alt="Logo" />` : `<div style="width:120px;height:60px;border:2px dashed #222222;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#888888;font-size:12px">No logo</div>`}
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:300">Appears on all branded PDF documents sent to clients.</p>
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+          ${c.logo_url?`<img src="${c.logo_url}" style="max-height:56px;max-width:180px;border:1px solid var(--border);border-radius:8px;padding:8px;background:white" alt="Logo" />`:'<div style="width:100px;height:56px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px">No logo</div>'}
           <div>
             <input type="file" id="logo-file" accept="image/*" style="display:none" onchange="uploadLogo(this)" />
-            <button class="btn btn-outline" onclick="document.getElementById('logo-file').click()">
-              ${c.logo_url ? 'Change logo' : 'Upload logo'}
-            </button>
-            <p style="font-size:11px;color:#888888;margin-top:6px">PNG, JPG or SVG · Max 2MB · Transparent background recommended</p>
+            <button class="btn btn-outline" onclick="document.getElementById('logo-file').click()">${c.logo_url?'Change logo':'Upload logo'}</button>
+            <p style="font-size:11px;color:var(--faint);margin-top:6px">PNG, JPG or SVG · Max 2MB</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Company Details -->
     <div class="section">
-      <div class="section-header">
-        <div class="section-title">Company Details</div>
-      </div>
+      <div class="section-header"><div class="section-title">Company Details</div></div>
       <div class="section-body">
         <div class="form-grid">
-          <div class="form-group">
-            <label>Company Name</label>
-            <input type="text" id="f-company-name" value="${c.company_name || ""}" />
-          </div>
-          <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" id="f-email" value="${c.email || ""}" />
-          </div>
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input type="tel" id="f-phone" value="${c.phone || ""}" />
-          </div>
-          <div class="form-group">
-            <label>VAT Number</label>
-            <input type="text" id="f-vat" value="${c.vat_number || ""}" />
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>Company Address</label>
-            <input type="text" id="f-address" value="${c.address || ""}" />
-          </div>
-          <div class="form-group">
-            <label>Brand Colour</label>
-            <div class="color-row">
-              <input type="color" id="f-color-picker" value="${c.primary_color || "#d62828"}"
-                     oninput="document.getElementById('f-color-hex').value=this.value" />
-              <input type="text" id="f-color-hex" value="${c.primary_color || "#d62828"}"
-                     oninput="document.getElementById('f-color-picker').value=this.value" />
-            </div>
-          </div>
+          <div class="form-group"><label>Company Name</label><input type="text" id="f-name" value="${c.company_name||''}" /></div>
+          <div class="form-group"><label>Email Address</label><input type="email" id="f-email" value="${c.email||''}" /></div>
+          <div class="form-group"><label>Phone</label><input type="tel" id="f-phone" value="${c.phone||''}" /></div>
+          <div class="form-group"><label>VAT Number</label><input type="text" id="f-vat" value="${c.vat_number||''}" /></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Company Address</label><input type="text" id="f-address" value="${c.address||''}" /></div>
+          <div class="form-group"><label>Brand Colour</label><div class="color-row"><input type="color" id="f-color-picker" value="${c.primary_color||'#f59e0b'}" oninput="document.getElementById('f-color-hex').value=this.value" /><input type="text" id="f-color-hex" value="${c.primary_color||'#f59e0b'}" oninput="document.getElementById('f-color-picker').value=this.value" /></div></div>
         </div>
-        <div class="form-actions">
-          <button class="btn btn-save" onclick="saveCompany()">Save changes</button>
-        </div>
+        <div class="form-actions"><button class="btn btn-amber" onclick="saveCompany()">Save details</button></div>
       </div>
     </div>
 
-    <!-- Sites -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">My Sites</div>
-      </div>
-      <div class="section-body">
-        <div class="site-list" id="site-list">${sitesHtml}</div>
-        <div class="add-site-form">
-          <div class="form-group">
-            <label>Site Name</label>
-            <input type="text" id="new-site-name" placeholder="e.g. Brookfield Site" />
-          </div>
-          <div class="form-group">
-            <label>Client Name</label>
-            <input type="text" id="new-client-name" placeholder="e.g. Brookfield Developments Ltd" />
-          </div>
-          <button class="btn btn-green" onclick="addSite()">Add site</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Login settings -->
     <div class="section">
       <div class="section-header"><div class="section-title">Dashboard Login</div></div>
       <div class="section-body">
-        <p style="font-size:14px;color:var(--muted);margin-bottom:20px;font-weight:300">
-          Set a username so you can log in without typing your phone number. You can also set a personal password different from the shared one.
-        </p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px;font-weight:300">Set a username and personal password so you don't need to type your phone number each time.</p>
         <div class="form-grid">
-          <div class="form-group">
-            <label>Username</label>
-            <input type="text" id="f-username" placeholder="e.g. aaron.green" value="${c.username||''}" />
-            <div class="hint">Lowercase, no spaces. Used to log into your dashboard.</div>
-          </div>
-          <div class="form-group">
-            <label>New Password <span style="font-weight:300;opacity:.5">(leave blank to keep current)</span></label>
-            <input type="password" id="f-new-password" placeholder="Set a new password" />
-          </div>
+          <div class="form-group"><label>Username</label><input type="text" id="f-username" value="${c.username||''}" placeholder="e.g. aaron.green" /><div class="hint">Lowercase, no spaces</div></div>
+          <div class="form-group"><label>New Password <span style="font-weight:300;opacity:.5;text-transform:none">(leave blank to keep current)</span></label><input type="password" id="f-new-pw" placeholder="Set a new password" /></div>
         </div>
-        <div class="form-actions">
-          <button class="btn btn-save" onclick="saveLoginSettings()">Save login settings</button>
+        <div class="form-actions"><button class="btn btn-amber" onclick="saveLoginSettings()">Save login settings</button></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header"><div class="section-title">My Sites</div></div>
+      <div class="section-body">
+        <div class="site-list">${sitesHtml}</div>
+        <div class="add-site-form">
+          <div class="form-group"><label>Site Name</label><input type="text" id="new-site" placeholder="Brookfield Site" /></div>
+          <div class="form-group"><label>Client Name</label><input type="text" id="new-client" placeholder="Brookfield Developments" /></div>
+          <button class="btn btn-amber" onclick="addSite()">Add</button>
         </div>
       </div>
     </div>
 
-    <!-- WhatsApp info -->
     <div class="section">
       <div class="section-header"><div class="section-title">WhatsApp Bot</div></div>
       <div class="section-body">
-        <p style="font-size:14px;color:#888888;margin-bottom:16px;font-weight:300">
-          Your bot is connected to this WhatsApp number. Share the bot number with your team so they can log site activity.
-        </p>
-        <div style="background:#0a0a0a;border:1px solid #222222;border-radius:10px;padding:16px 20px">
-          <div style="font-size:12px;color:#888888;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Your WhatsApp number</div>
-          <div style="font-size:16px;font-weight:700;color:#ffffff">${c.whatsapp_number ? c.whatsapp_number.replace("whatsapp:", "") : "—"}</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:300">Your bot is connected to this WhatsApp number. Share the bot number with your team so they can log site activity.</p>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 18px;transition:background .3s,border-color .3s;">
+          <div style="font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Your WhatsApp number</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;color:var(--text)">${(c.whatsapp_number||'—').replace('whatsapp:','')}</div>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
+}
+
+async function saveCompany(){
+  var payload={company_name:document.getElementById('f-name').value.trim(),email:document.getElementById('f-email').value.trim(),phone:document.getElementById('f-phone').value.trim(),vat_number:document.getElementById('f-vat').value.trim(),address:document.getElementById('f-address').value.trim(),primary_color:document.getElementById('f-color-hex').value.trim()};
+  var r=await apiFetch('/api/account/company?number='+encodeURIComponent(STATE.num),{method:'PATCH',body:JSON.stringify(payload)});
+  var d=await r.json();
+  if(d.ok)showToast('✓ Details saved!','success');else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
 async function saveLoginSettings(){
-  const username = document.getElementById('f-username').value.trim();
-  const newPw    = document.getElementById('f-new-password').value.trim();
+  var username=document.getElementById('f-username').value.trim();
+  var newPw=document.getElementById('f-new-pw').value.trim();
   if(!username){showToast('Please enter a username','error');return;}
-  const payload = {username};
-  if(newPw) payload.dashboard_password = newPw;
-  const r = await apiFetch(`/api/account/login?number=${encodeURIComponent(STATE.number)}`,{
-    method:'PATCH', body:JSON.stringify(payload)
-  });
-  const d = await r.json();
-  if(d.ok){
-    showToast('✓ Login settings saved!','success');
-    if(newPw){showToast('Password updated — use it next time you log in','success');}
-  } else {
-    showToast('❌ '+(d.error||'Failed to save'),'error');
-  }
+  var payload={username};if(newPw)payload.dashboard_password=newPw;
+  var r=await apiFetch('/api/account/login?number='+encodeURIComponent(STATE.num),{method:'PATCH',body:JSON.stringify(payload)});
+  var d=await r.json();
+  if(d.ok)showToast('✓ Login settings saved!','success');else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
-async function saveCompany() {
-  const payload = {
-    company_name:  document.getElementById("f-company-name").value.trim(),
-    email:         document.getElementById("f-email").value.trim(),
-    phone:         document.getElementById("f-phone").value.trim(),
-    vat_number:    document.getElementById("f-vat").value.trim(),
-    address:       document.getElementById("f-address").value.trim(),
-    primary_color: document.getElementById("f-color-hex").value.trim(),
-  };
-
-  const r = await apiFetch(`/api/account/company?number=${encodeURIComponent(STATE.number)}`, {
-    method: "PATCH", body: JSON.stringify(payload)
-  });
-  const d = await r.json();
-  if (d.ok) { showToast("✓ Details saved!", "success"); }
-  else { showToast("❌ " + (d.error || "Failed to save"), "error"); }
+async function uploadLogo(input){
+  var file=input.files[0];if(!file)return;
+  if(file.size>2*1024*1024){showToast('File too large. Max 2MB.','error');return;}
+  showToast('Uploading...','');
+  var r=await apiFetch('/api/account/logo?number='+encodeURIComponent(STATE.num),{method:'POST',headers:{'X-Dashboard-Password':STATE.pw,'Content-Type':file.type},body:file});
+  var d=await r.json();
+  if(d.ok){showToast('✓ Logo uploaded!','success');await loadAccount();}
+  else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
-async function addSite() {
-  const site_name   = document.getElementById("new-site-name").value.trim();
-  const client_name = document.getElementById("new-client-name").value.trim();
-  if (!site_name) { showToast("Please enter a site name", "error"); return; }
-
-  const r = await apiFetch(`/api/account/sites?number=${encodeURIComponent(STATE.number)}`, {
-    method: "POST", body: JSON.stringify({ site_name, client_name })
-  });
-  const d = await r.json();
-  if (d.ok) {
-    showToast("✓ Site added!", "success");
-    document.getElementById("new-site-name").value = "";
-    document.getElementById("new-client-name").value = "";
-    await loadAccount();
-  } else { showToast("❌ " + (d.error || "Failed"), "error"); }
+async function addSite(){
+  var site=document.getElementById('new-site').value.trim();
+  var client=document.getElementById('new-client').value.trim();
+  if(!site){showToast('Enter a site name','error');return;}
+  var r=await apiFetch('/api/account/sites?number='+encodeURIComponent(STATE.num),{method:'POST',body:JSON.stringify({site_name:site,client_name:client})});
+  var d=await r.json();
+  if(d.ok){showToast('✓ Site added!','success');document.getElementById('new-site').value='';document.getElementById('new-client').value='';await loadAccount();}
+  else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
-async function deleteSite(id, name) {
-  if (!confirm(`Remove "${name}" from your active sites?`)) return;
-  const r = await apiFetch(`/api/account/sites/${id}`, { method: "DELETE" });
-  const d = await r.json();
-  if (d.ok) { showToast("Site removed", "success"); await loadAccount(); }
-  else { showToast("❌ " + (d.error || "Failed"), "error"); }
+async function removeSite(id,name){
+  if(!confirm('Remove "'+name+'" from active sites?'))return;
+  var r=await apiFetch('/api/account/sites/'+id,{method:'DELETE'});
+  var d=await r.json();
+  if(d.ok){showToast('Site removed','success');await loadAccount();}
+  else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
-async function uploadLogo(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) { showToast("File too large. Max 2MB.", "error"); return; }
-
-  showToast("Uploading logo...", "");
-
-  const r = await apiFetch(`/api/account/logo?number=${encodeURIComponent(STATE.number)}`, {
-    method: "POST",
-    headers: { "X-Dashboard-Password": STATE.password },
-    body: await fileToBase64(file, file.type),
-  });
-
-  const d = await r.json();
-  if (d.ok) { showToast("✓ Logo uploaded!", "success"); await loadAccount(); }
-  else { showToast("❌ " + (d.error || "Upload failed"), "error"); }
-}
-
-function fileToBase64(file, mimeType) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const blob = new Blob([reader.result], { type: mimeType });
-      resolve(blob);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-async function pauseSubscription(){
-  if(!confirm('Pause your subscription for one month? You will not be charged but access continues until the end of your current period.'))return;
-  const s=STATE.data&&STATE.data.stripe;
+function pauseSubscription(){
+  var s=STATE.data&&STATE.data.stripe;
   if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
-  else{showToast('Open billing portal to manage your subscription','');}
+  else{showToast('Contact support to pause your subscription','');}
 }
 
-async function cancelSubscription(){
-  if(!confirm('Are you sure you want to cancel? You will keep access until the end of your billing period.'))return;
-  const s=STATE.data&&STATE.data.stripe;
+function cancelSubscription(){
+  if(!confirm('Are you sure you want to cancel? You keep access until the end of your billing period.'))return;
+  var s=STATE.data&&STATE.data.stripe;
   if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
-  else{showToast('Open billing portal to cancel','');}
+  else{showToast('Contact support to cancel your subscription','');}
 }
 
-function showToast(msg, type = "") {
-  const t = document.createElement("div");
-  t.className = `toast ${type}`; t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3500);
+function showToast(msg,type){
+  var t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;
+  document.body.appendChild(t);setTimeout(function(){t.remove();},3000);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  const pw  = localStorage.getItem("ss_password");
-  const num = localStorage.getItem("ss_number");
-  if (pw && num) { STATE.password = pw; STATE.number = num; showApp(); }
+window.addEventListener('DOMContentLoaded',function(){
+  var pw=localStorage.getItem('ss_password');var num=localStorage.getItem('ss_number');
+  if(pw&&num){STATE.pw=pw;STATE.num=num;showApp();}
 });
-
-document.addEventListener("keydown", e => {
-  if (e.key === "Enter" && document.getElementById("login-screen").style.display !== "none") doLogin();
-});
+document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 </script>
 </body>
 </html>
