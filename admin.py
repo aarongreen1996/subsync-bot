@@ -239,3 +239,53 @@ def cancel_subscription():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ── Send welcome message ──────────────────────────────────────────────────────
+@admin_bp.route("/api/admin/send-welcome", methods=["POST"])
+def admin_send_welcome():
+    data = request.json or {}
+    # Accept either admin header auth or body password
+    if not check_auth() and data.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    whatsapp     = data.get("whatsapp", "")
+    company_name = data.get("company_name", "Your Company")
+    if not whatsapp:
+        return jsonify({"error": "whatsapp required"}), 400
+
+    import secrets
+    from datetime import datetime, timezone, timedelta
+    from twilio.rest import Client as TwilioClient
+
+    # Create 24hr magic link
+    token   = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    http_requests.post(
+        f"{SUPABASE_URL}/rest/v1/auth_tokens",
+        json={"token": token, "whatsapp": whatsapp, "expires_at": expires, "used": False},
+        headers={**sb_headers(), "Prefer": "return=minimal"}
+    )
+
+    APP_URL   = os.environ.get("APP_URL", "https://www.subsync.xyz")
+    login_url = f"{APP_URL}/login?token={token}"
+
+    msg = (
+        "Welcome to Note2Quote, " + company_name + "!\n\n"
+        "You are all set up and ready to go.\n\n"
+        "Tap to open your dashboard:\n" + login_url + "\n\n"
+        "To log your first variation, send something like:\n"
+        "\"Variation on Brookfield Site - extra sockets in kitchen, 2 hours, 80 quid\"\n\n"
+        "Or just send a voice note and we will transcribe it automatically.\n\n"
+        "Reply HELP anytime to see all commands. Good luck on site!"
+    )
+
+    try:
+        TWILIO_SID   = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        TWILIO_FROM  = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+        client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+        client.messages.create(from_=TWILIO_FROM, to=whatsapp, body=msg)
+        return jsonify({"ok": True, "login_url": login_url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
