@@ -259,6 +259,7 @@ tr:hover td{background:var(--bg3);}
           <div class="nav-section-label">Finance</div>
           <button class="nav-item" onclick="goto('purchase-orders')" id="nav-purchase-orders"><span class="nav-icon">📦</span>Purchase Orders</button>
           <button class="nav-item" onclick="goto('documents')" id="nav-documents"><span class="nav-icon">📄</span>Documents Sent</button>
+          <button class="nav-item" onclick="goto('clients')" id="nav-clients"><span class="nav-icon">👥</span>Clients</button>
         </div>
       </nav>
       <div class="sidebar-actions">
@@ -298,6 +299,7 @@ tr:hover td{background:var(--bg3);}
     <button class="mobile-nav-item" onclick="goto('sites')" id="mnav-sites"><span class="mobile-nav-icon">📍</span>Sites</button>
     <button class="mobile-nav-item" onclick="goto('purchase-orders')" id="mnav-purchase-orders"><span class="mobile-nav-icon">📦</span>Orders</button>
     <button class="mobile-nav-item" onclick="goto('documents')" id="mnav-documents"><span class="mobile-nav-icon">📄</span>Docs</button>
+    <button class="mobile-nav-item" onclick="goto('clients')" id="mnav-clients"><span class="mobile-nav-icon">👥</span>Clients</button>
   </nav>
 </div>
 
@@ -442,7 +444,7 @@ function goto(page){
   document.querySelectorAll('.mobile-nav-item').forEach(function(el){el.classList.remove('active');});
   var mni=document.getElementById('mnav-'+page);if(mni)mni.classList.add('active');
   // Title
-  var titles={overview:'Overview',logs:'All Logs',sites:'My Sites','purchase-orders':'Purchase Orders',documents:'Documents Sent'};
+  var titles={overview:'Overview',logs:'All Logs',sites:'My Sites','purchase-orders':'Purchase Orders',documents:'Documents Sent',clients:'Clients'};
   document.getElementById('page-title').textContent=titles[page]||page;
   renderPage();
 }
@@ -454,6 +456,7 @@ function renderPage(){
   else if(S.page==='sites') renderSites();
   else if(S.page==='purchase-orders') renderPOs();
   else if(S.page==='documents') renderDocuments();
+  else if(S.page==='clients') renderClients();
 }
 
 // ── FILTER BAR ─────────────────────────────────────────────────────────────
