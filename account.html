@@ -262,13 +262,13 @@ function renderAccount(d) {
               <div class="sub-detail">${subLabel}${trialDate ? " · Trial ends " + trialDate : ""}${subStatus === "active" ? " · Next billing " + nextDate : ""}</div>
             </div>
           </div>
-${s.billing_url ? `
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>
-              <button class="btn btn-outline btn-sm" style="color:var(--amber);border-color:var(--amber)" onclick="pauseSubscription()">Pause</button>
-              <button class="btn btn-outline btn-sm" style="color:var(--red,#dc2626);border-color:var(--red,#dc2626)" onclick="cancelSubscription()">Cancel</button>
-            </div>` : ""}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;flex-wrap:wrap">
+            ${s.billing_url ? `<a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>` : ""}
+            <button class="btn btn-outline btn-sm" style="color:var(--amber);border-color:var(--amber)" onclick="pauseSubscription()">⏸ Pause</button>
+            <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626" onclick="cancelSubscription()">✕ Cancel</button>
+          </div>
         </div>
+      </div>
       </div>
     </div>
 
