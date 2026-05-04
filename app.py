@@ -157,11 +157,19 @@ GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purc
                       "variation report", "daywork report", "material report",
                       "produce report", "get variations", "send variations"]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
-DASHBOARD_KEYWORDS = ["dashboard", "my password", "password", "login", "log in", "sign in", "portal"]
+DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "dashboard link", "my password", "get login", "login link"]
+SUMMARY_KEYWORDS   = ["summary", "overview", "my summary", "show summary", "stats", "how am i doing", "my stats"]
+PENDING_KEYWORDS   = ["pending", "what's pending", "show pending", "outstanding", "not approved"]
+APPROVE_KEYWORDS   = ["approve", "approved", "mark approved"]
+CHASE_KEYWORDS     = ["chasing", "chase", "mark chasing", "follow up"]
+CANCEL_KEYWORDS    = ["cancel", "cancelled", "mark cancelled", "mark canceled"]
 
 def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
 def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
 def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
+def is_summary_command(msg):   return any(kw in msg.lower() for kw in SUMMARY_KEYWORDS)
+def is_pending_command(msg):   return any(kw in msg.lower() for kw in PENDING_KEYWORDS)
+def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -259,6 +267,9 @@ def webhook():
         return handle_pending(from_number, incoming_msg)
 
     if is_dashboard_command(incoming_msg): return handle_dashboard_command(from_number)
+    if is_summary_command(incoming_msg):   return handle_summary(from_number)
+    if is_pending_command(incoming_msg):   return handle_pending_summary(from_number)
+    if is_status_command(incoming_msg):    return handle_status_update(from_number, incoming_msg)
     if is_help_command(incoming_msg):      return _reply(HELP_TEXT)
     if is_generate_command(incoming_msg):  return handle_generate(from_number, incoming_msg)
 
@@ -319,6 +330,25 @@ def handle_pending(from_number, msg):
             create_site(from_number, site_name)
 
         del pending_selections[from_number]
+
+        # Status update flow (not a normal log)
+        if log_data.get("_status_update"):
+            from urllib.parse import quote as _q
+            encoded = encode_number(from_number)
+            new_status = log_data.get("new_status", "pending")
+            past_tense = log_data.get("past_tense", "updated")
+            emoji      = log_data.get("emoji", "✅")
+            logs = db_get("site_logs?from_number=eq." + encoded + "&status=eq.pending&site_name=eq." + _q(site_name))
+            if isinstance(logs, list) and logs:
+                for log in logs:
+                    db_patch("site_logs?id=eq." + str(log["id"]), {"status": new_status})
+                total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
+                total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
+                out = emoji + " *" + str(len(logs)) + " item(s) " + past_tense + "* for *" + site_name + "*"
+                out += "\nTotal value: £" + ("%.2f" % total_val)
+                return _reply(out)
+                return _reply(out)
+                return _reply("No pending items found for *" + site_name + "*.")
 
         # Multi-item bulk save
         if log_data.get("_multi"):
@@ -1011,6 +1041,117 @@ if(window.matchMedia('(pointer:fine)').matches){
 </body>
 </html>
 '''
+
+
+
+# ── Summary command ─────────────────────────────────────────────────────────
+def handle_summary(from_number):
+    try:
+        encoded   = encode_number(from_number)
+        logs      = db_get("site_logs?from_number=eq." + encoded + "&order=created_at.desc")
+        companies = db_get("companies?whatsapp_number=eq." + encoded + "&limit=1")
+        company_name = companies[0].get("company_name", "Your Company") if isinstance(companies, list) and companies else "Your Company"
+        if not isinstance(logs, list): logs = []
+        pending   = [l for l in logs if l.get("status") == "pending"]
+        approved  = [l for l in logs if l.get("status") == "approved"]
+        chasing   = [l for l in logs if l.get("status") == "chasing"]
+        sent      = [l for l in logs if l.get("status") == "sent"]
+        pend_val  = sum(float(l.get("cost_estimate") or 0) for l in pending)
+        appr_val  = sum(float(l.get("cost_estimate") or 0) for l in approved)
+        chase_val = sum(float(l.get("cost_estimate") or 0) for l in chasing)
+        site_map  = {}
+        for l in pending:
+            site = l.get("site_name") or "Unassigned"
+            if site not in site_map: site_map[site] = {"count": 0, "value": 0.0}
+            site_map[site]["count"] += 1
+            site_map[site]["value"] += float(l.get("cost_estimate") or 0)
+        out = []
+        out.append("📊 *" + company_name + " — Dashboard Summary*")
+        out.append("")
+        out.append("📋 *Pending:* " + str(len(pending)) + " items · £" + ("%.2f" % pend_val))
+        out.append("✅ *Approved:* " + str(len(approved)) + " items · £" + ("%.2f" % appr_val))
+        out.append("⏰ *Chasing:* " + str(len(chasing)) + " items · £" + ("%.2f" % chase_val))
+        out.append("📄 *Docs sent:* " + str(len(sent)) + " total")
+        out.append("")
+        if site_map:
+            out.append("*By Site (pending):*")
+            for site, info in sorted(site_map.items(), key=lambda x: -x[1]["value"]):
+                out.append("📍 " + site + " — " + str(info["count"]) + " items · £" + ("%.2f" % info["value"]))
+            out.append("")
+        out.append("*Quick commands:*")
+        out.append("Reply *pending* — see full list")
+        out.append("Reply *approve [site]* — mark as approved")
+        out.append("Reply *my dashboard* — get login link")
+        return _reply("\n".join(out))
+    except Exception as e:
+        return _reply("⚠️ Couldn't get summary. (" + str(e)[:80] + ")")
+
+
+# ── Pending list command ──────────────────────────────────────────────────────
+def handle_pending_summary(from_number):
+    try:
+        encoded = encode_number(from_number)
+        logs    = db_get("site_logs?from_number=eq." + encoded + "&status=eq.pending&order=created_at.desc&limit=20")
+        if not isinstance(logs, list) or not logs:
+            return _reply("✅ No pending items! All caught up.")
+        total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
+        out = ["📋 *Pending Items (" + str(len(logs)) + ") · £" + ("%.2f" % total_val) + "*", ""]
+        for i, l in enumerate(logs, 1):
+            site  = l.get("site_name") or "No site"
+            desc  = (l.get("description") or "—")[:40]
+            cost  = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
+            ltype = (l.get("type") or "?").replace("_", " ").title()
+            out.append(str(i) + ". *" + ltype + "* — " + desc)
+            out.append("   📍 " + site + (" · " + cost if cost else ""))
+        out.append("")
+        out.append("Reply *approve [site name]* to mark as approved")
+        out.append("Reply *summary* for full overview")
+        return _reply("\n".join(out))
+    except Exception as e:
+        return _reply("⚠️ Couldn't get pending list. (" + str(e)[:80] + ")")
+
+
+# ── Status update command ─────────────────────────────────────────────────────
+def handle_status_update(from_number, msg):
+    try:
+        from urllib.parse import quote as _quote
+        msg_lower = msg.lower()
+        projects  = get_projects(from_number)
+        encoded   = encode_number(from_number)
+        if any(kw in msg_lower for kw in APPROVE_KEYWORDS):
+            new_status, past_tense, emoji = "approved", "approved", "✅"
+        elif any(kw in msg_lower for kw in CHASE_KEYWORDS):
+            new_status, past_tense, emoji = "chasing", "marked as chasing", "⏰"
+        elif any(kw in msg_lower for kw in CANCEL_KEYWORDS):
+            new_status, past_tense, emoji = "cancelled", "cancelled", "❌"
+        else:
+            return _reply("Could not understand status command. Try: *approve [site name]*")
+        site_name = match_site(msg, projects)
+        if site_name:
+            logs = db_get("site_logs?from_number=eq." + encoded + "&status=eq.pending&site_name=eq." + _quote(site_name))
+            if not isinstance(logs, list) or not logs:
+                return _reply("No pending items found for *" + site_name + "*.")
+            for log in logs:
+                db_patch("site_logs?id=eq." + str(log["id"]), {"status": new_status})
+            total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
+            return _reply(emoji + " *" + str(len(logs)) + " item(s) " + past_tense + "* for *" + site_name + "*\n"
+                          + "Total value: £" + ("%.2f" % total_val) + "\n\n"
+                          + "Reply *summary* to see your full overview.")
+        elif projects:
+            pending_selections[from_number] = {
+                "pending_log": {"_status_update": True, "new_status": new_status, "past_tense": past_tense, "emoji": emoji},
+                "projects": projects, "awaiting_type": False, "awaiting_site": True,
+            }
+            out = ["Which site do you want to " + new_status + "?\n"]
+            for i, p in enumerate(projects, 1):
+                out.append(str(i) + ". " + p["site_name"])
+            out.append("\nReply with a number or site name.")
+            return _reply("\n".join(out))
+        else:
+            return _reply("No sites found. Add sites via WhatsApp or your account portal.")
+    except Exception as e:
+        return _reply("⚠️ Couldn't update status. (" + str(e)[:80] + ")")
+
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 @app.route("/")
