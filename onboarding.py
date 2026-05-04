@@ -156,3 +156,44 @@ def send_welcome_message(to_number, company_name):
         )
     except Exception as e:
         print(f"Welcome message error: {e}")
+
+
+@onboarding_bp.route('/api/signup/logo', methods=['POST'])
+def upload_signup_logo():
+    """Upload logo at signup time and store against company."""
+    whatsapp = request.args.get('whatsapp', '')
+    if not whatsapp:
+        return jsonify({'error': 'whatsapp required'}), 400
+
+    file = request.files.get('logo')
+    if not file:
+        return jsonify({'error': 'No file'}), 400
+
+    import requests as _r
+    SURL = os.environ.get('SUPABASE_URL', '').rstrip('/')
+    SKEY = os.environ.get('SUPABASE_KEY', '')
+
+    content_type = file.content_type or 'image/png'
+    ext = 'png' if 'png' in content_type else 'jpg' if 'jpg' in content_type else 'png'
+    clean = whatsapp.replace('whatsapp:', '').replace('+', '').replace('%2B', '')
+    filename = clean + '.' + ext
+
+    r = _r.post(
+        f"{SURL}/storage/v1/object/logos/{filename}",
+        data=file.read(),
+        headers={'apikey': SKEY, 'Authorization': f'Bearer {SKEY}',
+                 'Content-Type': content_type, 'x-upsert': 'true'}
+    )
+    if r.status_code not in (200, 201):
+        return jsonify({'error': 'Upload failed'}), 500
+
+    logo_url = f"{SURL}/storage/v1/object/public/logos/{filename}"
+    encoded  = whatsapp.replace('+', '%2B')
+
+    _r.patch(
+        f"{SURL}/rest/v1/companies?whatsapp_number=eq.{encoded}",
+        json={'logo_url': logo_url},
+        headers={'apikey': SKEY, 'Authorization': f'Bearer {SKEY}',
+                 'Content-Type': 'application/json', 'Prefer': 'return=minimal'}
+    )
+    return jsonify({'ok': True, 'logo_url': logo_url})
