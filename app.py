@@ -1153,41 +1153,47 @@ def handle_status_update(from_number, msg):
         return _reply("⚠️ Couldn't update status. (" + str(e)[:80] + ")")
 
 
-# ── Pages ─────────────────────────────────────────────────────────────────────
-@app.route("/")
-def landing():
-    return Response(LANDING_HTML, mimetype="text/html")
-
-@app.route("/signup")
-def signup():
-    return Response(read_html("signup.html"), mimetype="text/html")
-
-@app.route("/dashboard")
-def dashboard_page():
-    return Response(read_html("dashboard.html"), mimetype="text/html")
-
-@app.route("/admin")
-def admin_page():
-    return Response(read_html("admin.html"), mimetype="text/html")
-
-@app.route("/welcome")
-def welcome():
-    return Response(read_html("welcome.html"), mimetype="text/html")
-
-@app.route("/account")
-def account_page():
-    return Response(read_html("account.html"), mimetype="text/html")
-
-@app.route("/health")
-def health():
-    return "Note2Quote is running ✅", 200
 
 
-def _reply(msg):
-    resp = MessagingResponse()
-    resp.message(msg)
-    return Response(str(resp), mimetype="application/xml")
 
 
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+# Manual welcome trigger (test accounts bypassing Stripe)
+@app.route('/api/admin/send-welcome', methods=['POST'])
+def send_welcome_manual():
+    import os as _os, secrets
+    from datetime import datetime, timezone, timedelta
+    admin_pw = _os.environ.get('ADMIN_PASSWORD', 'admin123')
+    data = request.json or {}
+    if data.get('admin_password') != admin_pw:
+        return jsonify({'error': 'Unauthorized'}), 401
+    whatsapp     = data.get('whatsapp', '')
+    company_name = data.get('company_name', 'Your Company')
+    if not whatsapp:
+        return jsonify({'error': 'whatsapp required'}), 400
+    APP_URL = _os.environ.get('APP_URL', 'https://www.subsync.xyz')
+    SURL    = _os.environ.get('SUPABASE_URL', '').rstrip('/')
+    SKEY    = _os.environ.get('SUPABASE_KEY', '')
+    token   = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    import requests as _r
+    _r.post(SURL + '/rest/v1/auth_tokens',
+        json={'token': token, 'whatsapp': whatsapp, 'expires_at': expires, 'used': False},
+        headers={'apikey': SKEY, 'Authorization': 'Bearer ' + SKEY,
+                 'Content-Type': 'application/json', 'Prefer': 'return=minimal'})
+    login_url = APP_URL + '/login?token=' + token
+    msg = ('Welcome to Note2Quote, ' + company_name + '!' + chr(10) + chr(10) +
+           'You are all set up and ready to go.' + chr(10) + chr(10) +
+           'Your dashboard login link:' + chr(10) + login_url + chr(10) + chr(10) +
+           'To get started try sending:' + chr(10) +
+           'Variation on [Site Name] — description, hours, cost' + chr(10) + chr(10) +
+           'Or send a voice note and we will transcribe it automatically.' + chr(10) + chr(10) +
+           'Reply help anytime to see all commands. Good luck on site!')
+    try:
+        from twilio.rest import Client as _TC
+        client = _TC(_os.environ.get('TWILIO_ACCOUNT_SID', ''), _os.environ.get('TWILIO_AUTH_TOKEN', ''))
+        client.messages.create(
+            from_=_os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886'),
+            to=whatsapp, body=msg)
+        return jsonify({'ok': True, 'login_url': login_url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
