@@ -29,6 +29,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);min
 .btn-outline:hover{border-color:var(--amber);color:var(--amber);}
 .btn-red{background:rgba(239,68,68,0.1);color:var(--red);border:1px solid rgba(239,68,68,0.2);font-size:11px;padding:5px 10px;}
 .btn-red:hover{background:var(--red);color:white;}
+.btn-ghost-amber{background:rgba(245,158,11,0.1);color:#d97706;border:none;font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:700;}
+.btn-ghost-amber:hover{background:#f59e0b;color:#0d0f14;}
 .error-msg{color:var(--red);font-size:12px;margin-top:8px;}
 
 /* App */
@@ -197,6 +199,7 @@ tr:hover td{background:var(--bg-3);cursor:pointer;}
       <div id="modal-logs"></div>
     </div>
     <div class="modal-actions">
+      <button class="btn-ghost-amber" onclick="sendWelcome()">📱 Send Welcome</button>
       <button class="btn btn-red btn-sm" id="cancel-sub-btn" onclick="cancelSubscription()" style="display:none">Cancel Subscription</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
     </div>
@@ -500,6 +503,15 @@ async function cancelSubscription(){
 
 function closeModal(){document.getElementById("customer-modal").style.display="none";}
 
+async function sendWelcome(){
+  var c = STATE.currentCustomer && STATE.currentCustomer.company;
+  if(!c){showToast('No customer selected','error');return;}
+  if(!confirm('Send welcome WhatsApp to ' + c.company_name + '?')) return;
+  var r = await apiFetch('/api/admin/send-welcome',{method:'POST',body:JSON.stringify({whatsapp:c.whatsapp_number,company_name:c.company_name})});
+  var d = await r.json();
+  if(d.ok){showToast('Welcome sent to ' + c.company_name,'success');}
+  else{showToast('Failed: '+(d.error||'Unknown'),'error');}
+}
 function showToast(msg,type=""){
   const t=document.createElement("div");t.className=`toast ${type}`;t.textContent=msg;
   document.body.appendChild(t);setTimeout(()=>t.remove(),3500);
