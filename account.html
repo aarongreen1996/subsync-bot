@@ -262,7 +262,12 @@ function renderAccount(d) {
               <div class="sub-detail">${subLabel}${trialDate ? " · Trial ends " + trialDate : ""}${subStatus === "active" ? " · Next billing " + nextDate : ""}</div>
             </div>
           </div>
-          ${s.billing_url ? `<a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>` : ""}
+${s.billing_url ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a href="${s.billing_url}" target="_blank" class="btn btn-outline btn-sm">Manage billing →</a>
+              <button class="btn btn-outline btn-sm" style="color:var(--amber);border-color:var(--amber)" onclick="pauseSubscription()">Pause</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--red,#dc2626);border-color:var(--red,#dc2626)" onclick="cancelSubscription()">Cancel</button>
+            </div>` : ""}
         </div>
       </div>
     </div>
@@ -439,6 +444,20 @@ function fileToBase64(file, mimeType) {
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+async function pauseSubscription(){
+  if(!confirm('Pause your subscription for one month? You will not be charged but access continues until the end of your current period.'))return;
+  const s=STATE.data&&STATE.data.stripe;
+  if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
+  else{showToast('Open billing portal to manage your subscription','');}
+}
+
+async function cancelSubscription(){
+  if(!confirm('Are you sure you want to cancel? You will keep access until the end of your billing period.'))return;
+  const s=STATE.data&&STATE.data.stripe;
+  if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
+  else{showToast('Open billing portal to cancel','');}
 }
 
 function showToast(msg, type = "") {
