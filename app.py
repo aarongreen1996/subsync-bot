@@ -358,12 +358,32 @@ CANCEL_KEYWORDS    = [
     "not happening", "drop it", "remove it",
 ]
 
-def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
-def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
-def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
-def is_summary_command(msg):   return any(kw in msg.lower() for kw in SUMMARY_KEYWORDS)
-def is_pending_command(msg):   return any(kw in msg.lower() for kw in PENDING_KEYWORDS)
-def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
+# Site-specific queries
+SITE_QUERY_KEYWORDS = [
+    "outstanding on", "update on", "status of", "show me",
+    "what's on", "whats on", "how is", "how's",
+    "any updates", "updates on", "progress on", "what have we got on",
+    "what's happening on", "whats happening on",
+    "run me through", "talk me through",
+]
+
+# Date range queries
+DATE_QUERY_KEYWORDS = [
+    "yesterday", "last week", "this week", "last month", "this month",
+    "today", "past week", "past month", "past few days",
+    "show me logs", "show me everything", "show me what",
+    "what did i log", "what was logged", "what have i done",
+    "from yesterday", "from last week", "recent",
+]
+
+def is_generate_command(msg):    return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
+def is_help_command(msg):        return any(kw in msg.lower() for kw in HELP_KEYWORDS)
+def is_dashboard_command(msg):   return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
+def is_summary_command(msg):     return any(kw in msg.lower() for kw in SUMMARY_KEYWORDS)
+def is_pending_command(msg):     return any(kw in msg.lower() for kw in PENDING_KEYWORDS)
+def is_status_command(msg):      return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
+def is_site_query(msg):          return any(kw in msg.lower() for kw in SITE_QUERY_KEYWORDS)
+def is_date_query(msg):          return any(kw in msg.lower() for kw in DATE_QUERY_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -395,25 +415,40 @@ def upload_pdf(pdf_bytes, filename):
         raise Exception(f"Storage upload failed: {r.text}")
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
-HELP_TEXT = """👷 *Note2Quote Bot — Quick Guide*
-
-*LOGGING ITEMS*
-Text or voice note — single or a list:
-• "Site manager asked me to fit extra sockets in room 4, 2 hrs, £40"
-• "Boarded loft flat 5, 3 hours, £80 materials"
-• Send a numbered list to log multiple items at once
-
-*MENTIONING THE SITE*
-• "Brookfield Site — extra consumer unit in garage"
-• If you forget, I'll ask. Type a new name and I'll create it.
-
-*GENERATING DOCUMENTS*
-• "Generate variations for Brookfield Site"
-• "Generate dayworks for Flat 3 Refurb"
-
-*OTHER COMMANDS*
-• *Dashboard* — get your login link
-• *Help* — see this guide"""
+HELP_TEXT = chr(10).join([
+    "👷 Note2Quote Bot — Quick Guide",
+    "",
+    "LOGGING ITEMS",
+    "Text or voice note, single or a list:",
+    "  Site manager asked me to fit extra sockets, 2 hrs, 40 quid",
+    "  Boarded loft flat 5, 3 hours, 80 quid materials",
+    "  Numbered list to log multiple items at once",
+    "",
+    "MENTIONING THE SITE",
+    "  Brookfield Site — extra consumer unit in garage",
+    "  If you forget, I will ask. Type a new name and I will create it.",
+    "",
+    "GENERATING DOCUMENTS",
+    "  Generate variations for Brookfield Site",
+    "  Generate dayworks for Flat 3 Refurb",
+    "",
+    "STATUS UPDATES",
+    "  approve [site] — mark all pending items as approved",
+    "  chasing [site] — flag you are waiting on client",
+    "",
+    "SITE AND DATE QUERIES",
+    "  update on [site] — full status breakdown",
+    "  outstanding on [site] — what needs actioning",
+    "  show me yesterday — logs from yesterday",
+    "  show me last week — logs from past 7 days",
+    "  show me this month — logs from this month",
+    "",
+    "OTHER",
+    "  summary — full dashboard overview",
+    "  pending — see all outstanding items",
+    "  dashboard — get your login link",
+    "  help — see this guide",
+])
 
 def read_html(filename):
     base = os.path.dirname(os.path.abspath(__file__))
@@ -472,12 +507,14 @@ def webhook():
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
 
-    if is_dashboard_command(incoming_msg): return handle_dashboard_command(from_number)
-    if is_summary_command(incoming_msg):   return handle_summary(from_number)
-    if is_pending_command(incoming_msg):   return handle_pending_summary(from_number)
-    if is_status_command(incoming_msg):    return handle_status_update(from_number, incoming_msg)
-    if is_help_command(incoming_msg):      return _reply(HELP_TEXT)
-    if is_generate_command(incoming_msg):  return handle_generate(from_number, incoming_msg)
+    if is_dashboard_command(incoming_msg):  return handle_dashboard_command(from_number)
+    if is_summary_command(incoming_msg):    return handle_summary(from_number)
+    if is_pending_command(incoming_msg):    return handle_pending_summary(from_number)
+    if is_status_command(incoming_msg):     return handle_status_update(from_number, incoming_msg)
+    if is_site_query(incoming_msg):         return handle_site_query(from_number, incoming_msg)
+    if is_date_query(incoming_msg):         return handle_date_query(from_number, incoming_msg)
+    if is_help_command(incoming_msg):       return _reply(HELP_TEXT)
+    if is_generate_command(incoming_msg):   return handle_generate(from_number, incoming_msg)
 
     return handle_log(from_number, incoming_msg)
 
@@ -709,6 +746,14 @@ def handle_log(from_number, incoming_msg):
     try:
         # Pre-process text to fix common supplier/lingo errors
         processed_msg = preprocess_text(incoming_msg)
+        msg_lower = processed_msg.lower()
+
+        # Short conversational messages — don't try to log them
+        SHORT_CHAT = ["ok", "okay", "thanks", "cheers", "got it", "nice", "great",
+                      "good", "perfect", "sweet", "yes", "no", "yep", "nope", "sure",
+                      "alright", "sorted", "cool", "brilliant", "brill", "ta"]
+        if processed_msg.strip().lower() in SHORT_CHAT or len(processed_msg.strip()) < 4:
+            return _reply("👍 No problem! Send me a site update when you're ready.")
 
         # Pre-classification shortcuts for obvious cases
         msg_lower = processed_msg.lower()
@@ -1466,6 +1511,169 @@ def handle_status_update(from_number, msg):
 
 
 
+
+
+
+# ── Site-specific query ───────────────────────────────────────────────────────
+def handle_site_query(from_number, msg):
+    """Show grouped status breakdown for a specific site, or all sites."""
+    try:
+        encoded  = encode_number(from_number)
+        projects = get_projects(from_number)
+        all_logs = db_get("site_logs?from_number=eq." + encoded + "&order=created_at.desc")
+        if not isinstance(all_logs, list): all_logs = []
+
+        # Try to detect which site they mean
+        site_name = match_site(msg, projects)
+
+        if site_name:
+            logs = [l for l in all_logs if l.get("site_name") == site_name]
+        else:
+            # No site detected — show all sites summary grouped by status
+            logs = all_logs
+
+        # Group by status
+        pending   = [l for l in logs if l.get("status") == "pending"]
+        chasing   = [l for l in logs if l.get("status") == "chasing"]
+        sent      = [l for l in logs if l.get("status") == "sent"]
+        approved  = [l for l in logs if l.get("status") == "approved"]
+        cancelled = [l for l in logs if l.get("status") == "cancelled"]
+
+        title = "📍 *" + (site_name or "All Sites") + " — Current Status*"
+        out   = [title, ""]
+
+        def fmt_logs(log_list, limit=5):
+            rows = []
+            for l in log_list[:limit]:
+                desc  = (l.get("description") or "—")[:45]
+                cost  = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
+                ltype = (l.get("type") or "").replace("_", " ").title()
+                row   = "  • " + desc
+                if cost: row += " · " + cost
+                rows.append(row)
+            if len(log_list) > limit:
+                rows.append("  ... and " + str(len(log_list) - limit) + " more")
+            return rows
+
+        if pending:
+            pval = sum(float(l.get("cost_estimate") or 0) for l in pending)
+            out.append("📋 *Pending (" + str(len(pending)) + ") · £" + ("%.2f" % pval) + "* — needs generating/sending:")
+            out.extend(fmt_logs(pending))
+            out.append("")
+
+        if chasing:
+            cval = sum(float(l.get("cost_estimate") or 0) for l in chasing)
+            out.append("⏰ *Chasing client (" + str(len(chasing)) + ") · £" + ("%.2f" % cval) + "* — waiting on approval:")
+            out.extend(fmt_logs(chasing))
+            out.append("")
+
+        if sent:
+            sval = sum(float(l.get("cost_estimate") or 0) for l in sent)
+            out.append("📄 *Sent to client (" + str(len(sent)) + ") · £" + ("%.2f" % sval) + "*:")
+            out.extend(fmt_logs(sent, 3))
+            out.append("")
+
+        if approved:
+            aval = sum(float(l.get("cost_estimate") or 0) for l in approved)
+            out.append("✅ *Approved (" + str(len(approved)) + ") · £" + ("%.2f" % aval) + "* — complete")
+            out.append("")
+
+        if cancelled:
+            out.append("❌ *Cancelled (" + str(len(cancelled)) + ")*")
+            out.append("")
+
+        if not logs:
+            out.append("Nothing logged yet" + (" for " + site_name if site_name else "") + ".")
+        else:
+            # Actions needed
+            actions = []
+            if pending:   actions.append("generate docs for " + (site_name or "a site"))
+            if chasing:   actions.append("chase client approval")
+            if actions:
+                out.append("*Next steps:* " + " · ".join(actions))
+
+        return _reply("\n".join(out))
+    except Exception as e:
+        return _reply("Could not get site update. (" + str(e)[:80] + ")")
+
+
+# ── Date range query ──────────────────────────────────────────────────────────
+def handle_date_query(from_number, msg):
+    """Show logs filtered by a natural language date range."""
+    from datetime import datetime, timezone, timedelta
+    try:
+        encoded  = encode_number(from_number)
+        msg_lower = msg.lower()
+        now      = datetime.now(timezone.utc)
+
+        # Parse date range
+        if "yesterday" in msg_lower:
+            since = now - timedelta(days=1)
+            label = "Yesterday"
+        elif "last week" in msg_lower or "past week" in msg_lower:
+            since = now - timedelta(days=7)
+            label = "Last 7 days"
+        elif "this week" in msg_lower:
+            # Monday of current week
+            since = now - timedelta(days=now.weekday())
+            since = since.replace(hour=0, minute=0, second=0)
+            label = "This week"
+        elif "last month" in msg_lower or "past month" in msg_lower:
+            since = now - timedelta(days=30)
+            label = "Last 30 days"
+        elif "this month" in msg_lower:
+            since = now.replace(day=1, hour=0, minute=0, second=0)
+            label = "This month"
+        elif "today" in msg_lower:
+            since = now.replace(hour=0, minute=0, second=0)
+            label = "Today"
+        elif "past few days" in msg_lower or "recent" in msg_lower:
+            since = now - timedelta(days=3)
+            label = "Past 3 days"
+        else:
+            since = now - timedelta(days=7)
+            label = "Last 7 days"
+
+        since_str = since.isoformat()
+        all_logs  = db_get("site_logs?from_number=eq." + encoded +
+                           "&created_at=gte." + since_str +
+                           "&order=created_at.desc")
+        if not isinstance(all_logs, list): all_logs = []
+
+        if not all_logs:
+            return _reply("Nothing logged in the " + label.lower() + " period.")
+
+        # Group by site
+        by_site = {}
+        for l in all_logs:
+            site = l.get("site_name") or "No site"
+            if site not in by_site: by_site[site] = []
+            by_site[site].append(l)
+
+        total_val = sum(float(l.get("cost_estimate") or 0) for l in all_logs)
+        out = ["📅 *" + label + " — " + str(len(all_logs)) + " items · £" + ("%.2f" % total_val) + "*", ""]
+
+        for site, logs in sorted(by_site.items()):
+            site_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
+            out.append("📍 *" + site + "* — " + str(len(logs)) + " items" + (" · £" + ("%.2f" % site_val) if site_val else ""))
+            for l in logs[:4]:
+                desc   = (l.get("description") or "—")[:40]
+                status = l.get("status") or "pending"
+                cost   = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
+                ltype  = (l.get("type") or "").replace("_", " ").title()
+                status_icon = {"pending": "📋", "chasing": "⏰", "sent": "📄",
+                               "approved": "✅", "cancelled": "❌"}.get(status, "•")
+                row = "  " + status_icon + " " + desc
+                if cost: row += " · " + cost
+                out.append(row)
+            if len(logs) > 4:
+                out.append("  ... and " + str(len(logs) - 4) + " more")
+            out.append("")
+
+        out.append("Reply *summary* for full overview or *pending* to see outstanding items.")
+        return _reply("\n".join(out))
+    except Exception as e:
+        return _reply("Couldn't get logs for that period. (" + str(e)[:80] + ")")
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 def _html(fname):
