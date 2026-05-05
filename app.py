@@ -803,7 +803,17 @@ def handle_log(from_number, incoming_msg):
 
         # ── Multi-item list ───────────────────────────────────────────────────
         if isinstance(parsed, list) and len(parsed) > 0:
-            site_name  = match_site(incoming_msg, projects)
+            # Try to find site from: 1) AI item site_names, 2) original message
+            ai_sites = [i.get("site_name") for i in parsed if i.get("site_name")]
+            site_name = ai_sites[0] if ai_sites else None
+            if not site_name:
+                site_name = match_site(incoming_msg, projects)
+            # Also try matching against known projects
+            if not site_name:
+                site_name = match_site(incoming_msg, projects)
+            if site_name and site_name not in [p["site_name"] for p in projects]:
+                create_site(from_number, site_name)
+
             items      = [build_insert(from_number, incoming_msg, i) for i in parsed]
             total_cost = sum(float(i.get("cost_estimate") or 0) for i in parsed)
 
@@ -817,22 +827,18 @@ def handle_log(from_number, incoming_msg):
                         saved += 1
                     except Exception:
                         pass
-                cost_tag = f" · Est. £{total_cost:.0f}" if total_cost else ""
-                return _reply(f"✅ Logged {saved} item(s) for *{site_name}*{cost_tag}!\n"
-                              f"I'll include these in your next document pack.")
+                cost_tag = " · Est. £" + ("%.0f" % total_cost) if total_cost else ""
+                return _reply("✅ Logged " + str(saved) + " item(s) for *" + site_name + "*" + cost_tag + "!")
 
             # Ask for site once for all items
             elif projects:
                 pending_selections[from_number] = {
-                    "pending_log":   {"_multi": True, "_items": items},
-                    "projects":      projects,
-                    "awaiting_type": False,
-                    "awaiting_site": True,
+                    "_multi": True, "_items": items,
+                    "projects": projects,
+                    "awaiting_type": False, "awaiting_site": True,
                 }
-                return _reply(
-                    f"✅ Got {len(parsed)} items — which site are these all for?\n\n"
-                    + format_project_list(projects)
-                )
+                return _reply("✅ Got " + str(len(parsed)) + " items — which site are these all for?" + chr(10) + chr(10)
+                    + format_project_list(projects))
             else:
                 saved = 0
                 for item in items:
@@ -850,8 +856,15 @@ def handle_log(from_number, incoming_msg):
             needs_clarification = data.get("needs_clarification", False)
             confirmation        = data.get("confirmation_message", "✅ Got it!")
 
-            site_name = match_site(data.get("site_name") or "", projects)
-            if not site_name:
+            # Trust AI's extracted site_name first
+            ai_site_name = data.get("site_name") or ""
+            if ai_site_name:
+                # Use it directly — create if not already in projects
+                site_name = ai_site_name
+                if site_name not in [p["site_name"] for p in projects]:
+                    create_site(from_number, site_name)
+            else:
+                # Fall back to matching from original message
                 site_name = match_site(incoming_msg, projects)
 
             if needs_clarification:
