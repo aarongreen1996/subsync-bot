@@ -236,10 +236,19 @@ tr:hover td{background:var(--bg3);}
       <p>Sign in to your dashboard</p>
     </div>
     <div class="login-body">
-      <input type="text" id="ln" placeholder="Username or WhatsApp number (+447...)" />
-      <input type="password" id="lp" placeholder="Password" />
-      <button class="btn-login" onclick="doLogin()">Sign in →</button>
-      <p style="text-align:center;margin-top:10px;font-size:12px;color:var(--faint)">Or <a href="#" onclick="requestMagicLink()" style="color:var(--amber);text-decoration:none;font-weight:600">get a magic link via WhatsApp</a></p>
+      <div id="view-magic">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">Enter your mobile number and we will send a login link to your WhatsApp. Tap it to log in instantly.</p>
+        <input type="tel" id="magic-number" placeholder="Your mobile e.g. 07803428001" />
+        <button class="btn-login" id="magic-btn" onclick="sendMagicLink()">Send login link via WhatsApp →</button>
+        <p class="err" id="magic-success" style="color:var(--green,#22c55e)"></p>
+        <p style="text-align:center;margin-top:14px;font-size:12px;color:var(--faint)">Have a password? <a href="#" onclick="showPasswordLogin()" style="color:var(--amber);text-decoration:none;font-weight:600">Sign in with password</a></p>
+      </div>
+      <div id="view-password" style="display:none">
+        <input type="text" id="ln" placeholder="Username or mobile number" />
+        <input type="password" id="lp" placeholder="Password" />
+        <button class="btn-login" onclick="doLogin()">Sign in →</button>
+        <p style="text-align:center;margin-top:14px;font-size:12px;color:var(--faint)"><a href="#" onclick="showMagicLogin()" style="color:var(--amber);text-decoration:none;font-weight:600">← Get a magic link instead</a></p>
+      </div>
       <p class="err" id="lerr"></p>
     </div>
   </div>
@@ -404,27 +413,37 @@ var saved=localStorage.getItem('n2q-theme');
 if(saved){var tb=document.getElementById('theme-btn');if(tb)tb.textContent=(saved==='dark'?'☀️':'🌙')+' Theme';}
 
 // ── AUTH ───────────────────────────────────────────────────────────────────
-function switchTab(tab){
-  document.getElementById('tab-magic').style.display = tab==='magic'?'block':'none';
-  document.getElementById('tab-password').style.display = tab==='password'?'block':'none';
+function showMagicLogin(){
+  document.getElementById('view-magic').style.display='block';
+  document.getElementById('view-password').style.display='none';
+  document.getElementById('lerr').textContent='';
+  document.getElementById('magic-success').textContent='';
+}
+
+function showPasswordLogin(){
+  document.getElementById('view-magic').style.display='none';
+  document.getElementById('view-password').style.display='block';
   document.getElementById('lerr').textContent='';
 }
 
 async function sendMagicLink(){
-  var num=document.getElementById('ml-number').value.trim();
+  var num=document.getElementById('magic-number').value.trim();
   if(!num){document.getElementById('lerr').textContent='Please enter your mobile number.';return;}
-  var btn=document.querySelector('#tab-magic .btn-login');
+  var btn=document.getElementById('magic-btn');
   btn.textContent='Sending...';btn.disabled=true;
-  var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:num})});
-  var d=await r.json();
-  btn.textContent='Send login link via WhatsApp →';btn.disabled=false;
-  if(d.ok){
-    document.getElementById('magic-success').textContent='Login link sent! Check your WhatsApp.';
-    document.getElementById('magic-success').style.display='block';
-    document.getElementById('lerr').textContent='';
-  } else {
-    document.getElementById('lerr').textContent=d.error||'Could not send link. Check your number.';
+  try{
+    var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:num})});
+    var d=await r.json();
+    if(d.ok){
+      document.getElementById('magic-success').textContent='Login link sent to your WhatsApp! Tap it to open your dashboard.';
+      document.getElementById('lerr').textContent='';
+    } else {
+      document.getElementById('lerr').textContent=d.error||'Could not send link. Check your number.';
+    }
+  } catch(e){
+    document.getElementById('lerr').textContent='Network error. Please try again.';
   }
+  btn.textContent='Send login link via WhatsApp →';btn.disabled=false;
 }
 
 async function doLogin(){
