@@ -7,31 +7,73 @@ from twilio.rest import Client
 
 auth_bp = Blueprint("auth", __name__)
 
-SUPABASE_URL  = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
-APP_URL       = os.environ.get("APP_URL", "https://www.subsync.xyz")
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "changeme")
+SUPABASE_URL           = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY           = os.environ.get("SUPABASE_KEY", "")
+APP_URL                = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
+ADMIN_PASSWORD         = os.environ.get("ADMIN_PASSWORD", "admin123")
 TWILIO_ACCOUNT_SID     = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN      = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 
 
-def sb_headers():
+def sb():
     return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json"}
 
 def db_get(path):
-    r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
+    r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb())
     return r.json() if r.status_code == 200 else []
 
 def db_post(path, payload):
     r = http_requests.post(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
-                           headers={**sb_headers(), "Prefer": "return=minimal"})
+                           headers={**sb(), "Prefer": "return=minimal"})
     return r.status_code in (200, 201)
 
-def db_patch(path, payload):
-    http_requests.patch(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
-                        headers={**sb_headers(), "Prefer": "return=minimal"})
+
+def normalise_number(raw):
+    """Convert any number format to whatsapp:+44XXXXXXXXX"""
+    n = raw.strip().replace(" ", "").replace("-", "")
+    # Remove whatsapp: prefix if present
+    if n.startswith("whatsapp:"):
+        n = n[9:]
+    # Convert 07... to +447...
+    if n.startswith("07") and len(n) == 11:
+        n = "+44" + n[1:]
+    # Convert 447... to +447...
+    if n.startswith("44") and not n.startswith("+"):
+        n = "+" + n
+    # Ensure + prefix
+    if not n.startswith("+"):
+        n = "+" + n
+    return "whatsapp:" + n
+
+
+def find_company(login_id):
+    """Find company by username, phone number (any format), or whatsapp number."""
+    login_id = login_id.strip()
+
+    # Try username first (clean alphanumeric lookup)
+    if not any(c.isdigit() for c in login_id.replace(".", "").replace("_", "").replace("-", "")):
+        results = db_get(f"companies?username=eq.{login_id}&limit=1")
+        if isinstance(results, list) and results:
+            return results[0]
+
+    # Try normalising as a phone number and looking up
+    try:
+        wa = normalise_number(login_id)
+        encoded = wa.replace("+", "%2B")
+        results = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
+        if isinstance(results, list) and results:
+            return results[0]
+    except Exception:
+        pass
+
+    # Try username as fallback (if it contains digits it might still be a username)
+    results = db_get(f"companies?username=eq.{login_id}&limit=1")
+    if isinstance(results, list) and results:
+        return results[0]
+
+    return None
 
 
 def create_magic_token(whatsapp_number):
@@ -49,41 +91,49 @@ def verify_token(token):
     record = results[0]
     if record.get("used"):
         return None
-    expires_raw = record.get("expires_at", "")
     try:
-        expires_dt = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+        expires_dt = datetime.fromisoformat(
+            record.get("expires_at", "").replace("Z", "+00:00"))
         if datetime.now(timezone.utc) > expires_dt:
             return None
     except Exception:
         pass
+    # Mark as used
+    http_requests.patch(
+        f"{SUPABASE_URL}/rest/v1/auth_tokens?token=eq.{token}",
+        json={"used": True},
+        headers={**sb(), "Prefer": "return=minimal"}
+    )
     return record.get("whatsapp")
 
 
-# ── Magic link login ──────────────────────────────────────────────────────────
+# ── Magic link login page ─────────────────────────────────────────────────────
 @auth_bp.route("/login")
 def magic_login():
     token = request.args.get("token", "")
     if not token:
-        return "<h2>Invalid link</h2>", 400
+        return redirect("/dashboard")
 
     whatsapp = verify_token(token)
     if not whatsapp:
         return """<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600&display=swap" rel="stylesheet">
-        <style>body{font-family:'Manrope',sans-serif;background:#fff3e0;min-height:100vh;display:flex;align-items:center;justify-content:center;}
-        .box{background:white;border-radius:16px;padding:48px;text-align:center;max-width:400px;border:1px solid #e8ddd0;}
-        h2{font-family:'Bebas Neue',serif;color:#d62828;font-size:32px;margin-bottom:12px;letter-spacing:2px;}
-        p{color:#8a7560;font-weight:300;line-height:1.6;}</style></head><body>
-        <div class="box"><h2>Link Expired</h2>
+        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Manrope',sans-serif;background:#0c0d10;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+        .box{background:#131419;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px 32px;text-align:center;max-width:380px;width:100%;}
+        h2{font-family:'Bebas Neue',sans-serif;color:#ef4444;font-size:28px;letter-spacing:2px;margin-bottom:12px;}
+        p{color:rgba(255,255,255,0.4);font-size:14px;line-height:1.7;}strong{color:rgba(255,255,255,0.7);}
+        a{display:inline-block;margin-top:20px;background:#f59e0b;color:#0c0d10;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;}</style></head>
+        <body><div class="box"><h2>Link Expired</h2>
         <p>This login link has expired or already been used.<br><br>
-        Send <strong>my dashboard</strong> to the Note2Quote bot on WhatsApp to get a new one.</p>
-        </div></body></html>""", 401
+        Send <strong>login</strong> to the Note2Quote bot on WhatsApp to get a new one.</p>
+        <a href="/dashboard">Go to dashboard</a></div></body></html>""", 401
 
     number = whatsapp.replace("whatsapp:", "")
     return redirect(f"/dashboard?autologin={number}")
 
 
-# ── Username/password login ───────────────────────────────────────────────────
+# ── Username/password + magic request login ───────────────────────────────────
 @auth_bp.route("/api/auth/login", methods=["POST"])
 def login():
     data     = request.json or {}
@@ -91,63 +141,35 @@ def login():
     password = data.get("password", "").strip()
 
     if not login_id or not password:
-        return jsonify({"ok": False, "error": "Login and password required"}), 400
+        return jsonify({"ok": False, "error": "Please fill in both fields"}), 400
 
-    # Check master password first (backwards compatibility)
-    if password == DASHBOARD_PASSWORD:
-        # login_id is the whatsapp number
-        number = login_id if login_id.startswith("+") else login_id
-        return jsonify({"ok": True, "whatsapp": number, "session_token": "__magic__"})
+    company = find_company(login_id)
+    if not company:
+        return jsonify({"ok": False, "error": "No account found. Check your username or number."}), 404
 
-    # Try username lookup
-    companies = db_get(f"companies?username=eq.{login_id}&limit=1")
-    if isinstance(companies, list) and companies:
-        company = companies[0]
-        stored_pw = company.get("dashboard_password")
-        if stored_pw and stored_pw == password:
-            whatsapp = company.get("whatsapp_number", "").replace("whatsapp:", "")
-            return jsonify({"ok": True, "whatsapp": whatsapp, "session_token": "__magic__"})
-        elif not stored_pw and password == DASHBOARD_PASSWORD:
-            whatsapp = company.get("whatsapp_number", "").replace("whatsapp:", "")
-            return jsonify({"ok": True, "whatsapp": whatsapp, "session_token": "__magic__"})
+    stored_pw = company.get("dashboard_password", "")
+    if not stored_pw:
+        return jsonify({"ok": False, "error": "No password set. Use the magic link instead — send 'login' on WhatsApp."}), 401
 
-    # Try whatsapp number lookup
-    encoded = login_id.replace("+", "%2B")
-    wa_num  = "whatsapp:" + login_id if not login_id.startswith("whatsapp:") else login_id
-    companies = db_get(f"companies?whatsapp_number=eq.{wa_num.replace('+','%2B')}&limit=1")
-    if isinstance(companies, list) and companies:
-        company = companies[0]
-        stored_pw = company.get("dashboard_password")
-        if stored_pw and stored_pw == password:
-            whatsapp = login_id
-            return jsonify({"ok": True, "whatsapp": whatsapp, "session_token": "__magic__"})
-        elif not stored_pw and password == DASHBOARD_PASSWORD:
-            return jsonify({"ok": True, "whatsapp": login_id, "session_token": "__magic__"})
+    if stored_pw != password:
+        return jsonify({"ok": False, "error": "Wrong password. Try again or send 'login' on WhatsApp for a magic link."}), 401
 
-    return jsonify({"ok": False, "error": "Wrong username or password"}), 401
+    whatsapp = company.get("whatsapp_number", "").replace("whatsapp:", "")
+    return jsonify({"ok": True, "whatsapp": whatsapp, "session_token": "__magic__",
+                    "company_name": company.get("company_name", "")})
 
 
-# ── Magic link request via API ────────────────────────────────────────────────
+# ── Magic link request ────────────────────────────────────────────────────────
 @auth_bp.route("/api/auth/magic-request", methods=["POST"])
 def magic_request():
-    data  = request.json or {}
-    login = data.get("login", "").strip()
-    if not login:
-        return jsonify({"ok": False, "error": "Login required"}), 400
+    data     = request.json or {}
+    login_id = data.get("login", "").strip()
+    if not login_id:
+        return jsonify({"ok": False, "error": "Enter your phone number or username"}), 400
 
-    # Find company by username or whatsapp
-    company = None
-    companies = db_get(f"companies?username=eq.{login}&limit=1")
-    if isinstance(companies, list) and companies:
-        company = companies[0]
-    else:
-        wa = "whatsapp:" + login if not login.startswith("whatsapp:") else login
-        companies = db_get(f"companies?whatsapp_number=eq.{wa.replace('+','%2B')}&limit=1")
-        if isinstance(companies, list) and companies:
-            company = companies[0]
-
+    company = find_company(login_id)
     if not company:
-        return jsonify({"ok": False, "error": "No account found for that username or number"}), 404
+        return jsonify({"ok": False, "error": "No account found for that number or username"}), 404
 
     whatsapp = company.get("whatsapp_number", "")
     if not whatsapp:
@@ -155,28 +177,25 @@ def magic_request():
 
     try:
         login_url = create_magic_token(whatsapp)
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        client    = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
             to=whatsapp,
-            body=(f"🔐 *Your Note2Quote login link*\n\n"
-                  f"Tap to log in instantly:\n{login_url}\n\n"
-                  f"⏰ Expires in 30 minutes.")
+            body=("Your Note2Quote login link" + chr(10) + chr(10) +
+                  "Tap to open your dashboard:" + chr(10) + login_url + chr(10) + chr(10) +
+                  "This link expires in 30 minutes.")
         )
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)[:100]}), 500
 
 
-# ── Old auth endpoint (keep for compatibility) ────────────────────────────────
+# ── Legacy auth check (for Stripe webhook + admin) ────────────────────────────
 @auth_bp.route("/api/auth", methods=["POST"])
-def auth():
+def auth_check():
     data = request.json or {}
     pw   = data.get("password", "")
-    if pw == DASHBOARD_PASSWORD or pw == "__magic__":
+    # Only admin/webhook use — not for end users
+    if pw == os.environ.get("DASHBOARD_PASSWORD", "n2q2026") or pw == "__magic__":
         return jsonify({"ok": True})
-    # Also accept company-specific passwords
-    companies = db_get(f"companies?dashboard_password=eq.{pw}&limit=1")
-    if isinstance(companies, list) and companies:
-        return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "Wrong password"}), 401
+    return jsonify({"ok": False, "error": "Unauthorized"}), 401
