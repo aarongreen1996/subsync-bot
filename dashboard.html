@@ -205,6 +205,12 @@ tr:hover td{background:var(--bg3);}
   .charts-row{grid-template-columns:1fr;}
 }
 @media(min-width:769px){.mobile-nav{display:none;}}
+.row-historic td{opacity:0.42;background:var(--bg3) !important;}
+.row-historic:hover td{opacity:0.65;}
+.row-historic .cell{cursor:default;pointer-events:none;}
+.historic-divider td{padding:8px 14px;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:2px;background:var(--bg3);border-bottom:1px solid var(--border);}
+.btn-restore{background:var(--amber-dim);color:var(--amber-d);border:none;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:700;}
+.btn-restore:hover{background:var(--amber);color:#0c0d10;}
 </style>
 </head>
 <body>
@@ -549,6 +555,9 @@ function getFilteredLogs(allLogs){
 
 function getAllLogs(){
   var d=S.data||{};
+  // Use all_logs if available (includes approved, chasing, sent, cancelled)
+  if(d.all_logs && d.all_logs.length>=0) return d.all_logs;
+  // Fallback
   var pending=[];var sent=[];
   Object.values(d.by_site||{}).forEach(function(s){pending=pending.concat(s.logs||[]);});
   (d.recent_sent||[]).forEach(function(l){sent.push(l);});
@@ -657,22 +666,45 @@ function renderLogs(){
     var cols=[{k:'type',l:'Type'},{k:'description',l:'Description'},{k:'site_name',l:'Site'},{k:'location',l:'Location'},{k:'hours',l:'Hrs'},{k:'cost_estimate',l:'Cost'},{k:'status',l:'Status'},{k:'created_at',l:'Date'}];
     cols.forEach(function(c){var dir=S.sortCol===c.k?(S.sortDir===1?' ↑':' ↓'):'';html+='<th onclick="sortBy(\''+c.k+'\')">'+c.l+dir+'</th>';});
     html+='<th></th></tr></thead><tbody>';
-    filtered.forEach(function(l){
-      var typeOpts=types.map(function(t){return '<option value="'+t+'"'+(l.type===t?' selected':'')+'>'+t.replace('_',' ')+'</option>';}).join('');
-      var date=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
-      html+='<tr id="row-'+l.id+'">';
-      html+='<td style="padding:6px 14px"><select style="border:none;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:Manrope,sans-serif;color:inherit;outline:none" onchange="saveField('+l.id+',\'type\',this.value)">'+typeOpts+'</select></td>';
-      html+='<td><div class="cell" contenteditable="true" onblur="saveField('+l.id+',\'description\',this.innerText.trim())">'+(l.description||'')+'</div></td>';
-      html+='<td><div class="cell" style="min-width:100px" contenteditable="true" onblur="saveField('+l.id+',\'site_name\',this.innerText.trim())">'+(l.site_name||'')+'</div></td>';
-      html+='<td><div class="cell" contenteditable="true" onblur="saveField('+l.id+',\'location\',this.innerText.trim())">'+(l.location||'')+'</div></td>';
-      html+='<td><div class="cell" style="max-width:60px" contenteditable="true" onblur="saveField('+l.id+',\'hours\',this.innerText.trim())">'+(l.hours||'')+'</div></td>';
-      html+='<td><div class="cell" style="max-width:80px" contenteditable="true" onblur="saveField('+l.id+',\'cost_estimate\',this.innerText.trim())">'+(l.cost_estimate||'')+'</div></td>';
-      html+='<td style="padding:6px 14px">'+statusSelect(l.id,l.status)+'</td>';
-      html+='<td class="cell-pad" style="white-space:nowrap;color:var(--faint);font-size:12px">'+date+'</td>';
-      html+='<td class="cell-pad"><button class="btn-ghost-red" onclick="deleteLog('+l.id+')">✕</button></td>';
-      html+='</tr>';
-    });
-    html+='</tbody></table></div></div>';
+    // Split active (pending) vs historic (everything else)
+    var active=filtered.filter(function(l){return l.status==="pending";});
+    var historic=filtered.filter(function(l){return l.status!=="pending";});
+
+    function logRow(l,isHistoric){
+      var types=["VARIATION","DAYWORK","MATERIAL_ORDER","TIMESHEET","UNKNOWN"];
+      var typeOpts=types.map(function(t){return "<option value=""+t+"""+(l.type===t?" selected":"")+">"+t.replace("_"," ")+"</option>";}).join("");
+      var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
+      var r="<tr id="row-"+l.id+"""+(isHistoric?" class="row-historic"":"")+">";
+      if(isHistoric){
+        r+="<td class="cell-pad"><span class="type-pill t-"+(l.type||"UNKNOWN")+"">"+(l.type||"").replace("_"," ")+"</span></td>";
+        r+="<td class="cell-pad">"+(l.description||"—")+"</td>";
+        r+="<td class="cell-pad">"+(l.site_name||"—")+"</td>";
+        r+="<td class="cell-pad">"+(l.location||"—")+"</td>";
+        r+="<td class="cell-pad">"+(l.hours||"—")+"</td>";
+        r+="<td class="cell-pad">"+(l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
+        r+="<td class="cell-pad"><span class="status-sel s-"+l.status+"">"+(l.status||"")+"</span></td>";
+        r+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+(date)+"</td>";
+        r+="<td class="cell-pad"><button class="btn-restore" onclick="restoreLog("+l.id+")" title="Move back to pending">↩ Restore</button> <button class="btn-ghost-red" onclick="deleteLog("+l.id+")">✕</button></td>";
+      } else {
+        r+="<td style="padding:6px 14px"><select style="border:none;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:Manrope,sans-serif;color:inherit;outline:none" onchange="saveField("+l.id+",'type',this.value)">"+(typeOpts)+"</select></td>";
+        r+="<td><div class="cell" contenteditable="true" onblur="saveField("+l.id+",'description',this.innerText.trim())">"+(l.description||"")+"</div></td>";
+        r+="<td><div class="cell" style="min-width:100px" contenteditable="true" onblur="saveField("+l.id+",'site_name',this.innerText.trim())">"+(l.site_name||"")+"</div></td>";
+        r+="<td><div class="cell" contenteditable="true" onblur="saveField("+l.id+",'location',this.innerText.trim())">"+(l.location||"")+"</div></td>";
+        r+="<td><div class="cell" style="max-width:60px" contenteditable="true" onblur="saveField("+l.id+",'hours',this.innerText.trim())">"+(l.hours||"")+"</div></td>";
+        r+="<td><div class="cell" style="max-width:80px" contenteditable="true" onblur="saveField("+l.id+",'cost_estimate',this.innerText.trim())">"+(l.cost_estimate||"")+"</div></td>";
+        r+="<td style="padding:6px 14px">"+statusSelect(l.id,l.status)+"</td>";
+        r+="<td class="cell-pad" style="white-space:nowrap;color:var(--faint);font-size:12px">"+date+"</td>";
+        r+="<td class="cell-pad"><button class="btn-ghost-red" onclick="deleteLog("+l.id+")">✕</button></td>";
+      }
+      r+="</tr>";
+      return r;
+    }
+
+    active.forEach(function(l){html+=logRow(l,false);});
+    if(historic.length){
+      html+="<tr class="historic-divider"><td colspan="9">📁 History — "+historic.length+" completed items</td></tr>";
+      historic.forEach(function(l){html+=logRow(l,true);});
+    }
   }
   document.getElementById('page-content').innerHTML=html;
 }
@@ -695,30 +727,46 @@ function renderSites(){
   projects.forEach(function(p){
     var siteLogs=allLogs.filter(function(l){return l.site_name===p.site_name;});
     var filteredSiteLogs=getFilteredLogs(siteLogs);
-    var totalVal=filteredSiteLogs.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
-    var pendCount=filteredSiteLogs.filter(function(l){return l.status==='pending';}).length;
-    html+='<div class="site-folder" id="folder-'+p.site_name.replace(/\s/g,'-')+'">';
-    html+='<div class="site-folder-header" onclick="toggleFolder(this)">';
-    html+='<div><div class="site-folder-name">📍 '+p.site_name+'</div><div class="site-folder-meta">'+filteredSiteLogs.length+' logs · £'+totalVal.toFixed(2)+' · '+pendCount+' pending</div></div>';
-    html+='<div style="display:flex;align-items:center;gap:8px;"><button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal(\''+p.site_name+'\')">Generate PDF</button><span class="folder-chevron">▶</span></div></div>';
-    html+='<div class="site-folder-body">';
+    var pendingLogs=filteredSiteLogs.filter(function(l){return l.status==="pending";});
+    var historicLogs=filteredSiteLogs.filter(function(l){return l.status!=="pending";});
+    var totalVal=pendingLogs.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
+    var pendCount=pendingLogs.length;
+    html+="<div class="site-folder" id="folder-"+p.site_name.replace(/\s/g,"-")+"">";
+    html+="<div class="site-folder-header" onclick="toggleFolder(this)">";
+    html+="<div><div class="site-folder-name">📍 "+p.site_name+"</div><div class="site-folder-meta">"+filteredSiteLogs.length+" total · £"+totalVal.toFixed(2)+" · "+pendCount+" pending</div></div>";
+    html+="<div style="display:flex;align-items:center;gap:8px;"><button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal('"+p.site_name+"')">"+"Generate PDF</button><span class="folder-chevron">▶</span></div></div>";
+    html+="<div class="site-folder-body">";
     if(filteredSiteLogs.length){
-      html+='<div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Cost</th><th>Hours</th><th>Status</th><th>Date</th></tr></thead><tbody>';
-      filteredSiteLogs.forEach(function(l){
-        var date=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
-        html+='<tr><td class="cell-pad"><span class="type-pill t-'+l.type+'">'+(l.type||'').replace('_',' ')+'</span></td>';
-        html+='<td class="cell-pad">'+(l.description||'—')+'</td>';
-        html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
-        html+='<td class="cell-pad">'+(l.hours?l.hours+' hrs':'—')+'</td>';
-        html+='<td class="cell-pad">'+statusSelect(l.id,l.status)+'</td>';
-        html+='<td class="cell-pad" style="color:var(--faint);font-size:12px">'+date+'</td></tr>';
+      html+="<div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Cost</th><th>Hours</th><th>Status</th><th>Date</th></tr></thead><tbody>";
+      // Pending rows first (normal)
+      pendingLogs.forEach(function(l){
+        var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
+        html+="<tr><td class="cell-pad"><span class="type-pill t-"+l.type+"">"+( l.type||"").replace("_"," ")+"</span></td>";
+        html+="<td class="cell-pad">"+( l.description||"—")+"</td>";
+        html+="<td class="cell-pad">"+( l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
+        html+="<td class="cell-pad">"+( l.hours?l.hours+" hrs":"—")+"</td>";
+        html+="<td class="cell-pad">"+statusSelect(l.id,l.status)+"</td>";
+        html+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+date+"</td></tr>";
       });
-      html+='</tbody></table></div>';
-    }else{html+='<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">No logs in this period for this site</div>';}
-    html+='</div></div>';
+      // Historic rows faded
+      if(historicLogs.length){
+        html+="<tr class="historic-divider"><td colspan="6">📁 "+historicLogs.length+" completed</td></tr>";
+        historicLogs.forEach(function(l){
+          var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
+          html+="<tr class="row-historic"><td class="cell-pad"><span class="type-pill t-"+l.type+"">"+( l.type||"").replace("_"," ")+"</span></td>";
+          html+="<td class="cell-pad">"+( l.description||"—")+"</td>";
+          html+="<td class="cell-pad">"+( l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
+          html+="<td class="cell-pad">"+( l.hours?l.hours+" hrs":"—")+"</td>";
+          html+="<td class="cell-pad"><span class="status-sel s-"+l.status+"">"+(l.status||"")+"</span> <button class="btn-restore" onclick="restoreLog("+l.id+")">↩</button></td>";
+          html+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+date+"</td></tr>";
+        });
+      }
+      html+="</tbody></table></div>";
+    }else{html+="<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">No logs in this period for this site</div>";}
+    html+="</div></div>";
   });
 
-  document.getElementById('page-content').innerHTML=filtersBar(false,true,true)+html;
+  document.getElementById("page-content").innerHTML=filtersBar(false,true,true)+html;
 }
 
 function toggleFolder(header){header.parentElement.classList.toggle('folder-open');}
@@ -833,6 +881,12 @@ async function deleteLog(id){
 async function unsendLog(id){
   await api('/api/log/'+id+'/unsend',{method:'POST'});
   showToast('Moved back to pending','success');
+  await loadData();renderPage();
+}
+
+async function restoreLog(id){
+  await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:'pending'})});
+  showToast('Restored to pending ✅','success');
   await loadData();renderPage();
 }
 
