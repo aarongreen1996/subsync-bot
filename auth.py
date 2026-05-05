@@ -114,23 +114,69 @@ def magic_login():
     if not token:
         return redirect("/dashboard")
 
-    whatsapp = verify_token(token)
-    if not whatsapp:
-        return """<!DOCTYPE html><html><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600&display=swap" rel="stylesheet">
-        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Manrope',sans-serif;background:#0c0d10;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-        .box{background:#131419;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px 32px;text-align:center;max-width:380px;width:100%;}
-        h2{font-family:'Bebas Neue',sans-serif;color:#ef4444;font-size:28px;letter-spacing:2px;margin-bottom:12px;}
-        p{color:rgba(255,255,255,0.4);font-size:14px;line-height:1.7;}strong{color:rgba(255,255,255,0.7);}
-        a{display:inline-block;margin-top:20px;background:#f59e0b;color:#0c0d10;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;}</style></head>
-        <body><div class="box"><h2>Link Expired</h2>
-        <p>This login link has expired or already been used.<br><br>
-        Send <strong>login</strong> to the Note2Quote bot on WhatsApp to get a new one.</p>
-        <a href="/dashboard">Go to dashboard</a></div></body></html>""", 401
+    # Check if token exists and is valid WITHOUT marking as used yet
+    # This prevents WhatsApp link preview from consuming the token
+    results = db_get(f"auth_tokens?token=eq.{token}&limit=1")
+    if not isinstance(results, list) or not results:
+        return _expired_page()
+    record = results[0]
+    if record.get("used"):
+        return _expired_page()
+    try:
+        from datetime import datetime, timezone
+        expires_dt = datetime.fromisoformat(
+            record.get("expires_at", "").replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > expires_dt:
+            return _expired_page()
+    except Exception:
+        pass
 
+    # Show a tap-to-enter page — user must click the button
+    # This way WhatsApp preview doesn't consume the token
+    number = record.get("whatsapp", "").replace("whatsapp:", "")
+    page = """<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Manrope',sans-serif;background:#0c0d10;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .box{background:#131419;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:48px 36px;text-align:center;max-width:380px;width:100%;}
+    .logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:#fff;margin-bottom:8px;}
+    p{color:rgba(255,255,255,0.4);font-size:14px;line-height:1.7;margin-bottom:28px;}
+    .btn{display:block;background:#f59e0b;color:#0c0d10;padding:15px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;box-shadow:0 4px 0 #d97706;transition:all .15s;}
+    .btn:active{transform:translateY(2px);box-shadow:0 2px 0 #d97706;}
+    .note{font-size:11px;color:rgba(255,255,255,0.2);margin-top:16px;}</style></head>
+    <body><div class="box">
+    <div class="logo">Note2Quote</div>
+    <p>Your dashboard is ready. Tap the button below to open it.</p>
+    <a href="/login/confirm?token=TOKEN" class="btn">Open my dashboard →</a>
+    <p class="note">This link expires in 30 minutes</p>
+    </div></body></html>""".replace("TOKEN", token)
+    return page
+
+
+@auth_bp.route("/login/confirm")
+def magic_login_confirm():
+    """Second step — user actively tapped the button, now verify and redirect."""
+    token    = request.args.get("token", "")
+    whatsapp = verify_token(token)  # This marks as used
+    if not whatsapp:
+        return _expired_page()
     number = whatsapp.replace("whatsapp:", "")
     return redirect(f"/dashboard?autologin={number}")
+
+
+def _expired_page():
+    return """<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600&display=swap" rel="stylesheet">
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Manrope',sans-serif;background:#0c0d10;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .box{background:#131419;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px 32px;text-align:center;max-width:380px;width:100%;}
+    h2{font-family:'Bebas Neue',sans-serif;color:#ef4444;font-size:28px;letter-spacing:2px;margin-bottom:12px;}
+    p{color:rgba(255,255,255,0.4);font-size:14px;line-height:1.7;}strong{color:rgba(255,255,255,0.7);}
+    a{display:inline-block;margin-top:20px;background:#f59e0b;color:#0c0d10;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;}</style></head>
+    <body><div class="box"><h2>Link Expired</h2>
+    <p>This login link has expired or already been used.<br><br>
+    Send <strong>login</strong> to the bot on WhatsApp to get a new one.</p>
+    <a href="/dashboard">Go to dashboard</a></div></body></html>""", 401
 
 
 # ── Username/password + magic request login ───────────────────────────────────
