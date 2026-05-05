@@ -397,6 +397,29 @@ var saved=localStorage.getItem('n2q-theme');
 if(saved){var tb=document.getElementById('theme-btn');if(tb)tb.textContent=(saved==='dark'?'☀️':'🌙')+' Theme';}
 
 // ── AUTH ───────────────────────────────────────────────────────────────────
+function switchTab(tab){
+  document.getElementById('tab-magic').style.display = tab==='magic'?'block':'none';
+  document.getElementById('tab-password').style.display = tab==='password'?'block':'none';
+  document.getElementById('lerr').textContent='';
+}
+
+async function sendMagicLink(){
+  var num=document.getElementById('ml-number').value.trim();
+  if(!num){document.getElementById('lerr').textContent='Please enter your mobile number.';return;}
+  var btn=document.querySelector('#tab-magic .btn-login');
+  btn.textContent='Sending...';btn.disabled=true;
+  var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:num})});
+  var d=await r.json();
+  btn.textContent='Send login link via WhatsApp →';btn.disabled=false;
+  if(d.ok){
+    document.getElementById('magic-success').textContent='Login link sent! Check your WhatsApp.';
+    document.getElementById('magic-success').style.display='block';
+    document.getElementById('lerr').textContent='';
+  } else {
+    document.getElementById('lerr').textContent=d.error||'Could not send link. Check your number.';
+  }
+}
+
 async function doLogin(){
   var login=document.getElementById('ln').value.trim();
   var pw=document.getElementById('lp').value.trim();
