@@ -270,15 +270,29 @@ def admin_send_welcome():
     APP_URL   = os.environ.get("APP_URL", "https://www.subsync.xyz")
     login_url = f"{APP_URL}/login?token={token}"
 
-    msg = (
-        "Welcome to Note2Quote, " + company_name + "!\n\n"
-        "You are all set up and ready to go.\n\n"
-        "Tap to open your dashboard:\n" + login_url + "\n\n"
-        "To log your first variation, send something like:\n"
-        "\"Variation on Brookfield Site - extra sockets in kitchen, 2 hours, 80 quid\"\n\n"
-        "Or just send a voice note and we will transcribe it automatically.\n\n"
-        "Reply HELP anytime to see all commands. Good luck on site!"
-    )
+    lines = [
+        "Welcome to Note2Quote, " + company_name + "!",
+        "",
+        "You are all set up. Here is how to get started:",
+        "",
+        "YOUR DASHBOARD (tap to open):",
+        login_url,
+        "",
+        "HOW TO LOG WORK - just send a WhatsApp message or voice note:",
+        "Example: Extra sockets in kitchen, 2 hours, 80 quid, Brookfield Site",
+        "Or hold the mic button and speak naturally.",
+        "",
+        "QUICK COMMANDS:",
+        "summary - full overview",
+        "pending - see outstanding items",
+        "approve [site] - mark as approved",
+        "generate variations for [site] - create a PDF",
+        "login - get a new dashboard link",
+        "help - all commands",
+        "",
+        "Good luck on site!"
+    ]
+    msg = chr(10).join(lines)
 
     try:
         TWILIO_SID   = os.environ.get("TWILIO_ACCOUNT_SID", "")
