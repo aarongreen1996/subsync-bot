@@ -181,9 +181,16 @@ def magic_request():
         client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
             to=whatsapp,
-            body=("Your Note2Quote login link" + chr(10) + chr(10) +
-                  "Tap to open your dashboard:" + chr(10) + login_url + chr(10) + chr(10) +
-                  "This link expires in 30 minutes.")
+            body=(
+                "Your Note2Quote dashboard login link" + chr(10) + chr(10) +
+                "Tap to open your dashboard instantly:" + chr(10) +
+                login_url + chr(10) + chr(10) +
+                "Or log in manually at note2quote.co.uk/dashboard:" + chr(10) +
+                "Username: " + (company.get('username') or 'not set — use your mobile number') + chr(10) +
+                "Password: " + (company.get('dashboard_password') or 'not set — use this link') + chr(10) +
+                "Mobile: " + company.get('whatsapp_number','').replace('whatsapp:+44','07').replace('whatsapp:','') + chr(10) + chr(10) +
+                "This link expires in 30 minutes. Send login anytime for a new one."
+            )
         )
         return jsonify({"ok": True})
     except Exception as e:
