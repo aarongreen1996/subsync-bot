@@ -113,15 +113,20 @@ def stripe_webhook():
             phone = whatsapp.replace("whatsapp:", "")
 
             # Create company record in Supabase
-            db_post("companies", {
-                "whatsapp_number": whatsapp,
-                "company_name":    company_name,
-                "address":         meta.get("address", ""),
-                "email":           email,
-                "phone":           phone,
-                "vat_number":      meta.get("vat", ""),
-                "primary_color":   meta.get("primary_color", "#1a3a6b"),
-            })
+            company_payload = {
+                "whatsapp_number":    whatsapp,
+                "company_name":       company_name,
+                "address":            meta.get("address", ""),
+                "email":              email,
+                "phone":              phone,
+                "vat_number":         meta.get("vat", ""),
+                "primary_color":      meta.get("primary_color", "#f59e0b"),
+            }
+            if meta.get("username"):
+                company_payload["username"] = meta["username"]
+            if meta.get("dashboard_password"):
+                company_payload["dashboard_password"] = meta["dashboard_password"]
+            db_post("companies", company_payload)
 
             # Send welcome WhatsApp message
             send_welcome_message(whatsapp, company_name)
