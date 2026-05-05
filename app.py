@@ -87,11 +87,34 @@ def get_projects(from_number):
     return result if isinstance(result, list) else []
 
 def match_site(msg, projects):
-    if not msg: return None
+    """Match site name from message using exact, partial and word-level matching."""
+    if not msg or not projects: return None
     msg_lower = msg.lower()
+
+    # 1. Exact site name match
     for p in projects:
-        if p["site_name"].lower() in msg_lower: return p["site_name"]
-        if p.get("client_name","").lower() in msg_lower: return p["site_name"]
+        if p["site_name"].lower() in msg_lower:
+            return p["site_name"]
+
+    # 2. Client name match
+    for p in projects:
+        cn = (p.get("client_name") or "").strip()
+        if cn and len(cn) > 3 and cn.lower() in msg_lower:
+            return p["site_name"]
+
+    # 3. Word-level partial match (each word of site name must appear in message)
+    for p in projects:
+        site_words = [w for w in p["site_name"].lower().split() if len(w) > 3]
+        if site_words and all(w in msg_lower for w in site_words):
+            return p["site_name"]
+
+    # 4. Short site names — check if any significant word matches
+    for p in projects:
+        site_words = [w for w in p["site_name"].lower().split() if len(w) > 4]
+        msg_words  = set(msg_lower.split())
+        if site_words and any(w in msg_words for w in site_words):
+            return p["site_name"]
+
     return None
 
 def create_site(from_number, site_name):
@@ -112,88 +135,228 @@ def format_project_list(projects):
 pending_selections = {}
 
 # ── Voice transcription ───────────────────────────────────────────────────────
+# Construction site vocabulary for Whisper prompt
+CONSTRUCTION_VOCAB = (
+    "Construction site UK subcontractor. Terms: variation order, daywork, VO, PO, "
+    "snagging, first fix, second fix, making good, day rate, labour only, "
+    "CIS, retention, practical completion, site manager, surveyor, main contractor, "
+    "Screwfix, Toolstation, Travis Perkins, BSS, CEF, Wolseley, Jewson, Wickes, "
+    "batten, joist, noggin, stud, RSJ, lintel, DPC, tanking, pointing, rendering, "
+    "coving, architrave, skirting, fascia, soffit, rafter, purlin, ridge, valley, "
+    "MDPE, UPVC, OSB, MDF, CLS, trunking, conduit, SWA, twin and earth, CPC, "
+    "RCD, MCB, consumer unit, distribution board, socket, switched fused spur, "
+    "rad, TRV, MVHR, UFH, combi, unvented, Megaflo, primatic, "
+    "skim, dot and dab, bonding, multifinish, thistle, sand and cement, "
+    "block, brick, mortar, rebar, shutter, pour, cure, "
+    "Manor House, Brookfield, site one, block one, block two, plot, phase"
+)
+
 def transcribe_voice(media_url):
     try:
         twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
         twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
         audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
         if audio_r.status_code != 200: return None
-        files   = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
-        data    = {"model": "whisper-large-v3", "language": "en"}
+        files = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
+        data  = {
+            "model":    "whisper-large-v3",
+            "language": "en",
+            "prompt":   CONSTRUCTION_VOCAB,  # Biases Whisper toward construction terms
+        }
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
         groq_r  = http_requests.post("https://api.groq.com/openai/v1/audio/transcriptions",
                                      headers=headers, files=files, data=data, timeout=30)
         if groq_r.status_code == 200:
-            return groq_r.json().get("text", "").strip()
+            text = groq_r.json().get("text", "").strip()
+            return preprocess_transcription(text)
         return None
     except Exception as e:
         print(f"Transcription error: {e}")
         return None
 
+
+# ── Pre-processing: fix common voice transcription errors ─────────────────────
+SUPPLIER_CORRECTIONS = {
+    "screwfix": "Screwfix", "screw fix": "Screwfix", "screw fix it": "Screwfix",
+    "toolstation": "Toolstation", "tool station": "Toolstation",
+    "travis perkins": "Travis Perkins", "travis": "Travis Perkins",
+    "bss": "BSS", "cef": "CEF", "city electrical": "CEF",
+    "wolseley": "Wolseley", "jewson": "Jewson", "wickes": "Wickes",
+    "buildbase": "Buildbase", "selco": "Selco", "b and q": "B&Q", "b&q": "B&Q",
+    "plumbase": "Plumbase", "city plumbing": "City Plumbing",
+}
+
+LINGO_CORRECTIONS = {
+    # Transcription commonly mishears these
+    "very asian order": "variation order",
+    "variation odour": "variation order",
+    "very asian": "variation",
+    "vary asian": "variation",
+    "variegation": "variation",
+    "day work": "daywork",
+    "day rate": "day rate",
+    "first fix": "first fix",
+    "second fix": "second fix",
+    "making goods": "making good",
+    "skirting boards": "skirting",
+    "consumer unit": "consumer unit",
+    "distribution board": "distribution board",
+    "day works": "dayworks",
+    "purchase odour": "purchase order",
+    "purchase all that": "purchase order",
+    "pounds": "£",
+    "quid": "£",
+    "grand": "000",
+}
+
+def preprocess_transcription(text):
+    """Fix common Whisper transcription errors for construction lingo."""
+    if not text:
+        return text
+    result = text.lower()
+    for wrong, right in LINGO_CORRECTIONS.items():
+        result = result.replace(wrong.lower(), right)
+    # Don't lowercase supplier names - apply after lowercasing
+    for wrong, right in SUPPLIER_CORRECTIONS.items():
+        result = result.replace(wrong.lower(), right)
+    # Restore sentence case for first letter
+    if result:
+        result = result[0].upper() + result[1:]
+    return result
+
+def preprocess_text(text):
+    """Also apply to typed messages for consistency."""
+    if not text:
+        return text
+    result = text
+    for wrong, right in SUPPLIER_CORRECTIONS.items():
+        result = result.replace(wrong, right).replace(wrong.title(), right).replace(wrong.upper(), right)
+    return result
+
 # ── AI Prompt ─────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """
-You are an admin assistant for UK construction subcontractors.
-Workers send you informal voice-note transcriptions or text messages from site.
-Your job is to extract structured data and classify each message.
+You are an expert admin assistant for UK construction subcontractors and tradespeople.
+Workers send you informal voice-note transcriptions or WhatsApp messages from busy building sites.
+Messages will be rough, use British slang, construction lingo, abbreviations, and may have transcription errors.
+Your job is to extract structured data and classify each message accurately.
 
-Classify into one of:
-- VARIATION      → Extra work explicitly requested BY a named client, site manager, or surveyor
-- DAYWORK        → Worker logging time/hours they spent on extra or additional work
-- MATERIAL_ORDER → Any request to order, buy, pick up or get materials, tools, equipment or supplies
-- TIMESHEET      → Worker logging their standard day rate or normal hours for the day/week
-- UNKNOWN        → Cannot classify
+=== CLASSIFICATION TYPES ===
 
-MATERIAL_ORDER RULE (HIGHEST PRIORITY):
-- If ANY supplier is mentioned (Screwfix, Toolstation, Travis Perkins, B&Q, Wickes, CEF, City Electrical, plumbers merchant, builders merchant, timber yard, any shop name) → ALWAYS MATERIAL_ORDER
-- If words like "order", "need to get", "pick up", "delivery", "can you get", "grab some" appear alongside any item → MATERIAL_ORDER
-- NEVER ask clarification for MATERIAL_ORDER items. Set needs_clarification=false always.
+MATERIAL_ORDER (CHECK THIS FIRST — HIGHEST PRIORITY)
+Any message about buying, ordering, collecting, or needing materials, tools, or equipment.
+Triggers: any supplier name, "need", "order", "get some", "pick up", "grab", "delivery", "sort out some"
+Suppliers: Screwfix, Toolstation, Travis Perkins, BSS, CEF, City Electrical, Wolseley, Jewson, Wickes, Selco, Buildbase, B&Q, City Plumbing, any builders/plumbers merchant
+Examples:
+- "can you order 10 metres of 6mm twin and earth from screwfix" → MATERIAL_ORDER
+- "need some 4x2 from travis" → MATERIAL_ORDER
+- "grab 20 joist hangers" → MATERIAL_ORDER
+- "get delivery of plasterboard sorted" → MATERIAL_ORDER
+RULE: NEVER set needs_clarification=true for MATERIAL_ORDER. Always confident.
 
-TIMESHEET RULE:
-- If message mentions hours for a standard day, day rate, normal work → TIMESHEET
-- Examples: "8 hours today", "standard day", "on site all day", "6am to 4pm Manor House"
+TIMESHEET
+Worker logging their standard working day or shift.
+Triggers: "day rate", "standard day", "hours today", "on site today", "all day", "started at", "finished at", am/pm times
+Examples:
+- "8 hours on manor house today standard day rate" → TIMESHEET
+- "6am to 4pm brookfield, me and dave" → TIMESHEET
+- "done a full day today on the flats" → TIMESHEET
+RULE: NEVER set needs_clarification=true for TIMESHEET. Extract worker names if mentioned.
 
-VARIATION vs DAYWORK:
-- VARIATION only if a named person (Tim, site manager, surveyor, client) explicitly ASKED or REQUESTED the extra work
-- DAYWORK if worker is reporting hours/work they did as extra but no named person requested it
-- If genuinely unclear → needs_clarification=true (but NOT for MATERIAL_ORDER or TIMESHEET)
+VARIATION
+Extra work that a CLIENT, SITE MANAGER, SURVEYOR, or MAIN CONTRACTOR explicitly ASKED FOR or REQUESTED.
+Key words: "asked me to", "they want", "site manager said", "surveyor requested", "client wants", "can you do", "they've asked", "main con want"
+Person must be mentioned (Tim, Dave the surveyor, site manager, client, MC).
+Examples:
+- "Tim at quarterdeck asked me to fit a shower tray" → VARIATION (Tim requested it)
+- "site manager wants extra sockets in kitchen" → VARIATION
+- "they've asked for the roof lights moving" → VARIATION
+RULE: If a person is mentioned alongside a request, it is VARIATION. Set needs_clarification=false.
 
-SITE NAME RULE:
-- Only extract site_name if it is CLEARLY a location/project name (e.g. "Brookfield Site", "Manor House Job", "Flat 3")
-- Do NOT use client names, person names or general descriptions as site_name
-- If the site name is not clearly mentioned, return null and we will ask
+DAYWORK
+Extra work beyond the contract that the WORKER is logging themselves — no named requester.
+The worker did extra work and is recording it for payment.
+Examples:
+- "boarded out the loft in block 3, 4 hours, 80 quid materials" → DAYWORK
+- "cut in ceiling in room 4, 2 hours" → DAYWORK
+- "did the snagging on plot 6 today" → DAYWORK
+RULE: If genuinely unclear between VARIATION and DAYWORK, set needs_clarification=true.
 
-MULTIPLE ITEMS: If the message contains multiple separate items, respond with a JSON ARRAY.
-SINGLE ITEM: respond with a single JSON object.
-Respond ONLY with valid JSON. No explanation, no markdown.
+=== SITE NAME RULES ===
+- ONLY use clear location/project names: "Brookfield Site", "Manor House Job", "Flat 3 Refurb", "Plot 14", "Block B"
+- NEVER use a person's name as the site name (Tim, Dave, John etc)
+- NEVER use a company name as the site name
+- NEVER use descriptive phrases as the site name
+- If unclear, return null — we will ask
 
+=== MONEY/COST RULES ===
+- "quid" = £. "a ton" = £100. "a grand" = £1000. "k" after number = ×1000
+- Extract all pound amounts mentioned
+
+=== MULTIPLE ITEMS ===
+If message has 2+ separate tasks/items (numbered list, "and also", separate sentences about different work):
+Return a JSON ARRAY of objects, one per item.
+Only the LAST item needs confirmation_message summarising everything.
+
+=== OUTPUT FORMAT ===
+Respond ONLY with valid JSON. No explanation, no markdown backticks.
+
+Single item:
 {
-  "type": "VARIATION",
-  "description": "Short clear description of the work",
+  "type": "VARIATION|DAYWORK|MATERIAL_ORDER|TIMESHEET|UNKNOWN",
+  "description": "Clear concise description of work/order",
   "hours": 2.5,
-  "cost_estimate": 40.00,
-  "location": "specific location within site if mentioned",
-  "site_name": "project/site name only, or null",
-  "requested_by": "person who requested it, if mentioned",
-  "worker_name": "worker name if mentioned",
-  "materials": ["item1"],
-  "supplier": "supplier name if mentioned",
+  "cost_estimate": 400.00,
+  "location": "specific room/area within site, or null",
+  "site_name": "project site name ONLY, or null",
+  "requested_by": "name of person who requested it, or null",
+  "worker_name": "worker name if mentioned, or null",
+  "materials": ["list", "of", "materials"],
+  "supplier": "supplier name if mentioned, or null",
   "needs_clarification": false,
-  "confirmation_message": "Friendly ✅ reply confirming what was logged. Under 3 lines. Use £."
+  "confirmation_message": "Friendly ✅ confirmation, max 2 lines, mention the key detail and £ if applicable"
 }
 """
 
 # ── Keywords ──────────────────────────────────────────────────────────────────
-GENERATE_KEYWORDS  = ["generate variations", "generate dayworks", "generate purchase",
-                      "generate report", "create invoice", "make invoice", "send invoice",
-                      "variation report", "daywork report", "material report",
-                      "produce report", "get variations", "send variations"]
-HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands"]
-DASHBOARD_KEYWORDS = ["my dashboard", "get dashboard", "dashboard link", "my password", "get login", "login link", "dashboard", "login", "log in", "sign in", "my login", "get link"]
-SUMMARY_KEYWORDS   = ["summary", "overview", "my summary", "show summary", "stats", "how am i doing", "my stats"]
-PENDING_KEYWORDS   = ["pending", "what's pending", "show pending", "outstanding", "not approved"]
-APPROVE_KEYWORDS   = ["approve", "approved", "mark approved"]
-CHASE_KEYWORDS     = ["chasing", "chase", "mark chasing", "follow up"]
-CANCEL_KEYWORDS    = ["cancel", "cancelled", "mark cancelled", "mark canceled"]
+GENERATE_KEYWORDS  = [
+    "generate variations", "generate dayworks", "generate purchase", "generate pos",
+    "generate report", "create invoice", "make invoice", "send invoice",
+    "variation report", "daywork report", "material report", "produce report",
+    "get variations", "send variations", "create pdf", "make pdf", "get pdf",
+    "make a variation", "do a variation", "raise a variation", "raise variation",
+    "create daywork sheet", "do the dayworks",
+]
+HELP_KEYWORDS      = [
+    "help", "guide", "how do i", "what can you do", "commands",
+    "what do i say", "how does this work", "confused", "stuck",
+]
+DASHBOARD_KEYWORDS = [
+    "my dashboard", "get dashboard", "dashboard link", "my password", "get login",
+    "login link", "dashboard", "login", "log in", "sign in", "my login", "get link",
+    "open dashboard", "view dashboard", "access dashboard", "get access",
+]
+SUMMARY_KEYWORDS   = [
+    "summary", "overview", "my summary", "show summary", "stats",
+    "how am i doing", "my stats", "what have i logged", "show me everything",
+    "whats outstanding", "what's outstanding", "how much", "total",
+]
+PENDING_KEYWORDS   = [
+    "pending", "what's pending", "whats pending", "show pending",
+    "outstanding", "not approved", "not been approved", "waiting",
+    "what needs doing", "whats left",
+]
+APPROVE_KEYWORDS   = [
+    "approve", "approved", "mark approved", "all approved", "client approved",
+    "they've approved", "theyve approved", "got approval", "its approved",
+]
+CHASE_KEYWORDS     = [
+    "chasing", "chase", "mark chasing", "follow up", "still waiting",
+    "not heard back", "no response", "chase them", "need to chase",
+]
+CANCEL_KEYWORDS    = [
+    "cancel", "cancelled", "mark cancelled", "mark canceled",
+    "not happening", "drop it", "remove it",
+]
 
 def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
 def is_help_command(msg):      return any(kw in msg.lower() for kw in HELP_KEYWORDS)
@@ -544,11 +707,56 @@ def handle_generate(from_number, msg):
 # ── Log handler ───────────────────────────────────────────────────────────────
 def handle_log(from_number, incoming_msg):
     try:
+        # Pre-process text to fix common supplier/lingo errors
+        processed_msg = preprocess_text(incoming_msg)
+
+        # Pre-classification shortcuts for obvious cases
+        msg_lower = processed_msg.lower()
+        SUPPLIER_NAMES = ["screwfix","toolstation","travis perkins","bss","cef","wolseley",
+                          "jewson","wickes","selco","buildbase","b&q","city plumbing","plumbase",
+                          "plumbers merchant","builders merchant","timber yard","electrical wholesaler"]
+        ORDER_WORDS    = ["order","need to get","pick up","picking up","grab","delivery","deliver",
+                          "get some","get me","can you get","sort out some","collect","collection"]
+        has_supplier   = any(s in msg_lower for s in SUPPLIER_NAMES)
+        has_order_word = any(w in msg_lower for w in ORDER_WORDS)
+
+        # If obvious material order — skip AI and go straight to site selection
+        if has_supplier or (has_order_word and any(unit in msg_lower for unit in
+                ["metres","meters","mm","lengths","sheets","boxes","rolls","bags","drums","litres"])):
+            projects  = get_projects(from_number)
+            site_name = match_site(incoming_msg, projects)
+            insert = {
+                "from_number":   from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number,
+                "raw_message":   incoming_msg,
+                "type":          "MATERIAL_ORDER",
+                "description":   processed_msg[:200],
+                "status":        "pending",
+                "materials":     [],
+            }
+            # Try to extract supplier
+            for s in SUPPLIER_NAMES:
+                if s in msg_lower:
+                    insert["supplier"] = s.title()
+                    break
+            if site_name:
+                insert["site_name"] = site_name
+                db_post("site_logs", insert)
+                return _reply("Material order logged for " + site_name + " ✅")
+            elif projects:
+                pending_selections[from_number] = {
+                    "pending_log": insert, "projects": projects,
+                    "awaiting_type": False, "awaiting_site": True,
+                }
+                return _reply("Got the order ✅" + chr(10) + chr(10) + format_project_list(projects))
+            else:
+                db_post("site_logs", insert)
+                return _reply("Material order logged ✅")
+
         ai_response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1200,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": incoming_msg}]
+            messages=[{"role": "user", "content": processed_msg}]
         )
 
         raw_json = ai_response.content[0].text.strip()
@@ -619,13 +827,15 @@ def handle_log(from_number, incoming_msg):
                     "pending_log": insert_data, "projects": projects,
                     "awaiting_type": True, "awaiting_site": False,
                 }
-                return _reply(
-                    confirmation + "\n\n"
-                    "Is this a:\n"
-                    "1. *Variation* — extra work the client/manager requested\n"
-                    "2. *Daywork* — hours you logged on extra work\n\n"
-                    "Reply 1 or 2"
+                clarify_q = (
+                    confirmation + chr(10) + chr(10) +
+                    "Just need to confirm the type:" + chr(10) +
+                    "1. Variation - client or site manager asked for this" + chr(10) +
+                    "2. Daywork - extra work you did yourself" + chr(10) +
+                    "3. Material Order - something to buy or order" + chr(10) + chr(10) +
+                    "Reply 1, 2 or 3  |  cancel to start again"
                 )
+                return _reply(clarify_q)
 
             if site_name:
                 insert_data["site_name"] = site_name
