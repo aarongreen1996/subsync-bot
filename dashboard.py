@@ -57,20 +57,27 @@ def summary():
     number   = request.args.get("number", "")
     encoded  = normalise(number)
 
-    logs     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.desc")
+    # Fetch ALL logs so nothing is ever lost from the dashboard
+    all_logs = db_get(f"site_logs?from_number=eq.{encoded}&order=created_at.desc")
     projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
-    sent     = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.sent&order=created_at.desc&limit=20")
     company  = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
 
-    if not isinstance(logs, list):     logs = []
-    if not isinstance(projects, list): projects = []
-    if not isinstance(sent, list):     sent = []
+    if not isinstance(all_logs, list):  all_logs = []
+    if not isinstance(projects, list):  projects = []
 
-    total_value = sum(float(l.get("cost_estimate") or 0) for l in logs)
-    total_hours = sum(float(l.get("hours") or 0) for l in logs)
+    # Split by status
+    pending  = [l for l in all_logs if l.get("status") == "pending"]
+    approved = [l for l in all_logs if l.get("status") == "approved"]
+    chasing  = [l for l in all_logs if l.get("status") == "chasing"]
+    sent     = [l for l in all_logs if l.get("status") == "sent"]
+    cancelled = [l for l in all_logs if l.get("status") == "cancelled"]
+    historic  = approved + chasing + sent + cancelled  # All non-pending
+
+    total_value = sum(float(l.get("cost_estimate") or 0) for l in pending)
+    total_hours = sum(float(l.get("hours") or 0) for l in pending)
 
     by_site = {}
-    for log in logs:
+    for log in pending:
         site = log.get("site_name") or "Unassigned"
         if site not in by_site:
             by_site[site] = {"count": 0, "value": 0.0, "hours": 0.0, "logs": []}
@@ -80,14 +87,16 @@ def summary():
         by_site[site]["logs"].append(log)
 
     return jsonify({
-        "company":       company[0] if isinstance(company, list) and company else {},
-        "total_pending": len(logs),
-        "total_value":   total_value,
-        "total_hours":   total_hours,
-        "sites":         len(projects),
-        "by_site":       by_site,
-        "projects":      projects,
-        "recent_sent":   sent,
+        "company":        company[0] if isinstance(company, list) and company else {},
+        "total_pending":  len(pending),
+        "total_value":    total_value,
+        "total_hours":    total_hours,
+        "sites":          len(projects),
+        "by_site":        by_site,
+        "projects":       projects,
+        "all_logs":       all_logs,
+        "recent_sent":    sent[:20],
+        "historic":       historic,
     })
 
 
