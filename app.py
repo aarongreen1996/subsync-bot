@@ -313,7 +313,7 @@ Single item:
   "materials": ["list", "of", "materials"],
   "supplier": "supplier name if mentioned, or null",
   "needs_clarification": false,
-  "confirmation_message": "Friendly ✅ confirmation, max 2 lines, mention the key detail and £ if applicable"
+  "confirmation_message": "Friendly ✅ confirmation, max 2 lines. For MATERIAL_ORDER say 'logged for [site]' NOT 'will sort' or 'will order' or 'will arrange'. We only LOG items, we do not action them."
 }
 """
 
@@ -358,6 +358,15 @@ CANCEL_KEYWORDS    = [
     "not happening", "drop it", "remove it",
 ]
 
+# Correction keywords — user wants to fix the last logged item
+CORRECTION_KEYWORDS = [
+    "no not", "not £", "its £", "it's £", "no it's", "no its",
+    "wrong", "that's wrong", "thats wrong", "correction", "incorrect",
+    "not right", "change that", "update that", "fix that",
+    "i meant", "i mean", "should be", "actually",
+    "not that", "no the cost", "no the hours", "no the description",
+]
+
 # Site-specific queries
 SITE_QUERY_KEYWORDS = [
     "outstanding on", "update on", "status of", "show me",
@@ -369,11 +378,13 @@ SITE_QUERY_KEYWORDS = [
 
 # Date range queries
 DATE_QUERY_KEYWORDS = [
-    "yesterday", "last week", "this week", "last month", "this month",
-    "today", "past week", "past month", "past few days",
-    "show me logs", "show me everything", "show me what",
-    "what did i log", "what was logged", "what have i done",
-    "from yesterday", "from last week", "recent",
+    "show me yesterday", "show me last week", "show me this week",
+    "show me last month", "show me this month", "show me today",
+    "show me this week", "show me past",
+    "what did i log yesterday", "what did i log last week",
+    "what was logged yesterday", "what was logged last week",
+    "logs from yesterday", "logs from last week", "logs from today",
+    "from yesterday", "from last week",
 ]
 
 def is_generate_command(msg):    return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
@@ -384,6 +395,7 @@ def is_pending_command(msg):     return any(kw in msg.lower() for kw in PENDING_
 def is_status_command(msg):      return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
 def is_site_query(msg):          return any(kw in msg.lower() for kw in SITE_QUERY_KEYWORDS)
 def is_date_query(msg):          return any(kw in msg.lower() for kw in DATE_QUERY_KEYWORDS)
+def is_correction(msg):          return any(kw in msg.lower() for kw in CORRECTION_KEYWORDS)
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
@@ -513,10 +525,23 @@ def webhook():
     if is_summary_command(incoming_msg):    return handle_summary(from_number)
     if is_pending_command(incoming_msg):    return handle_pending_summary(from_number)
     if is_status_command(incoming_msg):     return handle_status_update(from_number, incoming_msg)
-    if is_site_query(incoming_msg):         return handle_site_query(from_number, incoming_msg)
-    if is_date_query(incoming_msg):         return handle_date_query(from_number, incoming_msg)
     if is_help_command(incoming_msg):       return _reply(HELP_TEXT)
     if is_generate_command(incoming_msg):   return handle_generate(from_number, incoming_msg)
+
+    # Date/site queries — only if message doesn't look like a log entry
+    _msg_lower = incoming_msg.lower()
+    _log_hints = ["hours", "hour", "mins", "materials", "quid", "£", "standard day",
+                  "day rate", "variation", "daywork", "order", "fitted", "installed",
+                  "boarded", "plastered", "fixed", "sorted", "done", "completed"]
+    _looks_like_log = any(h in _msg_lower for h in _log_hints)
+
+    if not _looks_like_log and is_site_query(incoming_msg):
+        return handle_site_query(from_number, incoming_msg)
+    if not _looks_like_log and is_date_query(incoming_msg):
+        return handle_date_query(from_number, incoming_msg)
+
+    if is_correction(incoming_msg):
+        return handle_correction(from_number, incoming_msg)
 
     return handle_log(from_number, incoming_msg)
 
@@ -1636,6 +1661,76 @@ def handle_date_query(from_number, msg):
         return _reply("\n".join(out))
     except Exception as e:
         return _reply("Couldn't get logs for that period. (" + str(e)[:80] + ")")
+
+
+
+# ── Correction handler ────────────────────────────────────────────────────────
+def handle_correction(from_number, msg):
+    """Let user correct the last logged item — e.g. 'no not £500 its £35'"""
+    try:
+        encoded = encode_number(from_number)
+        # Get the very last log entry for this user
+        logs = db_get("site_logs?from_number=eq." + encoded + "&order=created_at.desc&limit=1")
+        if not isinstance(logs, list) or not logs:
+            return handle_log(from_number, msg)
+
+        last = logs[0]
+        log_id = last["id"]
+        msg_lower = msg.lower()
+        updates = {}
+
+        # Try to extract a corrected cost
+        import re as _re
+        cost_match = _re.search(r"[£$]?\s*(\d+(?:\.\d+)?)\s*(?:quid|pounds?)?", msg)
+        if cost_match and any(kw in msg_lower for kw in ["£", "quid", "pound", "cost", "price", "not £", "its £"]):
+            updates["cost_estimate"] = float(cost_match.group(1))
+
+        # Try to extract corrected hours
+        hours_match = _re.search(r"(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)", msg_lower)
+        if hours_match:
+            updates["hours"] = float(hours_match.group(1))
+
+        # Try to extract corrected description if they say "not X it's Y"
+        no_match = _re.search(r"(?:not|wrong|no)\s+.{0,30}(?:it[''s]*|actually|should be|i meant)\s+(.+)", msg_lower)
+        if no_match and not updates:
+            updates["description"] = no_match.group(1).strip().capitalize()
+
+        if not updates:
+            # Can't parse what to fix — treat as new log
+            return handle_log(from_number, msg)
+
+        # Apply updates
+        for field, value in updates.items():
+            db_patch("site_logs?id=eq." + str(log_id), {field: value})
+
+        # Build confirmation
+        desc = last.get("description", "last entry")[:40]
+        parts = []
+        if "cost_estimate" in updates: parts.append("cost updated to £" + ("%.2f" % updates["cost_estimate"]))
+        if "hours" in updates: parts.append("hours updated to " + str(updates["hours"]))
+        if "description" in updates: parts.append("description updated")
+
+        return _reply("✅ Corrected — " + (", ".join(parts) if parts else "updated") + chr(10) +
+                      "Entry: " + desc)
+    except Exception as e:
+        return handle_log(from_number, msg)
+
+
+# ── Material order reminder handler ──────────────────────────────────────────
+def send_reminder_message(from_number, log_id, description):
+    """Called by scheduler to send a material order reminder."""
+    try:
+        msg = ("⏰ Material order reminder" + chr(10) + chr(10) +
+               description[:60] + chr(10) + chr(10) +
+               "Reply done if sorted, or snooze to remind you tomorrow.")
+        from twilio.rest import Client as _TC
+        client = _TC(os.environ.get("TWILIO_ACCOUNT_SID", ""),
+                     os.environ.get("TWILIO_AUTH_TOKEN", ""))
+        client.messages.create(
+            from_=os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886"),
+            to=from_number, body=msg)
+    except Exception as e:
+        print("Reminder send error:", e)
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
 def _html(fname):
