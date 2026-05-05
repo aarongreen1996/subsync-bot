@@ -160,6 +160,19 @@ def add_site():
 
 
 # ── Delete site ───────────────────────────────────────────────────────────────
+@account_bp.route("/api/account/sites/<int:site_id>", methods=["PATCH"])
+def update_site(site_id):
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    data    = request.json or {}
+    allowed = ["site_name", "client_name", "client_email", "client_phone"]
+    update  = {k: v for k, v in data.items() if k in allowed}
+    if not update:
+        return jsonify({"error": "Nothing to update"}), 400
+    ok = db_patch(f"projects?id=eq.{site_id}", update)
+    return jsonify({"ok": bool(ok)})
+
+
 @account_bp.route("/api/account/sites/<int:site_id>", methods=["DELETE"])
 def delete_site(site_id):
     if not check_auth():
