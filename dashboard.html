@@ -690,38 +690,39 @@ function renderLogs(){
     var historic=filtered.filter(function(l){return l.status!=="pending";});
 
     function logRow(l,isHistoric){
-      var types=["VARIATION","DAYWORK","MATERIAL_ORDER","TIMESHEET","UNKNOWN"];
-      var typeOpts=types.map(function(t){return "<option value=""+t+"""+(l.type===t?" selected":"")+">"+t.replace("_"," ")+"</option>";}).join("");
-      var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
-      var r="<tr id="row-"+l.id+"""+(isHistoric?" class="row-historic"":"")+">";
+      var types=['VARIATION','DAYWORK','MATERIAL_ORDER','TIMESHEET','UNKNOWN'];
+      var typeOpts=types.map(function(t){return '<option value="'+t+'"'+(l.type===t?' selected':'')+'>'+t.replace('_',' ')+'</option>';}).join('');
+      var date=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
+      var cls=isHistoric?' class="row-historic"':'';
+      var r='<tr id="row-'+l.id+'"'+cls+'>';
       if(isHistoric){
-        r+="<td class="cell-pad"><span class="type-pill t-"+(l.type||"UNKNOWN")+"">"+(l.type||"").replace("_"," ")+"</span></td>";
-        r+="<td class="cell-pad">"+(l.description||"—")+"</td>";
-        r+="<td class="cell-pad">"+(l.site_name||"—")+"</td>";
-        r+="<td class="cell-pad">"+(l.location||"—")+"</td>";
-        r+="<td class="cell-pad">"+(l.hours||"—")+"</td>";
-        r+="<td class="cell-pad">"+(l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
-        r+="<td class="cell-pad"><span class="status-sel s-"+l.status+"">"+(l.status||"")+"</span></td>";
-        r+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+(date)+"</td>";
-        r+="<td class="cell-pad"><button class="btn-restore" onclick="restoreLog("+l.id+")" title="Move back to pending">↩ Restore</button> <button class="btn-ghost-red" onclick="deleteLog("+l.id+")">✕</button></td>";
+        r+='<td class="cell-pad"><span class="type-pill t-'+(l.type||'UNKNOWN')+'">'+(l.type||'').replace('_',' ')+'</span></td>';
+        r+='<td class="cell-pad">'+(l.description||'—')+'</td>';
+        r+='<td class="cell-pad">'+(l.site_name||'—')+'</td>';
+        r+='<td class="cell-pad">'+(l.location||'—')+'</td>';
+        r+='<td class="cell-pad">'+(l.hours||'—')+'</td>';
+        r+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
+        r+='<td class="cell-pad"><span class="status-sel s-'+l.status+'">'+(l.status||'')+'</span></td>';
+        r+='<td class="cell-pad" style="color:var(--faint);font-size:12px">'+date+'</td>';
+        r+='<td class="cell-pad"><button class="btn-restore" onclick="restoreLog('+l.id+')" title="Restore to pending">↩ Restore</button> <button class="btn-ghost-red" onclick="deleteLog('+l.id+')">✕</button></td>';
       } else {
-        r+="<td style="padding:6px 14px"><select style="border:none;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:Manrope,sans-serif;color:inherit;outline:none" onchange="saveField("+l.id+",'type',this.value)">"+(typeOpts)+"</select></td>";
-        r+="<td><div class="cell" contenteditable="true" onblur="saveField("+l.id+",'description',this.innerText.trim())">"+(l.description||"")+"</div></td>";
-        r+="<td><div class="cell" style="min-width:100px" contenteditable="true" onblur="saveField("+l.id+",'site_name',this.innerText.trim())">"+(l.site_name||"")+"</div></td>";
-        r+="<td><div class="cell" contenteditable="true" onblur="saveField("+l.id+",'location',this.innerText.trim())">"+(l.location||"")+"</div></td>";
-        r+="<td><div class="cell" style="max-width:60px" contenteditable="true" onblur="saveField("+l.id+",'hours',this.innerText.trim())">"+(l.hours||"")+"</div></td>";
-        r+="<td><div class="cell" style="max-width:80px" contenteditable="true" onblur="saveField("+l.id+",'cost_estimate',this.innerText.trim())">"+(l.cost_estimate||"")+"</div></td>";
-        r+="<td style="padding:6px 14px">"+statusSelect(l.id,l.status)+"</td>";
-        r+="<td class="cell-pad" style="white-space:nowrap;color:var(--faint);font-size:12px">"+date+"</td>";
-        r+="<td class="cell-pad"><button class="btn-ghost-red" onclick="deleteLog("+l.id+")">✕</button></td>";
+        r+='<td style="padding:6px 14px"><select style="border:none;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:Manrope,sans-serif;color:inherit;outline:none" onchange="saveField('+l.id+',\'type\',this.value)">'+typeOpts+'</select></td>';
+        r+='<td><div class="cell" contenteditable="true" onblur="saveField('+l.id+',\'description\',this.innerText.trim())">'+(l.description||'')+'</div></td>';
+        r+='<td><div class="cell" style="min-width:100px" contenteditable="true" onblur="saveField('+l.id+',\'site_name\',this.innerText.trim())">'+(l.site_name||'')+'</div></td>';
+        r+='<td><div class="cell" contenteditable="true" onblur="saveField('+l.id+',\'location\',this.innerText.trim())">'+(l.location||'')+'</div></td>';
+        r+='<td><div class="cell" style="max-width:60px" contenteditable="true" onblur="saveField('+l.id+',\'hours\',this.innerText.trim())">'+(l.hours||'')+'</div></td>';
+        r+='<td><div class="cell" style="max-width:80px" contenteditable="true" onblur="saveField('+l.id+',\'cost_estimate\',this.innerText.trim())">'+(l.cost_estimate||'')+'</div></td>';
+        r+='<td style="padding:6px 14px">'+statusSelect(l.id,l.status)+'</td>';
+        r+='<td class="cell-pad" style="white-space:nowrap;color:var(--faint);font-size:12px">'+date+'</td>';
+        r+='<td class="cell-pad"><button class="btn-ghost-red" onclick="deleteLog('+l.id+')">✕</button></td>';
       }
-      r+="</tr>";
+      r+='</tr>';
       return r;
     }
 
     active.forEach(function(l){html+=logRow(l,false);});
     if(historic.length){
-      html+="<tr class="historic-divider"><td colspan="9">📁 History — "+historic.length+" completed items</td></tr>";
+      html+='<tr class="historic-divider"><td colspan="9">📁 History — '+historic.length+' completed items</td></tr>';
       historic.forEach(function(l){html+=logRow(l,true);});
     }
   }
@@ -749,40 +750,47 @@ function renderSites(){
     var pendingLogs=filteredSiteLogs.filter(function(l){return l.status==="pending";});
     var historicLogs=filteredSiteLogs.filter(function(l){return l.status!=="pending";});
     var totalVal=pendingLogs.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
-    var pendCount=pendingLogs.length;
-    html+="<div class="site-folder" id="folder-"+p.site_name.replace(/\s/g,"-")+"">";
-    html+="<div class="site-folder-header" onclick="toggleFolder(this)">";
-    html+="<div><div class="site-folder-name">📍 "+p.site_name+"</div><div class="site-folder-meta">"+filteredSiteLogs.length+" total · £"+totalVal.toFixed(2)+" · "+pendCount+" pending</div></div>";
-    html+="<div style="display:flex;align-items:center;gap:8px;"><button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal('"+p.site_name+"')">"+"Generate PDF</button><span class="folder-chevron">▶</span></div></div>";
-    html+="<div class="site-folder-body">";
+    var fid='folder-'+p.site_name.replace(/\s/g,'-');
+    html+='<div class="site-folder" id="'+fid+'">';
+    html+='<div class="site-folder-header" onclick="toggleFolder(this)">';
+    html+='<div><div class="site-folder-name">📍 '+p.site_name+'</div>';
+    html+='<div class="site-folder-meta">'+filteredSiteLogs.length+' total · £'+totalVal.toFixed(2)+' · '+pendCount+' pending</div></div>';
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal(\''+p.site_name+'\')">'+'Generate PDF</button>';
+    html+='<span class="folder-chevron">▶</span></div></div>';
+    html+='<div class="site-folder-body">';
     if(filteredSiteLogs.length){
-      html+="<div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Cost</th><th>Hours</th><th>Status</th><th>Date</th></tr></thead><tbody>";
-      // Pending rows first (normal)
+      html+='<div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Cost</th><th>Hours</th><th>Status</th><th>Date</th></tr></thead><tbody>';
       pendingLogs.forEach(function(l){
-        var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
-        html+="<tr><td class="cell-pad"><span class="type-pill t-"+l.type+"">"+( l.type||"").replace("_"," ")+"</span></td>";
-        html+="<td class="cell-pad">"+( l.description||"—")+"</td>";
-        html+="<td class="cell-pad">"+( l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
-        html+="<td class="cell-pad">"+( l.hours?l.hours+" hrs":"—")+"</td>";
-        html+="<td class="cell-pad">"+statusSelect(l.id,l.status)+"</td>";
-        html+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+date+"</td></tr>";
+        var pd=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
+        var pt=(l.type||'').replace('_',' ');
+        html+='<tr>';
+        html+='<td class="cell-pad"><span class="type-pill t-'+l.type+'">'+pt+'</span></td>';
+        html+='<td class="cell-pad">'+(l.description||'—')+'</td>';
+        html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
+        html+='<td class="cell-pad">'+(l.hours?l.hours+' hrs':'—')+'</td>';
+        html+='<td class="cell-pad">'+statusSelect(l.id,l.status)+'</td>';
+        html+='<td class="cell-pad" style="color:var(--faint);font-size:12px">'+pd+'</td></tr>';
       });
-      // Historic rows faded
       if(historicLogs.length){
-        html+="<tr class="historic-divider"><td colspan="6">📁 "+historicLogs.length+" completed</td></tr>";
+        html+='<tr class="historic-divider"><td colspan="6">📁 '+historicLogs.length+' completed</td></tr>';
         historicLogs.forEach(function(l){
-          var date=l.created_at?new Date(l.created_at).toLocaleDateString("en-GB"):"—";
-          html+="<tr class="row-historic"><td class="cell-pad"><span class="type-pill t-"+l.type+"">"+( l.type||"").replace("_"," ")+"</span></td>";
-          html+="<td class="cell-pad">"+( l.description||"—")+"</td>";
-          html+="<td class="cell-pad">"+( l.cost_estimate?"£"+parseFloat(l.cost_estimate).toFixed(2):"—")+"</td>";
-          html+="<td class="cell-pad">"+( l.hours?l.hours+" hrs":"—")+"</td>";
-          html+="<td class="cell-pad"><span class="status-sel s-"+l.status+"">"+(l.status||"")+"</span> <button class="btn-restore" onclick="restoreLog("+l.id+")">↩</button></td>";
-          html+="<td class="cell-pad" style="color:var(--faint);font-size:12px">"+date+"</td></tr>";
+          var hd=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
+          var ht=(l.type||'').replace('_',' ');
+          html+='<tr class="row-historic">';
+          html+='<td class="cell-pad"><span class="type-pill t-'+l.type+'">'+ht+'</span></td>';
+          html+='<td class="cell-pad">'+(l.description||'—')+'</td>';
+          html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
+          html+='<td class="cell-pad">'+(l.hours?l.hours+' hrs':'—')+'</td>';
+          html+='<td class="cell-pad"><span class="status-sel s-'+l.status+'">'+l.status+'</span> <button class="btn-restore" onclick="restoreLog('+l.id+')">↩</button></td>';
+          html+='<td class="cell-pad" style="font-size:12px;color:var(--faint)">'+hd+'</td></tr>';
         });
       }
-      html+="</tbody></table></div>";
-    }else{html+="<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">No logs in this period for this site</div>";}
-    html+="</div></div>";
+      html+='</tbody></table></div>';
+    } else {
+      html+='<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">No logs in this period for this site</div>';
+    }
+    html+='</div></div>';
   });
 
   document.getElementById("page-content").innerHTML=filtersBar(false,true,true)+html;
