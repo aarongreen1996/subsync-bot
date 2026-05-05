@@ -265,7 +265,26 @@ function renderAccount(d){
   var nextDate=s.next_billing?new Date(s.next_billing*1000).toLocaleDateString('en-GB'):'—';
   var trialDate=s.trial_end?new Date(s.trial_end*1000).toLocaleDateString('en-GB'):null;
 
-  var sitesHtml=ps.length?ps.map(function(p){return '<div class="site-item"><div><h4>📍 '+p.site_name+'</h4><p>'+(p.client_name||'No client name set')+'</p></div><button class="btn btn-outline btn-sm" onclick="removeSite('+p.id+',\''+p.site_name+'\')">Remove</button></div>';}).join(''):'<p style="color:var(--muted);font-size:14px;margin-bottom:12px">No sites yet.</p>';
+  var sitesHtml=ps.length?ps.map(function(p){
+    return '<div class="site-item" id="site-item-'+p.id+'">'+
+      '<div style="flex:1">'+
+        '<div class="site-item-view" id="site-view-'+p.id+'">'+
+          '<h4>📍 '+p.site_name+'</h4>'+
+          '<p>'+(p.client_name||'No client set')+'</p>'+
+        '</div>'+
+        '<div class="site-item-edit" id="site-edit-'+p.id+'" style="display:none">'+
+          '<input type="text" id="site-name-'+p.id+'" value="'+p.site_name+'" style="width:100%;padding:6px 10px;border:1.5px solid var(--amber);border-radius:7px;font-size:13px;font-family:Manrope,sans-serif;background:var(--bg3);color:var(--text);outline:none;margin-bottom:6px" />'+
+          '<input type="text" id="site-client-'+p.id+'" value="'+(p.client_name||'')+'" placeholder="Client name" style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:Manrope,sans-serif;background:var(--bg3);color:var(--text);outline:none" />'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;align-items:center">'+
+        '<button class="btn btn-outline btn-sm" id="site-edit-btn-'+p.id+'" onclick="toggleSiteEdit('+p.id+')">Edit</button>'+
+        '<button class="btn btn-amber btn-sm" id="site-save-btn-'+p.id+'" onclick="saveSite('+p.id+')" style="display:none">Save</button>'+
+        '<button class="btn-ghost-red btn-sm" id="site-cancel-btn-'+p.id+'" onclick="cancelSiteEdit('+p.id+')" style="display:none;font-size:11px;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:600;background:rgba(220,38,38,0.08);color:var(--red);border:none">Cancel</button>'+
+        '<button class="btn-ghost-red" onclick="removeSite('+p.id+',\''+p.site_name+'\')">Remove</button>'+
+      '</div>'+
+    '</div>';
+  }).join(''):'<p style="color:var(--muted);font-size:14px;margin-bottom:12px">No sites yet. Add your first site below.</p>';
 
   document.getElementById('page-content').innerHTML = `
     <div class="section">
@@ -410,6 +429,32 @@ function cancelSubscription(){
   var s=STATE.data&&STATE.data.stripe;
   if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
   else{showToast('Contact support to cancel your subscription','');}
+}
+
+function toggleSiteEdit(id){
+  document.getElementById('site-view-'+id).style.display='none';
+  document.getElementById('site-edit-'+id).style.display='block';
+  document.getElementById('site-edit-btn-'+id).style.display='none';
+  document.getElementById('site-save-btn-'+id).style.display='inline-flex';
+  document.getElementById('site-cancel-btn-'+id).style.display='inline-flex';
+}
+
+function cancelSiteEdit(id){
+  document.getElementById('site-view-'+id).style.display='block';
+  document.getElementById('site-edit-'+id).style.display='none';
+  document.getElementById('site-edit-btn-'+id).style.display='inline-flex';
+  document.getElementById('site-save-btn-'+id).style.display='none';
+  document.getElementById('site-cancel-btn-'+id).style.display='none';
+}
+
+async function saveSite(id){
+  var name=document.getElementById('site-name-'+id).value.trim();
+  var client=document.getElementById('site-client-'+id).value.trim();
+  if(!name){showToast('Site name cannot be empty','error');return;}
+  var r=await apiFetch('/api/account/sites/'+id,{method:'PATCH',body:JSON.stringify({site_name:name,client_name:client})});
+  var d=await r.json();
+  if(d.ok){showToast('Site updated','success');await loadAccount();}
+  else showToast('Failed: '+(d.error||'Unknown'),'error');
 }
 
 function showToast(msg,type){
