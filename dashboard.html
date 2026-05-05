@@ -750,6 +750,7 @@ function renderSites(){
     var pendingLogs=filteredSiteLogs.filter(function(l){return l.status!=='approved'&&l.status!=='cancelled';});
     var historicLogs=filteredSiteLogs.filter(function(l){return l.status==='approved'||l.status==='cancelled';});
     var totalVal=pendingLogs.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
+    var pendCount=pendingLogs.length;
     var fid='folder-'+p.site_name.replace(/\s/g,'-');
     html+='<div class="site-folder" id="'+fid+'">';
     html+='<div class="site-folder-header" onclick="toggleFolder(this)">';
@@ -845,24 +846,42 @@ function renderPOs(){
 // ── DOCUMENTS SENT ─────────────────────────────────────────────────────────
 function renderDocuments(){
   var d=S.data||{};
-  var sent=(d.recent_sent||[]);
-  var filtered=getFilteredLogs(sent.map(function(l){return Object.assign({},l,{status:'sent'});}));
-  var html=filtersBar(true,true,false);
-
+  var allLogs=getAllLogs();
+  var filtered=getFilteredLogs(allLogs);
+  var statusOrder={sent:0,approved:1,chasing:2,pending:3,cancelled:4};
+  filtered.sort(function(a,b){
+    var ao=statusOrder[a.status]||3,bo=statusOrder[b.status]||3;
+    if(ao!==bo)return ao-bo;
+    return new Date(b.created_at||0)-new Date(a.created_at||0);
+  });
+  var html=filtersBar(true,true,true);
   if(!filtered.length){
-    html+='<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No documents yet</div><div class="empty-sub">Generate a PDF from Overview or Sites to see it here</div></div>';
+    html+='<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No logs yet</div><div class="empty-sub">All your site logs appear here as a full archive</div></div>';
     document.getElementById('page-content').innerHTML=html;return;
   }
-
-  html+='<div class="section-card"><div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Site</th><th>Cost</th><th>Date</th><th></th></tr></thead><tbody>';
+  var sentL=filtered.filter(function(l){return l.status==='sent';});
+  var appL=filtered.filter(function(l){return l.status==='approved';});
+  var chasL=filtered.filter(function(l){return l.status==='chasing';});
+  var sentV=sentL.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
+  var appV=appL.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
+  html+='<div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">';
+  html+='<div class="kpi"><div class="kpi-label">Docs Sent</div><div class="kpi-value amber">'+sentL.length+'</div><div class="kpi-sub">£'+sentV.toFixed(0)+' value</div></div>';
+  html+='<div class="kpi"><div class="kpi-label">Approved</div><div class="kpi-value green">'+appL.length+'</div><div class="kpi-sub">£'+appV.toFixed(0)+' confirmed</div></div>';
+  html+='<div class="kpi"><div class="kpi-label">Chasing</div><div class="kpi-value">'+chasL.length+'</div><div class="kpi-sub">Awaiting response</div></div></div>';
+  html+='<div class="section-card"><div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Description</th><th>Site</th><th>Cost</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>';
   filtered.forEach(function(l){
     var date=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
-    html+='<tr><td class="cell-pad"><span class="type-pill t-'+l.type+'">'+(l.type||'').replace('_',' ')+'</span></td>';
+    var isH=l.status==='approved'||l.status==='cancelled';
+    html+='<tr class="'+(isH?'row-historic':'')+'"><td class="cell-pad"><span class="type-pill t-'+l.type+'">'+(l.type||'').replace('_',' ')+'</span></td>';
     html+='<td class="cell-pad">'+(l.description||'—')+'</td>';
     html+='<td class="cell-pad">'+(l.site_name||'—')+'</td>';
     html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
+    html+='<td class="cell-pad"><span class="status-sel s-'+l.status+'">'+l.status+'</span></td>';
     html+='<td class="cell-pad" style="color:var(--faint);font-size:12px">'+date+'</td>';
-    html+='<td class="cell-pad"><button class="btn btn-outline btn-sm" onclick="unsendLog('+l.id+')">Move to pending</button></td></tr>';
+    html+='<td class="cell-pad">';
+    if(l.status==='sent')html+='<button class="btn btn-outline btn-sm" onclick="unsendLog('+l.id+')">↩ Unsend</button>';
+    if(isH)html+='<button class="btn-restore" onclick="restoreLog('+l.id+')">↩ Restore</button>';
+    html+='</td></tr>';
   });
   html+='</tbody></table></div></div>';
   document.getElementById('page-content').innerHTML=html;
