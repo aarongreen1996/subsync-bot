@@ -55,7 +55,26 @@ def db_patch(path, payload):
     http_requests.patch(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
                         headers={**sb_headers(), "Prefer": "return=minimal"})
 
-def encode_number(n): return n.replace("+", "%2B")
+def normalise_wa_number(n):
+    """Convert any format to whatsapp:+44XXXXXXXXX"""
+    n = n.strip()
+    if n.startswith("whatsapp:"):
+        n = n[9:]
+    n = n.replace(" ", "").replace("-", "")
+    if n.startswith("07") and len(n) == 11:
+        n = "+44" + n[1:]
+    elif n.startswith("447") and not n.startswith("+"):
+        n = "+" + n
+    elif n.startswith("44") and not n.startswith("+") and not n.startswith("447"):
+        n = "+" + n
+    if not n.startswith("+"):
+        n = "+" + n
+    return "whatsapp:" + n
+
+def encode_number(n):
+    """Normalise then URL-encode for Supabase queries"""
+    wa = normalise_wa_number(n) if not n.startswith("%2B") else n
+    return wa.replace("+", "%2B")
 
 def encode_text(text):
     from urllib.parse import quote
