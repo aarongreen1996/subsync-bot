@@ -71,7 +71,7 @@ def summary():
     chasing  = [l for l in all_logs if l.get("status") == "chasing"]
     sent     = [l for l in all_logs if l.get("status") == "sent"]
     cancelled = [l for l in all_logs if l.get("status") == "cancelled"]
-    historic  = approved + chasing + sent + cancelled  # All non-pending
+    historic  = approved + cancelled  # Only truly complete items go to history
 
     total_value = sum(float(l.get("cost_estimate") or 0) for l in pending)
     total_hours = sum(float(l.get("hours") or 0) for l in pending)
