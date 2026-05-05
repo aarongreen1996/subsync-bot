@@ -137,42 +137,49 @@ Workers send you informal voice-note transcriptions or text messages from site.
 Your job is to extract structured data and classify each message.
 
 Classify into one of:
-- VARIATION      → Extra work explicitly requested BY a client or site manager
-- DAYWORK        → Worker logging time/hours they spent on extra work
-- MATERIAL_ORDER → Request to order materials, fixings, tools or equipment
-- TIMESHEET      → Worker logging their standard hours for the day/week
+- VARIATION      → Extra work explicitly requested BY a named client, site manager, or surveyor
+- DAYWORK        → Worker logging time/hours they spent on extra or additional work
+- MATERIAL_ORDER → Any request to order, buy, pick up or get materials, tools, equipment or supplies
+- TIMESHEET      → Worker logging their standard day rate or normal hours for the day/week
 - UNKNOWN        → Cannot classify
 
-CRITICAL RULE for VARIATION vs DAYWORK:
-- Only VARIATION if message EXPLICITLY says a client/site manager ASKED or REQUESTED the work
-- DAYWORK if the worker is simply logging hours/work they did
-- If hours mentioned but no clear request from client/manager, set needs_clarification to true
-- When in ANY doubt between VARIATION and DAYWORK, set needs_clarification to true
+MATERIAL_ORDER RULE (HIGHEST PRIORITY):
+- If ANY supplier is mentioned (Screwfix, Toolstation, Travis Perkins, B&Q, Wickes, CEF, City Electrical, plumbers merchant, builders merchant, timber yard, any shop name) → ALWAYS MATERIAL_ORDER
+- If words like "order", "need to get", "pick up", "delivery", "can you get", "grab some" appear alongside any item → MATERIAL_ORDER
+- NEVER ask clarification for MATERIAL_ORDER items. Set needs_clarification=false always.
 
-MULTIPLE ITEMS: If the message contains multiple separate items (numbered list, bullet points, or multiple tasks), respond with a JSON ARRAY of objects, one per item.
+TIMESHEET RULE:
+- If message mentions hours for a standard day, day rate, normal work → TIMESHEET
+- Examples: "8 hours today", "standard day", "on site all day", "6am to 4pm Manor House"
+
+VARIATION vs DAYWORK:
+- VARIATION only if a named person (Tim, site manager, surveyor, client) explicitly ASKED or REQUESTED the extra work
+- DAYWORK if worker is reporting hours/work they did as extra but no named person requested it
+- If genuinely unclear → needs_clarification=true (but NOT for MATERIAL_ORDER or TIMESHEET)
+
+SITE NAME RULE:
+- Only extract site_name if it is CLEARLY a location/project name (e.g. "Brookfield Site", "Manor House Job", "Flat 3")
+- Do NOT use client names, person names or general descriptions as site_name
+- If the site name is not clearly mentioned, return null and we will ask
+
+MULTIPLE ITEMS: If the message contains multiple separate items, respond with a JSON ARRAY.
 SINGLE ITEM: respond with a single JSON object.
+Respond ONLY with valid JSON. No explanation, no markdown.
 
-Respond ONLY with valid JSON. No explanation, no markdown, just raw JSON.
-
-Single item structure:
 {
   "type": "VARIATION",
-  "description": "Short clear description",
+  "description": "Short clear description of the work",
   "hours": 2.5,
   "cost_estimate": 40.00,
-  "location": "Room 4",
-  "site_name": "Site name if mentioned, otherwise null",
-  "requested_by": "Name if mentioned",
-  "worker_name": "Worker name if mentioned",
-  "materials": ["item"],
-  "supplier": "Supplier if mentioned",
+  "location": "specific location within site if mentioned",
+  "site_name": "project/site name only, or null",
+  "requested_by": "person who requested it, if mentioned",
+  "worker_name": "worker name if mentioned",
+  "materials": ["item1"],
+  "supplier": "supplier name if mentioned",
   "needs_clarification": false,
-  "confirmation_message": "Friendly ✅ reply. Under 3 lines. Use £."
+  "confirmation_message": "Friendly ✅ reply confirming what was logged. Under 3 lines. Use £."
 }
-
-Multiple items: return JSON array [...] of above objects.
-For arrays, only the LAST item needs confirmation_message summarising the total logged.
-Always include needs_clarification on every item.
 """
 
 # ── Keywords ──────────────────────────────────────────────────────────────────
@@ -320,12 +327,26 @@ def handle_pending(from_number, msg):
 
     # Type clarification step
     if state.get("awaiting_type"):
+        msg_clean = msg.strip().lower()
+
+        # Cancel/abort
+        if msg_clean in ["cancel", "abort", "wrong", "stop", "exit", "no", "redo", "start again", "clear"]:
+            del pending_selections[from_number]
+            return _reply("No problem — cancelled. Send your message again whenever you're ready.")
+
+        # If it looks like a new log message (long message, not 1 or 2) — clear state and process as new log
+        if len(msg.strip()) > 15 and not msg.strip() in ["1", "2", "3"]:
+            del pending_selections[from_number]
+            return handle_log(from_number, msg)
+
         if msg.strip() == "1":
             log_data["type"] = "VARIATION"
         elif msg.strip() == "2":
             log_data["type"] = "DAYWORK"
+        elif msg.strip() == "3" or "material" in msg_clean or "order" in msg_clean or "purchase" in msg_clean:
+            log_data["type"] = "MATERIAL_ORDER"
         else:
-            return _reply("Please reply *1* for Variation or *2* for Daywork")
+            return _reply("Reply *1* for Variation, *2* for Daywork, or *3* for Material Order\nOr reply *cancel* to start again.")
 
         site_name = match_site(log_data.get("raw_message", ""), projects)
         if site_name:
@@ -346,7 +367,20 @@ def handle_pending(from_number, msg):
 
     # Site selection step
     if state.get("awaiting_site"):
+        msg_clean = msg.strip().lower()
         site_name = None
+
+        # Cancel/abort
+        if msg_clean in ["cancel", "abort", "wrong", "stop", "exit", "no", "redo", "start again", "clear"]:
+            del pending_selections[from_number]
+            return _reply("No problem — cancelled. Send your message again whenever you're ready.")
+
+        # If it looks like a completely new log (long sentence, contains keywords) — process as new log
+        new_log_keywords = ["hours", "variation", "daywork", "order", "timesheet", "boarded", "fitted", "installed", "fixed", "repaired"]
+        looks_like_new_log = len(msg.strip()) > 20 and any(kw in msg_clean for kw in new_log_keywords)
+        if looks_like_new_log:
+            del pending_selections[from_number]
+            return handle_log(from_number, msg)
 
         if msg.strip().isdigit():
             idx = int(msg.strip()) - 1
@@ -354,16 +388,20 @@ def handle_pending(from_number, msg):
                 site_name = projects[idx]["site_name"]
 
         if not site_name:
-            msg_lower = msg.lower()
             for p in projects:
-                if p["site_name"].lower() in msg_lower or msg_lower in p["site_name"].lower():
+                if p["site_name"].lower() in msg_clean or msg_clean in p["site_name"].lower():
                     site_name = p["site_name"]
                     break
 
-        # Auto-create new site if no match
+        # Auto-create new site if no match — but only if it looks like a site name (short)
         if not site_name:
-            site_name = msg.strip().title()
-            create_site(from_number, site_name)
+            if len(msg.strip()) <= 40:
+                site_name = msg.strip().title()
+                create_site(from_number, site_name)
+            else:
+                # Too long to be a site name — clear state and process as new log
+                del pending_selections[from_number]
+                return handle_log(from_number, msg)
 
         del pending_selections[from_number]
 
@@ -415,16 +453,44 @@ def handle_pending(from_number, msg):
 
 # ── Dashboard command ─────────────────────────────────────────────────────────
 def handle_dashboard_command(from_number):
-    app_url  = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
-    password = os.environ.get("DASHBOARD_PASSWORD", "changeme")
-    number   = from_number.replace("whatsapp:", "")
-    return _reply(
-        "📊 *Your Note2Quote Dashboard*\n\n"
-        f"Link: {app_url}/dashboard\n"
-        f"Number: {number}\n"
-        f"Password: {password}\n\n"
-        "Bookmark it so you can check in anytime 👍"
-    )
+    import secrets
+    from datetime import datetime, timezone, timedelta
+    APP_URL  = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
+    SURL     = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    SKEY     = os.environ.get("SUPABASE_KEY", "")
+
+    # Get company details for username
+    companies = db_get("companies?whatsapp_number=eq." + encode_number(from_number) + "&limit=1")
+    company   = companies[0] if isinstance(companies, list) and companies else {}
+    username  = company.get("username") or ""
+    dashboard_pw = company.get("dashboard_password") or ""
+    wa_number = from_number.replace("whatsapp:+44", "07").replace("whatsapp:", "")
+
+    # Create magic token (24hr)
+    token    = secrets.token_urlsafe(32)
+    expires  = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    import requests as _r
+    _r.post(SURL + "/rest/v1/auth_tokens",
+        json={"token": token, "whatsapp": from_number, "expires_at": expires, "used": False},
+        headers={"apikey": SKEY, "Authorization": "Bearer " + SKEY,
+                 "Content-Type": "application/json", "Prefer": "return=minimal"})
+    login_url = APP_URL + "/login?token=" + token
+
+    lines = [
+        "Your Note2Quote Dashboard",
+        "",
+        "Tap to open instantly (24hr link):",
+        login_url,
+        "",
+        "Or log in at " + APP_URL + "/dashboard:",
+    ]
+    if username:
+        lines.append("Username: " + username)
+    if dashboard_pw:
+        lines.append("Password: " + dashboard_pw)
+    lines.append("Mobile: " + wa_number)
+
+    return _reply(chr(10).join(lines))
 
 
 # ── Generate handler ──────────────────────────────────────────────────────────
