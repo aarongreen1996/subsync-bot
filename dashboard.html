@@ -685,9 +685,9 @@ function renderLogs(){
     var cols=[{k:'type',l:'Type'},{k:'description',l:'Description'},{k:'site_name',l:'Site'},{k:'location',l:'Location'},{k:'hours',l:'Hrs'},{k:'cost_estimate',l:'Cost'},{k:'status',l:'Status'},{k:'created_at',l:'Date'}];
     cols.forEach(function(c){var dir=S.sortCol===c.k?(S.sortDir===1?' ↑':' ↓'):'';html+='<th onclick="sortBy(\''+c.k+'\')">'+c.l+dir+'</th>';});
     html+='<th></th></tr></thead><tbody>';
-    // Split active (pending) vs historic (everything else)
-    var active=filtered.filter(function(l){return l.status==="pending";});
-    var historic=filtered.filter(function(l){return l.status!=="pending";});
+    // Active = pending, chasing, sent | Historic = approved + cancelled only
+    var active=filtered.filter(function(l){return l.status!=='approved'&&l.status!=='cancelled';});
+    var historic=filtered.filter(function(l){return l.status==='approved'||l.status==='cancelled';});
 
     function logRow(l,isHistoric){
       var types=['VARIATION','DAYWORK','MATERIAL_ORDER','TIMESHEET','UNKNOWN'];
@@ -747,8 +747,8 @@ function renderSites(){
   projects.forEach(function(p){
     var siteLogs=allLogs.filter(function(l){return l.site_name===p.site_name;});
     var filteredSiteLogs=getFilteredLogs(siteLogs);
-    var pendingLogs=filteredSiteLogs.filter(function(l){return l.status==="pending";});
-    var historicLogs=filteredSiteLogs.filter(function(l){return l.status!=="pending";});
+    var pendingLogs=filteredSiteLogs.filter(function(l){return l.status!=='approved'&&l.status!=='cancelled';});
+    var historicLogs=filteredSiteLogs.filter(function(l){return l.status==='approved'||l.status==='cancelled';});
     var totalVal=pendingLogs.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
     var fid='folder-'+p.site_name.replace(/\s/g,'-');
     html+='<div class="site-folder" id="'+fid+'">';
