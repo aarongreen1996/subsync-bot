@@ -82,10 +82,10 @@ def encode_text(text):
 
 # ── Project helpers ───────────────────────────────────────────────────────────
 def get_projects(from_number):
-    result = db_get(f"projects?whatsapp_number=eq.{encode_number(from_number)}"
-                    f"&status=eq.active&order=site_name.asc")
+    wa      = normalise_wa_number(from_number)
+    encoded = wa.replace("+", "%2B")
+    result  = db_get("projects?whatsapp_number=eq." + encoded + "&status=eq.active&order=site_name.asc")
     return result if isinstance(result, list) else []
-
 def match_site(msg, projects):
     """Match site name from message using exact, partial and word-level matching."""
     if not msg or not projects: return None
@@ -494,7 +494,9 @@ def webhook():
         return _reply("Send me a message or voice note about what happened on site today 👷")
 
     # Registration gate - only registered customers can use the bot
-    companies = db_get("companies?whatsapp_number=eq." + encode_number(from_number) + "&limit=1")
+    _wa_norm = normalise_wa_number(from_number)
+    _wa_enc  = _wa_norm.replace("+", "%2B")
+    companies = db_get("companies?whatsapp_number=eq." + _wa_enc + "&limit=1")
     if not isinstance(companies, list) or not companies:
         signup_url = os.environ.get("APP_URL", "https://www.note2quote.co.uk") + "/signup"
         msg_lines = ["This is Note2Quote - the WhatsApp admin tool for UK subcontractors.",
@@ -660,7 +662,9 @@ def handle_dashboard_command(from_number):
     SKEY     = os.environ.get("SUPABASE_KEY", "")
 
     # Get company details for username
-    companies = db_get("companies?whatsapp_number=eq." + encode_number(from_number) + "&limit=1")
+    _wa_norm = normalise_wa_number(from_number)
+    _wa_enc  = _wa_norm.replace("+", "%2B")
+    companies = db_get("companies?whatsapp_number=eq." + _wa_enc + "&limit=1")
     company   = companies[0] if isinstance(companies, list) and companies else {}
     username  = company.get("username") or ""
     dashboard_pw = company.get("dashboard_password") or ""
@@ -754,48 +758,6 @@ def handle_log(from_number, incoming_msg):
                       "alright", "sorted", "cool", "brilliant", "brill", "ta"]
         if processed_msg.strip().lower() in SHORT_CHAT or len(processed_msg.strip()) < 4:
             return _reply("👍 No problem! Send me a site update when you're ready.")
-
-        # Pre-classification shortcuts for obvious cases
-        msg_lower = processed_msg.lower()
-        SUPPLIER_NAMES = ["screwfix","toolstation","travis perkins","bss","cef","wolseley",
-                          "jewson","wickes","selco","buildbase","b&q","city plumbing","plumbase",
-                          "plumbers merchant","builders merchant","timber yard","electrical wholesaler"]
-        ORDER_WORDS    = ["order","need to get","pick up","picking up","grab","delivery","deliver",
-                          "get some","get me","can you get","sort out some","collect","collection"]
-        has_supplier   = any(s in msg_lower for s in SUPPLIER_NAMES)
-        has_order_word = any(w in msg_lower for w in ORDER_WORDS)
-
-        # If obvious material order — skip AI and go straight to site selection
-        if has_supplier or (has_order_word and any(unit in msg_lower for unit in
-                ["metres","meters","mm","lengths","sheets","boxes","rolls","bags","drums","litres"])):
-            projects  = get_projects(from_number)
-            site_name = match_site(incoming_msg, projects)
-            insert = {
-                "from_number":   from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number,
-                "raw_message":   incoming_msg,
-                "type":          "MATERIAL_ORDER",
-                "description":   processed_msg[:200],
-                "status":        "pending",
-                "materials":     [],
-            }
-            # Try to extract supplier
-            for s in SUPPLIER_NAMES:
-                if s in msg_lower:
-                    insert["supplier"] = s.title()
-                    break
-            if site_name:
-                insert["site_name"] = site_name
-                db_post("site_logs", insert)
-                return _reply("Material order logged for " + site_name + " ✅")
-            elif projects:
-                pending_selections[from_number] = {
-                    "pending_log": insert, "projects": projects,
-                    "awaiting_type": False, "awaiting_site": True,
-                }
-                return _reply("Got the order ✅" + chr(10) + chr(10) + format_project_list(projects))
-            else:
-                db_post("site_logs", insert)
-                return _reply("Material order logged ✅")
 
         ai_response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
