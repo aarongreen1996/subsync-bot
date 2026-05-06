@@ -86,8 +86,16 @@ def get_projects(from_number):
     encoded = wa.replace("+", "%2B")
     result  = db_get("projects?whatsapp_number=eq." + encoded + "&status=eq.active&order=site_name.asc")
     return result if isinstance(result, list) else []
+def _similarity(a, b):
+    """Simple character-level similarity ratio between two strings."""
+    a, b = a.lower(), b.lower()
+    if not a or not b: return 0.0
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    matches = sum(1 for c in shorter if c in longer)
+    return matches / len(longer)
+
 def match_site(msg, projects):
-    """Match site name from message using exact, partial and word-level matching."""
+    """Match site name from message using exact, partial, word-level and fuzzy matching."""
     if not msg or not projects: return None
     msg_lower = msg.lower()
 
@@ -108,14 +116,41 @@ def match_site(msg, projects):
         if site_words and all(w in msg_lower for w in site_words):
             return p["site_name"]
 
-    # 4. Short site names — check if any significant word matches
+    # 4. Any significant word matches
     for p in projects:
         site_words = [w for w in p["site_name"].lower().split() if len(w) > 4]
         msg_words  = set(msg_lower.split())
         if site_words and any(w in msg_words for w in site_words):
             return p["site_name"]
 
+    # 5. Fuzzy match — catch typos like "brickfiled" vs "brookfield"
+    # Extract words from message that could be site names (4+ chars)
+    msg_words = [w for w in msg_lower.split() if len(w) >= 4]
+    for p in projects:
+        site_words = [w for w in p["site_name"].lower().split() if len(w) >= 4]
+        for sw in site_words:
+            for mw in msg_words:
+                if _similarity(sw, mw) >= 0.72:  # ~72% similar characters
+                    return p["site_name"]
+
     return None
+
+
+def fuzzy_site_suggestions(msg, projects):
+    """Return (best_match, score) if there is a close fuzzy match — for confirming typos."""
+    if not msg or not projects: return None, 0.0
+    msg_words = [w for w in msg.lower().split() if len(w) >= 4]
+    best_match = None
+    best_score = 0.0
+    for p in projects:
+        site_words = [w for w in p["site_name"].lower().split() if len(w) >= 4]
+        for sw in site_words:
+            for mw in msg_words:
+                score = _similarity(sw, mw)
+                if score > best_score:
+                    best_score = score
+                    best_match = p["site_name"]
+    return best_match, best_score
 
 def create_site(from_number, site_name):
     whatsapp_raw = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
@@ -598,9 +633,25 @@ def handle_pending(from_number, msg):
         site_name = None
 
         # Cancel/abort
-        if msg_clean in ["cancel", "abort", "wrong", "stop", "exit", "no", "redo", "start again", "clear"]:
+        if msg_clean in ["cancel", "abort", "wrong", "stop", "exit", "redo", "start again", "clear"]:
             del pending_selections[from_number]
             return _reply("No problem — cancelled. Send your message again whenever you're ready.")
+
+        # Fuzzy suggestion confirmation
+        if state.get("_fuzzy_suggest"):
+            fuzzy_match = state["_fuzzy_suggest"]
+            if msg_clean in ["yes", "y", "yeah", "yep", "correct", "that one", "that's it", "thats it"]:
+                site_name = fuzzy_match
+                log_data["site_name"] = site_name
+                del pending_selections[from_number]
+                db_post("site_logs", log_data)
+                return _reply("✅ Logged for *" + site_name + "*!")
+            elif msg_clean in ["no", "nope", "wrong"]:
+                # Drop the fuzzy suggestion and show site list
+                state.pop("_fuzzy_suggest", None)
+                pending_selections[from_number] = state
+                return _reply(format_project_list(projects))
+            # Otherwise fall through and treat as a site name reply
 
         # If it looks like a completely new log (long sentence, contains keywords) — process as new log
         new_log_keywords = ["hours", "variation", "daywork", "order", "timesheet", "boarded", "fitted", "installed", "fixed", "repaired"]
@@ -736,16 +787,25 @@ def handle_generate(from_number, msg):
         site_name  = match_site(msg, projects)
         site_label = site_name or "All Sites"
 
-        query = (f"site_logs?from_number=eq.{encode_number(from_number)}"
-                 f"&status=eq.pending&order=created_at.asc")
-        if site_name:
-            query += f"&site_name=eq.{encode_text(site_name)}"
+        # Build query — filter by type AND include pending/chasing/active statuses
+        type_filter = ""
+        if log_type != "ALL":
+            type_filter = "&type=eq." + log_type
 
-        logs = db_get(query)
+        # Active statuses (not yet sent/approved/cancelled)
+        base_query = ("site_logs?from_number=eq." + encode_number(from_number) +
+                      "&status=in.(pending,chasing)" + type_filter +
+                      "&order=created_at.asc")
+        if site_name:
+            base_query += "&site_name=eq." + encode_text(site_name)
+
+        logs = db_get(base_query)
         if not isinstance(logs, list) or not logs:
+            type_label = doc_title + "s" if log_type != "ALL" else "items"
+            site_label_msg = " for *" + site_name + "*" if site_name else ""
             return _reply(
-                f"📋 No pending items{' for *' + site_name + '*' if site_name else ''}.\n"
-                f"Log some site activity first then ask me to generate."
+                "📋 No active " + type_label + site_label_msg + ".\n"
+                "Items must be logged (pending or chasing) to appear in a document."
             )
 
         doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
@@ -859,10 +919,30 @@ def handle_log(from_number, incoming_msg):
             # Trust AI's extracted site_name first
             ai_site_name = data.get("site_name") or ""
             if ai_site_name:
-                # Use it directly — create if not already in projects
-                site_name = ai_site_name
-                if site_name not in [p["site_name"] for p in projects]:
-                    create_site(from_number, site_name)
+                # Check if it closely matches a known site (typo detection)
+                known_match = match_site(ai_site_name, projects)
+                if known_match:
+                    site_name = known_match  # Exact or fuzzy match to known site
+                else:
+                    # Check if it looks like a typo of a known site
+                    fuzzy_match, score = fuzzy_site_suggestions(ai_site_name, projects)
+                    if fuzzy_match and score >= 0.72:
+                        # Ask for confirmation of the likely match
+                        insert_data["site_name"] = ai_site_name  # save tentatively
+                        pending_selections[from_number] = {
+                            "pending_log": insert_data, "projects": projects,
+                            "awaiting_type": False, "awaiting_site": True,
+                            "_fuzzy_suggest": fuzzy_match,
+                        }
+                        return _reply(
+                            confirmation + chr(10) + chr(10) +
+                            "Did you mean *" + fuzzy_match + "*? " + chr(10) +
+                            "Reply *yes* to confirm, or type the correct site name."
+                        )
+                    else:
+                        # Genuinely new site — create it
+                        site_name = ai_site_name
+                        create_site(from_number, site_name)
             else:
                 # Fall back to matching from original message
                 site_name = match_site(incoming_msg, projects)
@@ -1484,10 +1564,28 @@ def handle_status_update(from_number, msg):
         else:
             return _reply("Could not understand status command. Try: *approve [site name]*")
         site_name = match_site(msg, projects)
+        # Detect type filter — e.g. "chasing variations at Brookfield"
+        type_filter = None
+        if any(kw in msg_lower for kw in ["variation", "vo", "variations"]):
+            type_filter = "VARIATION"
+        elif any(kw in msg_lower for kw in ["daywork", "dayworks", "day work"]):
+            type_filter = "DAYWORK"
+        elif any(kw in msg_lower for kw in ["material", "purchase order", "po ", "materials", "order"]):
+            type_filter = "MATERIAL_ORDER"
+        elif any(kw in msg_lower for kw in ["timesheet", "timesheets"]):
+            type_filter = "TIMESHEET"
+
         if site_name:
-            logs = db_get("site_logs?from_number=eq." + encoded + "&status=eq.pending&site_name=eq." + _quote(site_name))
+            # Query all active statuses (not just pending) so chasing items can be re-chased etc
+            q = ("site_logs?from_number=eq." + encoded +
+                 "&status=in.(pending,chasing,sent)" +
+                 "&site_name=eq." + _quote(site_name))
+            if type_filter:
+                q += "&type=eq." + type_filter
+            logs = db_get(q)
             if not isinstance(logs, list) or not logs:
-                return _reply("No pending items found for *" + site_name + "*.")
+                type_msg = " " + type_filter.replace("_", " ").lower() if type_filter else ""
+                return _reply("No active" + type_msg + " items found for *" + site_name + "*.\nCheck *pending* to see what's outstanding.")
             for log in logs:
                 db_patch("site_logs?id=eq." + str(log["id"]), {"status": new_status})
             total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
