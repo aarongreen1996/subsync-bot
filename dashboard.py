@@ -41,11 +41,17 @@ def slugify(text):
     return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
 
 def normalise(number):
-    number = number.strip()
-    if number.startswith("whatsapp:"):
-        number = number[9:]
-    number = number.lstrip(" +")
-    return ("whatsapp:+" + number).replace("+", "%2B")
+    """Convert any UK number format to whatsapp:%2B44... for Supabase queries."""
+    n = number.strip()
+    if n.startswith("whatsapp:"):
+        n = n[9:]
+    n = n.replace(" ", "").replace("-", "")
+    # Convert 07... to +44...
+    if n.startswith("07") and len(n) == 11:
+        n = "+44" + n[1:]
+    # Ensure + prefix
+    n = n.lstrip("+")
+    return ("whatsapp:%2B" + n)
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -120,6 +126,23 @@ def update_log(log_id):
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
+    # Validate status
+    if "status" in update:
+        valid_statuses = {"pending", "approved", "chasing", "cancelled", "sent"}
+        if update["status"] not in valid_statuses:
+            return jsonify({"error": "Invalid status"}), 400
+    # Validate type
+    if "type" in update:
+        valid_types = {"VARIATION", "DAYWORK", "MATERIAL_ORDER", "TIMESHEET", "UNKNOWN"}
+        if update["type"] not in valid_types:
+            return jsonify({"error": "Invalid type"}), 400
+    # Validate numeric fields
+    for field in ["hours", "cost_estimate"]:
+        if field in update:
+            try:
+                update[field] = float(update[field])
+            except (ValueError, TypeError):
+                return jsonify({"error": f"Invalid {field}"}), 400
     db_patch(f"site_logs?id=eq.{log_id}", update)
     return jsonify({"ok": True})
 
