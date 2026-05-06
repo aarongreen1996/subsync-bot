@@ -214,6 +214,14 @@ def generate():
         f"_{slugify(site_label)}_{datetime.now().strftime('%d%b%Y')}.pdf"
     )
 
+    # Fetch project/client details to include in PDF
+    project_info = {}
+    if site_name and site_name != "Unassigned":
+        projs = db_get(f"projects?whatsapp_number=eq.{encoded}&site_name=ilike.{quote(site_name)}&limit=1")
+        if isinstance(projs, list) and projs:
+            project_info = projs[0]
+    company["project_info"] = project_info
+
     pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
 
     # Upload to storage
@@ -271,15 +279,16 @@ def send_email():
         "from": f"{company_name} <{FROM_EMAIL}>",
         "to":   [to_email],
         "subject": f"{doc_ref} — {site_name} | {company_name}",
-        "html": f"""
-            <p>Dear Client,</p>
-            <p>Please find attached <strong>{doc_ref}</strong> for works carried out at
-            <strong>{site_name}</strong>.</p>
-            <p>Please review and approve at your earliest convenience.</p>
-            <br>
-            <p>Kind regards,<br><strong>{company_name}</strong></p>
-            <p style="color:#aaa;font-size:11px;">Sent via SubSync</p>
-        """,
+        "html": (
+            "<p>Dear " + (data.get("client_name") or "Client") + ",</p>"
+            "<p>Please find attached <strong>" + doc_ref + "</strong> for works carried out at "
+            "<strong>" + site_name + "</strong>.</p>"
+            "<p>Please review and sign at your earliest convenience. "
+            "If you have any questions please get in touch.</p>"
+            "<br>"
+            "<p>Kind regards,<br><strong>" + company_name + "</strong></p>"
+            "<p style='color:#aaa;font-size:11px;'>Sent via Note2Quote</p>"
+        ),
         "attachments": [{"filename": filename, "content": pdf_b64}],
     }
 
@@ -322,7 +331,7 @@ def update_client(project_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
     data    = request.json or {}
-    allowed = ["client_name", "client_email", "client_phone"]
+    allowed = ["client_name", "client_email", "client_phone", "address"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
