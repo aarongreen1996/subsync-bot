@@ -1056,8 +1056,17 @@ function renderClients(){
   document.getElementById('page-content').innerHTML=html;
 }
 async function saveClientField(projectId,field,value){
-  await api('/api/client/'+projectId,{method:'PATCH',body:JSON.stringify({[field]:value})});
-  showToast('Saved','success');
+  var r=await api('/api/client/'+projectId,{method:'PATCH',body:JSON.stringify({[field]:value})});
+  if(r&&r.ok){
+    // Update S.data.projects cache so navigation doesn't revert
+    if(S.data&&S.data.projects){
+      var proj=S.data.projects.find(function(p){return p.id===projectId;});
+      if(proj) proj[field]=value;
+    }
+    showToast('Saved ✓','success');
+  } else {
+    showToast('Save failed — try again','error');
+  }
 }
 
 // ── BOOT ───────────────────────────────────────────────────────────────────
