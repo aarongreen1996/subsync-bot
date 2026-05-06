@@ -33,7 +33,6 @@ def db_delete(path):
 
 def check_auth():
     pw = request.headers.get("X-Dashboard-Password", "")
-    # Accept master password OR magic link sessions
     return pw == DASHBOARD_PASSWORD or pw == "__magic__"
 
 def slugify(text):
@@ -46,10 +45,8 @@ def normalise(number):
     if n.startswith("whatsapp:"):
         n = n[9:]
     n = n.replace(" ", "").replace("-", "")
-    # Convert 07... to +44...
     if n.startswith("07") and len(n) == 11:
         n = "+44" + n[1:]
-    # Ensure + prefix
     n = n.lstrip("+")
     return ("whatsapp:%2B" + n)
 
@@ -63,7 +60,6 @@ def summary():
     number   = request.args.get("number", "")
     encoded  = normalise(number)
 
-    # Fetch ALL logs so nothing is ever lost from the dashboard
     all_logs = db_get(f"site_logs?from_number=eq.{encoded}&order=created_at.desc")
     projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
     company  = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
@@ -71,13 +67,12 @@ def summary():
     if not isinstance(all_logs, list):  all_logs = []
     if not isinstance(projects, list):  projects = []
 
-    # Split by status
-    pending  = [l for l in all_logs if l.get("status") == "pending"]
-    approved = [l for l in all_logs if l.get("status") == "approved"]
-    chasing  = [l for l in all_logs if l.get("status") == "chasing"]
-    sent     = [l for l in all_logs if l.get("status") == "sent"]
+    pending   = [l for l in all_logs if l.get("status") == "pending"]
+    approved  = [l for l in all_logs if l.get("status") == "approved"]
+    chasing   = [l for l in all_logs if l.get("status") == "chasing"]
+    sent      = [l for l in all_logs if l.get("status") == "sent"]
     cancelled = [l for l in all_logs if l.get("status") == "cancelled"]
-    historic  = approved + cancelled  # Only truly complete items go to history
+    historic  = approved + cancelled
 
     total_value = sum(float(l.get("cost_estimate") or 0) for l in pending)
     total_hours = sum(float(l.get("hours") or 0) for l in pending)
@@ -126,17 +121,14 @@ def update_log(log_id):
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
-    # Validate status
     if "status" in update:
         valid_statuses = {"pending", "approved", "chasing", "cancelled", "sent"}
         if update["status"] not in valid_statuses:
             return jsonify({"error": "Invalid status"}), 400
-    # Validate type
     if "type" in update:
         valid_types = {"VARIATION", "DAYWORK", "MATERIAL_ORDER", "TIMESHEET", "UNKNOWN"}
         if update["type"] not in valid_types:
             return jsonify({"error": "Invalid type"}), 400
-    # Validate numeric fields
     for field in ["hours", "cost_estimate"]:
         if field in update:
             try:
@@ -183,14 +175,12 @@ def generate():
     company = companies[0]
     company["whatsapp_number"] = from_number
 
-    # Filter by doc_type so PO only includes MATERIAL_ORDER, VO only VARIATION etc.
     type_filter = ""
     if doc_type and doc_type != "ALL":
         type_filter = f"&type=eq.{doc_type}"
 
     query = f"site_logs?from_number=eq.{encoded}&status=in.(pending,chasing){type_filter}&order=created_at.asc"
     if site_name and site_name != "Unassigned":
-        # Use ilike for case-insensitive match to handle capitalisation differences
         query += f"&site_name=ilike.{quote(site_name)}"
     logs = db_get(query)
 
@@ -209,12 +199,14 @@ def generate():
     sent       = db_get(f"site_logs?from_number=eq.{encoded}&status=eq.sent&select=id")
     doc_number = str(len(sent) + 1).zfill(3) if isinstance(sent, list) else "001"
     doc_ref    = f"{prefix}-{doc_number}"
+
+    # Include timestamp in filename to avoid 409 duplicate conflicts on regeneration
+    ts = datetime.now().strftime('%d%b%Y_%H%M%S')
     filename   = (
         f"{doc_ref}_{slugify(company.get('company_name','Co').split()[0])}"
-        f"_{slugify(site_label)}_{datetime.now().strftime('%d%b%Y')}.pdf"
+        f"_{slugify(site_label)}_{ts}.pdf"
     )
 
-    # Fetch project/client details to include in PDF
     project_info = {}
     if site_name and site_name != "Unassigned":
         projs = db_get(f"projects?whatsapp_number=eq.{encoded}&site_name=ilike.{quote(site_name)}&limit=1")
@@ -224,11 +216,13 @@ def generate():
 
     pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
 
-    # Upload to storage
+    # Upload to Supabase Storage — x-upsert:true prevents 409 if file somehow exists
     upload_url = f"{SUPABASE_URL}/storage/v1/object/documents/{filename}"
     r = http_requests.post(upload_url, data=pdf_bytes, headers={
-        "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/pdf"
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/pdf",
+        "x-upsert": "true"
     })
     if r.status_code not in (200, 201):
         return jsonify({"error": f"Upload failed: {r.text}"}), 500
@@ -266,7 +260,6 @@ def send_email():
         return jsonify({"error": "Email address required"}), 400
 
     if not pdf_b64:
-        # Try downloading from URL
         pdf_url = data.get("pdf_url", "")
         if pdf_url:
             r = http_requests.get(pdf_url, timeout=15)
@@ -315,11 +308,9 @@ def add_manual_log():
     payload = {k: v for k, v in data.items() if k in allowed}
     if "status" not in payload:
         payload["status"] = "pending"
-    import requests as _r
-    import os as _os
-    SURL = _os.environ.get("SUPABASE_URL","").rstrip("/")
-    SKEY = _os.environ.get("SUPABASE_KEY","")
-    r = _r.post(f"{SURL}/rest/v1/site_logs", json=payload,
+    SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY = os.environ.get("SUPABASE_KEY","")
+    r = http_requests.post(f"{SURL}/rest/v1/site_logs", json=payload,
         headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
                  "Content-Type":"application/json","Prefer":"return=minimal"})
     return jsonify({"ok": r.status_code in (200,201)})
@@ -331,7 +322,8 @@ def update_client(project_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
     data    = request.json or {}
-    allowed = ["client_name", "client_email", "client_phone", "address"]
+    # FIX: was "address", must be "client_address" to match the DB column
+    allowed = ["client_name", "client_email", "client_phone", "client_address"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
