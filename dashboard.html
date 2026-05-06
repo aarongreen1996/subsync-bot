@@ -377,16 +377,17 @@ tr:hover td{background:var(--bg3);}
 
 <!-- PDF READY MODAL -->
 <div class="overlay" id="pdf-modal" style="display:none">
-  <div class="modal">
-    <div class="modal-top"><h3 id="pdf-ref">PDF Ready</h3><p id="pdf-desc"></p></div>
+  <div class="modal" style="max-width:480px">
+    <div class="modal-top">
+      <h3 id="pdf-ref">PDF Ready</h3>
+      <p id="pdf-desc" style="font-size:13px;color:var(--muted);margin-top:4px"></p>
+    </div>
     <div class="modal-body">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;" id="pdf-btns"></div>
-      <div style="padding-top:16px;border-top:1px solid var(--border);">
-        <div class="form-group"><label>Email to client (optional)</label><input type="email" id="pdf-email" placeholder="client@example.com" /></div>
-        <div class="modal-actions">
-          <button class="btn btn-outline" onclick="closeModal('pdf-modal')">Close</button>
-          <button class="btn btn-amber" onclick="sendEmail()">Send email →</button>
-        </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px" id="pdf-btns"></div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Share with your client via your own apps:</p>
+      <div id="pdf-share-btns" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('pdf-modal')">Close</button>
       </div>
     </div>
   </div>
@@ -1009,50 +1010,69 @@ async function confirmGenerate(){
     document.getElementById('pdf-ref').textContent=d.doc_ref+' — Ready';
     document.getElementById('pdf-desc').textContent=d.items+' item(s) · '+(S.currentSite||'All Sites');
     document.getElementById('pdf-email').value='';
-    document.getElementById('pdf-btns').innerHTML='<a href="'+d.pdf_url+'" download="'+d.filename+'" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:#0c0d10;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif">⬇ Download</a><a href="'+d.pdf_url+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:var(--bg3);color:var(--text);text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif;border:1px solid var(--border)">👁 View</a>';
+    document.getElementById('pdf-btns').innerHTML=
+      '<a href="'+d.pdf_url+'" download="'+d.filename+'" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:#0c0d10;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif">⬇ Download PDF</a>'+
+      '<a href="'+d.pdf_url+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:var(--bg3);color:var(--text);text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif;border:1px solid var(--border)">👁 Preview</a>';
+    buildShareButtons(d);
     document.getElementById('pdf-modal').style.display='flex';
     await loadData();renderPage();
   }else{showToast('❌ '+(d.error||'Failed'),'error');}
 }
 
-async function sendEmail(){
-  var to=document.getElementById('pdf-email').value.trim();
-  if(!to){showToast('Enter a valid email address','error');return;}
-  if(!S.currentPdf){showToast('No PDF ready — generate one first','error');return;}
+function buildShareButtons(pdf){
+  var url      = pdf.pdf_url || '';
+  var ref      = pdf.doc_ref || 'Document';
+  var site     = S.currentSite || '';
+  var company  = (S.data&&S.data.company&&S.data.company.company_name) || '';
 
-  // Find client name for this site
-  var clientName='Client';
-  if(S.data&&S.data.projects&&S.currentSite){
-    var proj=S.data.projects.find(function(p){return p.site_name===S.currentSite;});
-    if(proj&&proj.client_name)clientName=proj.client_name;
-  }
+  // Build message text
+  var msgText  = ref + ' — ' + site + (company?' from '+company:'') +
+                 '. Please find your document here: ' + url;
+  var emailSub = encodeURIComponent(ref + (site?' — '+site:''));
+  var emailBody= encodeURIComponent('Dear Client,' +
+    '
 
-  var sendBtn=document.querySelector('#pdf-modal .btn-amber');
-  if(sendBtn){sendBtn.textContent='Sending...';sendBtn.disabled=true;}
-  showToast('📧 Sending email...','');
+Please find attached ' + ref + ' for works at ' + site + '.' +
+    '
 
-  try{
-    var r=await api('/api/send-email',{method:'POST',body:JSON.stringify({
-      to_email:   to,
-      pdf_b64:    S.currentPdf.pdf_b64,
-      pdf_url:    S.currentPdf.pdf_url,
-      doc_ref:    S.currentPdf.doc_ref,
-      site_name:  S.currentSite,
-      client_name:clientName,
-      company_name:(S.data&&S.data.company&&S.data.company.company_name)||'Company',
-      filename:   S.currentPdf.filename
-    })});
-    var d=await r.json();
-    if(d.ok){
-      showToast('✅ Email sent to '+to,'success');
-      closeModal('pdf-modal');
-    } else {
-      showToast('❌ '+(d.error||'Email failed — check your Resend config'),'error');
-    }
-  } catch(e){
-    showToast('❌ Network error — try again','error');
-  }
-  if(sendBtn){sendBtn.textContent='Send email →';sendBtn.disabled=false;}
+You can view and download it here:
+' + url +
+    '
+
+Please review and approve at your earliest convenience.' +
+    '
+
+Kind regards,
+' + company);
+  var waText   = encodeURIComponent(msgText);
+
+  var btnStyle = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif;border:none;cursor:pointer;white-space:nowrap';
+
+  var shareHtml =
+    '<a href="https://wa.me/?text='+waText+'" target="_blank" style="'+btnStyle+';background:#25d366;color:#fff">'+
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.504 3.93 1.39 5.6L0 24l6.584-1.364A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.001-1.366l-.36-.213-3.707.768.789-3.61-.233-.373A9.818 9.818 0 1112 21.818z"/></svg>'+
+    'Share via WhatsApp</a>'+
+    '<a href="mailto:?subject='+emailSub+'&body='+emailBody+'" style="'+btnStyle+';background:var(--amber);color:#0c0d10">'+
+    '✉ Send via Email app</a>'+
+    '<button onclick="copyPdfLink()" style="'+btnStyle+';background:var(--bg3);color:var(--text);border:1px solid var(--border)" id="copy-link-btn">'+
+    '🔗 Copy link</button>';
+
+  document.getElementById('pdf-share-btns').innerHTML = shareHtml;
+}
+
+function copyPdfLink(){
+  if(!S.currentPdf||!S.currentPdf.pdf_url)return;
+  navigator.clipboard.writeText(S.currentPdf.pdf_url).then(function(){
+    var btn=document.getElementById('copy-link-btn');
+    if(btn){btn.textContent='✅ Copied!';setTimeout(function(){btn.textContent='🔗 Copy link';},2000);}
+  }).catch(function(){
+    // Fallback for older browsers
+    var ta=document.createElement('textarea');
+    ta.value=S.currentPdf.pdf_url;
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+    showToast('Link copied!','success');
+  });
 }
 
 function closeModal(id){document.getElementById(id).style.display='none';}
