@@ -901,9 +901,19 @@ function statusSelect(id,status){
 async function updateStatus(id,el){
   var val=el.value;
   el.className='status-sel s-'+val;
-  await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:val})});
-  showToast('Status updated','success');
-  await loadData();
+  var r=await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:val})});
+  if(r&&r.ok){
+    // Update S.data cache in-place
+    if(S.data&&S.data.all_logs){
+      var log=S.data.all_logs.find(function(l){return l.id===id;});
+      if(log)log.status=val;
+    }
+    showToast('Status updated','success');
+    renderPage();
+  } else {
+    showToast('Update failed','error');
+    await loadData();renderPage();
+  }
 }
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -912,28 +922,53 @@ async function saveField(id,field,value){
   var payload={};
   if(field==='hours'||field==='cost_estimate'){var n=parseFloat(value.replace(/[^0-9.]/g,''));if(isNaN(n))return;payload[field]=n;}
   else{payload[field]=value;}
-  await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify(payload)});
-  showToast('Saved','success');
+  var r=await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify(payload)});
+  if(r&&r.ok){
+    // Update S.data cache in-place so navigation doesn't revert the change
+    if(S.data&&S.data.all_logs){
+      var log=S.data.all_logs.find(function(l){return l.id===id;});
+      if(log){log[field]=(field==='hours'||field==='cost_estimate')?payload[field]:value;}
+    }
+    showToast('Saved ✓','success');
+  } else {
+    showToast('Save failed — try again','error');
+  }
 }
 
 async function deleteLog(id){
   if(!confirm('Delete this entry?'))return;
-  await api('/api/log/'+id,{method:'DELETE'});
-  var row=document.getElementById('row-'+id);if(row)row.remove();
-  showToast('Deleted','success');
-  await loadData();renderPage();
+  var r=await api('/api/log/'+id,{method:'DELETE'});
+  if(r&&r.ok){
+    // Remove from S.data cache immediately so overview/charts update without reload flash
+    if(S.data&&S.data.all_logs){
+      S.data.all_logs=S.data.all_logs.filter(function(l){return l.id!==id;});
+    }
+    // Remove from by_site cache
+    if(S.data&&S.data.by_site){
+      Object.values(S.data.by_site).forEach(function(site){
+        if(site.logs)site.logs=site.logs.filter(function(l){return l.id!==id;});
+      });
+    }
+    var row=document.getElementById('row-'+id);if(row)row.remove();
+    showToast('Deleted','success');
+    renderPage();  // re-render from updated cache — no network round trip needed
+  } else {
+    showToast('Delete failed — try again','error');
+  }
 }
 
 async function unsendLog(id){
   await api('/api/log/'+id+'/unsend',{method:'POST'});
+  if(S.data&&S.data.all_logs){var l=S.data.all_logs.find(function(x){return x.id===id;});if(l)l.status='pending';}
   showToast('Moved back to pending','success');
-  await loadData();renderPage();
+  renderPage();
 }
 
 async function restoreLog(id){
   await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:'pending'})});
+  if(S.data&&S.data.all_logs){var l=S.data.all_logs.find(function(x){return x.id===id;});if(l)l.status='pending';}
   showToast('Restored to pending ✅','success');
-  await loadData();renderPage();
+  renderPage();
 }
 
 // ── ADD LOG MODAL ──────────────────────────────────────────────────────────
