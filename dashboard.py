@@ -190,7 +190,8 @@ def generate():
 
     query = f"site_logs?from_number=eq.{encoded}&status=in.(pending,chasing){type_filter}&order=created_at.asc"
     if site_name and site_name != "Unassigned":
-        query += f"&site_name=eq.{quote(site_name)}"
+        # Use ilike for case-insensitive match to handle capitalisation differences
+        query += f"&site_name=ilike.{quote(site_name)}"
     logs = db_get(query)
 
     if not isinstance(logs, list) or not logs:
