@@ -58,7 +58,18 @@ def check_auth():
 
 
 def encode_number(n):
-    return n.replace("+", "%2B")
+    """Normalise UK number then URL-encode for Supabase."""
+    n = n.strip()
+    if n.startswith("whatsapp:"):
+        n = n[9:]
+    n = n.replace(" ", "").replace("-", "")
+    if n.startswith("07") and len(n) == 11:
+        n = "+44" + n[1:]
+    if n.startswith("44") and not n.startswith("+"):
+        n = "+" + n
+    if not n.startswith("+"):
+        n = "+" + n
+    return "whatsapp:" + n.replace("+", "%2B")
 
 
 # ── Get account data ──────────────────────────────────────────────────────────
@@ -164,12 +175,18 @@ def add_site():
 def update_site(site_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
+    number  = request.args.get("number", "")
+    encoded = encode_number(number)
+    # Verify this site belongs to the authenticated user
+    site = db_get(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}&limit=1")
+    if not isinstance(site, list) or not site:
+        return jsonify({"error": "Site not found or access denied"}), 403
     data    = request.json or {}
     allowed = ["site_name", "client_name", "client_email", "client_phone"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
-    ok = db_patch(f"projects?id=eq.{site_id}", update)
+    ok = db_patch(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}", update)
     return jsonify({"ok": bool(ok)})
 
 
@@ -177,8 +194,13 @@ def update_site(site_id):
 def delete_site(site_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
-
-    ok = db_patch(f"projects?id=eq.{site_id}", {"status": "archived"})
+    number  = request.args.get("number", "")
+    encoded = encode_number(number)
+    # Verify this site belongs to the authenticated user
+    site = db_get(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}&limit=1")
+    if not isinstance(site, list) or not site:
+        return jsonify({"error": "Site not found or access denied"}), 403
+    ok = db_patch(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}", {"status": "archived"})
     return jsonify({"ok": ok})
 
 
@@ -199,6 +221,15 @@ def upload_logo():
 
     if not file_data:
         return jsonify({"error": "No file data received"}), 400
+
+    # Validate file size (max 2MB)
+    if len(file_data) > 2 * 1024 * 1024:
+        return jsonify({"error": "Logo must be under 2MB"}), 400
+
+    # Validate content type is an image
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
+    if content_type.split(";")[0].strip() not in allowed_types:
+        return jsonify({"error": "File must be an image (PNG, JPG, GIF or WebP)"}), 400
 
     # Upload to Supabase Storage logos bucket
     ext      = "png" if "png" in content_type else "jpg" if "jpg" in content_type else "png"
