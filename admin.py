@@ -59,6 +59,21 @@ def admin_overview():
     active_count = 0
     trial_count  = 0
 
+    # Pre-fetch Stripe data once (not per-company) — much faster
+    stripe_by_email = {}
+    try:
+        if STRIPE_SECRET_KEY:
+            # Get all active/trialing subscriptions in one call
+            all_subs = stripe.Subscription.list(limit=100, status="all",
+                                                  expand=["data.customer"])
+            for sub in all_subs.data:
+                cust = sub.customer if isinstance(sub.customer, dict) else {}
+                email = cust.get("email", "") if cust else ""
+                if email and email not in stripe_by_email:
+                    stripe_by_email[email] = {"status": sub.status, "id": sub.id}
+    except Exception:
+        pass
+
     for c in companies:
         wn   = c.get("whatsapp_number", "")
         logs = [l for l in all_logs if l.get("from_number") == wn]
@@ -79,22 +94,11 @@ def admin_overview():
         elif logs == []:
             days_inactive = 999
 
-        # Stripe status
-        stripe_status = "unknown"
-        stripe_sub_id = None
-        email = c.get("email", "")
-        try:
-            if email and STRIPE_SECRET_KEY:
-                custs = stripe.Customer.list(email=email, limit=1)
-                if custs.data:
-                    subs = stripe.Subscription.list(
-                        customer=custs.data[0].id, limit=1, status="all"
-                    )
-                    if subs.data:
-                        stripe_status = subs.data[0].status
-                        stripe_sub_id = subs.data[0].id
-        except Exception:
-            pass
+        # Stripe status from pre-fetched data
+        email         = c.get("email", "")
+        stripe_info   = stripe_by_email.get(email, {})
+        stripe_status = stripe_info.get("status", "unknown")
+        stripe_sub_id = stripe_info.get("id")
 
         if stripe_status == "active":
             mrr          += 49
@@ -267,7 +271,7 @@ def admin_send_welcome():
         headers={**sb_headers(), "Prefer": "return=minimal"}
     )
 
-    APP_URL   = os.environ.get("APP_URL", "https://www.subsync.xyz")
+    APP_URL   = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
     login_url = f"{APP_URL}/login?token={token}"
 
     lines = [
