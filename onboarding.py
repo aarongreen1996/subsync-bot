@@ -14,7 +14,7 @@ STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-APP_URL = os.environ.get("APP_URL", "https://web-production-b725f.up.railway.app")
+APP_URL = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
@@ -46,10 +46,25 @@ def api_signup():
         if not data.get(field):
             return jsonify({"error": f"Missing required field: {field}"}), 400
 
-    whatsapp = data["whatsapp"].strip()
+    whatsapp = data["whatsapp"].strip().replace(" ", "").replace("-", "")
+    # Normalise UK numbers
+    if whatsapp.startswith("07") and len(whatsapp) == 11:
+        whatsapp = "+44" + whatsapp[1:]
     if not whatsapp.startswith("+"):
         whatsapp = "+" + whatsapp
+    # Basic validation
+    digits = whatsapp.replace("+", "")
+    if not digits.isdigit() or len(digits) < 10 or len(digits) > 15:
+        return jsonify({"error": "Invalid WhatsApp number. Use format: +447xxxxxxxxx or 07xxxxxxxxx"}), 400
     whatsapp_full = f"whatsapp:{whatsapp}"
+
+    # Check if WhatsApp number or email already registered
+    existing_wa = http_requests.get(
+        f"{SUPABASE_URL}/rest/v1/companies?whatsapp_number=eq.{whatsapp_full.replace('+','%2B')}&limit=1",
+        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    )
+    if existing_wa.status_code == 200 and existing_wa.json():
+        return jsonify({"error": "This WhatsApp number is already registered. Contact support if you need help."}), 400
 
     try:
         # Create Stripe customer
@@ -65,6 +80,19 @@ def api_signup():
                 "primary_color":data.get("primary_color", "#1a3a6b"),
             }
         )
+
+        # Update customer metadata to include username/password for provisioning
+        if data.get("username") or data.get("dashboard_password"):
+            stripe.Customer.modify(customer.id, metadata={
+                "company_name":       data["company_name"],
+                "whatsapp":           whatsapp_full,
+                "trade":              data.get("trade", ""),
+                "vat":                data.get("vat", ""),
+                "address":            data.get("address", ""),
+                "primary_color":      data.get("primary_color", "#f59e0b"),
+                "username":           data.get("username", ""),
+                "dashboard_password": data.get("dashboard_password", ""),
+            })
 
         # Create Stripe checkout session with 14-day trial
         session = stripe.checkout.Session.create(
