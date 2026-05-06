@@ -1017,12 +1017,42 @@ async function confirmGenerate(){
 
 async function sendEmail(){
   var to=document.getElementById('pdf-email').value.trim();
-  if(!to){showToast('Enter an email address','error');return;}
-  if(!S.currentPdf){showToast('No PDF ready','error');return;}
-  closeModal('pdf-modal');showToast('📧 Sending...','');
-  var r=await api('/api/send-email',{method:'POST',body:JSON.stringify({to_email:to,pdf_b64:S.currentPdf.pdf_b64,pdf_url:S.currentPdf.pdf_url,doc_ref:S.currentPdf.doc_ref,site_name:S.currentSite,company_name:(S.data&&S.data.company&&S.data.company.company_name)||'Company',filename:S.currentPdf.filename})});
-  var d=await r.json();
-  showToast(d.ok?'✅ Email sent!':'❌ '+(d.error||'Failed'),d.ok?'success':'error');
+  if(!to){showToast('Enter a valid email address','error');return;}
+  if(!S.currentPdf){showToast('No PDF ready — generate one first','error');return;}
+
+  // Find client name for this site
+  var clientName='Client';
+  if(S.data&&S.data.projects&&S.currentSite){
+    var proj=S.data.projects.find(function(p){return p.site_name===S.currentSite;});
+    if(proj&&proj.client_name)clientName=proj.client_name;
+  }
+
+  var sendBtn=document.querySelector('#pdf-modal .btn-amber');
+  if(sendBtn){sendBtn.textContent='Sending...';sendBtn.disabled=true;}
+  showToast('📧 Sending email...','');
+
+  try{
+    var r=await api('/api/send-email',{method:'POST',body:JSON.stringify({
+      to_email:   to,
+      pdf_b64:    S.currentPdf.pdf_b64,
+      pdf_url:    S.currentPdf.pdf_url,
+      doc_ref:    S.currentPdf.doc_ref,
+      site_name:  S.currentSite,
+      client_name:clientName,
+      company_name:(S.data&&S.data.company&&S.data.company.company_name)||'Company',
+      filename:   S.currentPdf.filename
+    })});
+    var d=await r.json();
+    if(d.ok){
+      showToast('✅ Email sent to '+to,'success');
+      closeModal('pdf-modal');
+    } else {
+      showToast('❌ '+(d.error||'Email failed — check your Resend config'),'error');
+    }
+  } catch(e){
+    showToast('❌ Network error — try again','error');
+  }
+  if(sendBtn){sendBtn.textContent='Send email →';sendBtn.disabled=false;}
 }
 
 function closeModal(id){document.getElementById(id).style.display='none';}
