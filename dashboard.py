@@ -183,13 +183,20 @@ def generate():
     company = companies[0]
     company["whatsapp_number"] = from_number
 
-    query = f"site_logs?from_number=eq.{encoded}&status=eq.pending&order=created_at.asc"
+    # Filter by doc_type so PO only includes MATERIAL_ORDER, VO only VARIATION etc.
+    type_filter = ""
+    if doc_type and doc_type != "ALL":
+        type_filter = f"&type=eq.{doc_type}"
+
+    query = f"site_logs?from_number=eq.{encoded}&status=in.(pending,chasing){type_filter}&order=created_at.asc"
     if site_name and site_name != "Unassigned":
         query += f"&site_name=eq.{quote(site_name)}"
     logs = db_get(query)
 
     if not isinstance(logs, list) or not logs:
-        return jsonify({"error": "No pending logs found"}), 404
+        type_name = {"VARIATION": "variations", "DAYWORK": "dayworks",
+                     "MATERIAL_ORDER": "material orders"}.get(doc_type, "items")
+        return jsonify({"error": f"No pending {type_name} found for this site"}), 404
 
     prefix_map = {"VARIATION": "VO", "DAYWORK": "DS", "MATERIAL_ORDER": "PO"}
     title_map  = {"VARIATION": "Variation Order", "DAYWORK": "Daywork Sheet",
