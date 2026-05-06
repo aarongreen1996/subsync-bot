@@ -125,6 +125,7 @@ tr:hover td{background:var(--bg3);}
 .s-approved{background:rgba(34,197,94,0.12);color:var(--green);}
 .s-cancelled{background:rgba(220,38,38,0.1);color:var(--red);}
 .s-chasing{background:rgba(99,102,241,0.1);color:var(--purple);}
+.s-sent{background:rgba(37,211,102,0.1);color:#16a34a;}
 
 /* TYPE PILLS */
 .type-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
@@ -407,7 +408,6 @@ function toggleTheme(){
   h.setAttribute('data-theme',n);
   btn.textContent=(n==='dark'?'☀️':'🌙')+' Theme';
   localStorage.setItem('n2q-theme',n);
-  // Redraw charts for new theme
   if(S.data) setTimeout(function(){renderCharts(S.data);},100);
 }
 var saved=localStorage.getItem('n2q-theme');
@@ -420,13 +420,11 @@ function showMagicLogin(){
   document.getElementById('lerr').textContent='';
   document.getElementById('magic-success').textContent='';
 }
-
 function showPasswordLogin(){
   document.getElementById('view-magic').style.display='none';
   document.getElementById('view-password').style.display='block';
   document.getElementById('lerr').textContent='';
 }
-
 async function sendMagicLink(){
   var num=document.getElementById('magic-number').value.trim();
   if(!num){document.getElementById('lerr').textContent='Please enter your mobile number.';return;}
@@ -435,43 +433,19 @@ async function sendMagicLink(){
   try{
     var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:num})});
     var d=await r.json();
-    if(d.ok){
-      document.getElementById('magic-success').textContent='Login link sent to your WhatsApp! Tap it to open your dashboard.';
-      document.getElementById('lerr').textContent='';
-    } else {
-      document.getElementById('lerr').textContent=d.error||'Could not send link. Check your number.';
-    }
-  } catch(e){
-    document.getElementById('lerr').textContent='Network error. Please try again.';
-  }
+    if(d.ok){document.getElementById('magic-success').textContent='Login link sent to your WhatsApp! Tap it to open your dashboard.';document.getElementById('lerr').textContent='';}
+    else{document.getElementById('lerr').textContent=d.error||'Could not send link. Check your number.';}
+  }catch(e){document.getElementById('lerr').textContent='Network error. Please try again.';}
   btn.textContent='Send login link via WhatsApp →';btn.disabled=false;
 }
-
 async function doLogin(){
   var login=document.getElementById('ln').value.trim();
   var pw=document.getElementById('lp').value.trim();
   if(!login||!pw){document.getElementById('lerr').textContent='Fill in both fields.';return;}
-  // Try username login first, then fall back to master password
   var r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login,password:pw})});
   var d=await r.json();
-  if(d.ok){
-    S.pw=d.session_token||pw;
-    S.num=d.whatsapp||login;
-    localStorage.setItem('ss_password',S.pw);
-    localStorage.setItem('ss_number',S.num);
-    showApp();
-  } else {
-    document.getElementById('lerr').textContent=d.error||'Wrong username or password.';
-  }
-}
-
-async function requestMagicLink(){
-  var login=document.getElementById('ln').value.trim();
-  if(!login){document.getElementById('lerr').textContent='Enter your WhatsApp number first.';return;}
-  var r=await fetch('/api/auth/magic-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login})});
-  var d=await r.json();
-  if(d.ok){document.getElementById('lerr').style.color='var(--green)';document.getElementById('lerr').textContent='Magic link sent to your WhatsApp!';}
-  else{document.getElementById('lerr').textContent=d.error||'Could not send magic link.';}
+  if(d.ok){S.pw=d.session_token||pw;S.num=d.whatsapp||login;localStorage.setItem('ss_password',S.pw);localStorage.setItem('ss_number',S.num);showApp();}
+  else{document.getElementById('lerr').textContent=d.error||'Wrong username or password.';}
 }
 function logout(){localStorage.removeItem('ss_password');localStorage.removeItem('ss_number');localStorage.removeItem('ss_magic');S={pw:'',num:'',data:null,page:'overview',currentSite:null,currentPdf:null,charts:{},filters:{period:'month',site:'all',type:'all',status:'all',dateFrom:'',dateTo:''},sortCol:'',sortDir:1};document.getElementById('login-screen').style.display='flex';document.getElementById('app').style.display='none';}
 
@@ -486,18 +460,15 @@ async function showApp(){
   document.getElementById('app').style.display='block';
   await loadData();
 }
-
 async function loadData(){
   var r=await api('/api/summary?number='+encodeURIComponent(S.num));
   var d=await r.json();
   S.data=d;
   var c=d.company||{};
   var name=c.company_name||'My Company';
-  var initials=name.charAt(0).toUpperCase();
   document.getElementById('sb-company').textContent=name;
   document.getElementById('sb-name').textContent=name;
-  document.getElementById('sb-avatar').textContent=initials;
-  // Populate site dropdown in add log modal
+  document.getElementById('sb-avatar').textContent=name.charAt(0).toUpperCase();
   var siteEl=document.getElementById('al-site');
   siteEl.innerHTML='<option value="">-- Select site --</option>';
   (d.projects||[]).forEach(function(p){siteEl.innerHTML+='<option value="'+p.site_name+'">'+p.site_name+'</option>';});
@@ -507,18 +478,14 @@ async function loadData(){
 // ── NAVIGATION ─────────────────────────────────────────────────────────────
 function goto(page){
   S.page=page;
-  // Sidebar
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var ni=document.getElementById('nav-'+page);if(ni)ni.classList.add('active');
-  // Mobile nav
   document.querySelectorAll('.mobile-nav-item').forEach(function(el){el.classList.remove('active');});
   var mni=document.getElementById('mnav-'+page);if(mni)mni.classList.add('active');
-  // Title
   var titles={overview:'Overview',logs:'All Logs',sites:'My Sites','purchase-orders':'Purchase Orders',documents:'Documents Sent',clients:'Clients'};
   document.getElementById('page-title').textContent=titles[page]||page;
   renderPage();
 }
-
 function renderPage(){
   destroyCharts();
   if(S.page==='overview') renderOverview();
@@ -548,14 +515,12 @@ function filtersBar(showSite,showType,showStatus){
   html+='</div>';
   return html;
 }
-
 function setFilter(key,val){S.filters[key]=val;renderPage();}
 
 // ── GET FILTERED LOGS ──────────────────────────────────────────────────────
 function getFilteredLogs(allLogs){
   var now=new Date();
   return (allLogs||[]).filter(function(l){
-    // Period filter
     var created=new Date(l.created_at);
     if(S.filters.period==='week'){var wk=new Date(now);wk.setDate(now.getDate()-7);if(created<wk)return false;}
     else if(S.filters.period==='month'){var mo=new Date(now);mo.setDate(1);mo.setHours(0,0,0,0);if(created<mo)return false;}
@@ -563,21 +528,15 @@ function getFilteredLogs(allLogs){
       if(S.filters.dateFrom&&created<new Date(S.filters.dateFrom))return false;
       if(S.filters.dateTo){var dt=new Date(S.filters.dateTo);dt.setHours(23,59,59);if(created>dt)return false;}
     }
-    // Site
     if(S.filters.site!=='all'&&l.site_name!==S.filters.site)return false;
-    // Type
     if(S.filters.type!=='all'&&l.type!==S.filters.type)return false;
-    // Status
     if(S.filters.status!=='all'&&l.status!==S.filters.status)return false;
     return true;
   });
 }
-
 function getAllLogs(){
   var d=S.data||{};
-  // Use all_logs if available (includes approved, chasing, sent, cancelled)
-  if(d.all_logs && d.all_logs.length>=0) return d.all_logs;
-  // Fallback
+  if(d.all_logs&&d.all_logs.length>=0) return d.all_logs;
   var pending=[];var sent=[];
   Object.values(d.by_site||{}).forEach(function(s){pending=pending.concat(s.logs||[]);});
   (d.recent_sent||[]).forEach(function(l){sent.push(l);});
@@ -605,7 +564,6 @@ function renderOverview(){
   html+='<div class="chart-card"><div class="chart-title">Activity Over Time</div><div class="chart-wrap"><canvas id="chart-line"></canvas></div></div>';
   html+='<div class="chart-card"><div class="chart-title">By Type</div><div class="chart-wrap"><canvas id="chart-donut"></canvas></div></div></div>';
 
-  // Recent pending
   var pend=filtered.filter(function(l){return l.status==='pending';}).slice(0,10);
   html+='<div class="section-card"><div class="section-header"><div class="section-title">Pending <span class="count-pill">'+pend.length+'</span></div><div class="section-actions"><button class="btn btn-amber btn-sm" onclick="goto(\'logs\')">View all</button></div></div>';
   if(pend.length){
@@ -616,7 +574,6 @@ function renderOverview(){
     html+='</tbody></table></div>';
   }else{html+='<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">All caught up!</div><div class="empty-sub">No pending items in this period</div></div>';}
   html+='</div>';
-
   document.getElementById('page-content').innerHTML=html;
   renderCharts(d,filtered);
 }
@@ -627,10 +584,8 @@ function renderCharts(d,filtered){
   var gridColor=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
   Chart.defaults.color=textColor;
   Chart.defaults.font.family='Manrope';
-
   var allLogs=filtered||getFilteredLogs(getAllLogs());
 
-  // Bar chart — value per site
   var barCanvas=document.getElementById('chart-bar');
   if(barCanvas){
     var siteMap={};
@@ -639,8 +594,6 @@ function renderCharts(d,filtered){
     destroyChart('bar');
     S.charts.bar=new Chart(barCanvas,{type:'bar',data:{labels:barLabels,datasets:[{data:barData,backgroundColor:'rgba(245,158,11,0.7)',borderColor:'rgba(245,158,11,1)',borderWidth:1.5,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gridColor},ticks:{callback:function(v){return'£'+v;}}},x:{grid:{color:gridColor}}}}});
   }
-
-  // Line chart — logs per day
   var lineCanvas=document.getElementById('chart-line');
   if(lineCanvas){
     var dayMap={};
@@ -650,8 +603,6 @@ function renderCharts(d,filtered){
     destroyChart('line');
     S.charts.line=new Chart(lineCanvas,{type:'line',data:{labels:shortDays,datasets:[{data:dayData,borderColor:'rgba(245,158,11,1)',backgroundColor:'rgba(245,158,11,0.08)',borderWidth:2,pointRadius:3,pointBackgroundColor:'rgba(245,158,11,1)',fill:true,tension:.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gridColor},ticks:{stepSize:1}},x:{grid:{color:gridColor}}}}});
   }
-
-  // Donut — by type
   var donutCanvas=document.getElementById('chart-donut');
   if(donutCanvas){
     var typeMap={VARIATION:0,DAYWORK:0,MATERIAL_ORDER:0,TIMESHEET:0};
@@ -663,7 +614,6 @@ function renderCharts(d,filtered){
     S.charts.donut=new Chart(donutCanvas,{type:'doughnut',data:{labels:donutLabels,datasets:[{data:donutData,backgroundColor:donutColors,borderWidth:0,hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{position:'bottom',labels:{padding:10,font:{size:11},boxWidth:10}}}}});
   }
 }
-
 function destroyChart(key){if(S.charts[key]){S.charts[key].destroy();delete S.charts[key];}}
 function destroyCharts(){Object.keys(S.charts).forEach(function(k){destroyChart(k);});}
 
@@ -671,25 +621,20 @@ function destroyCharts(){Object.keys(S.charts).forEach(function(k){destroyChart(
 function renderLogs(){
   var allLogs=getAllLogs();
   var filtered=getFilteredLogs(allLogs);
-  // Sort
   if(S.sortCol){filtered.sort(function(a,b){var av=a[S.sortCol]||'',bv=b[S.sortCol]||'';return av<bv?-S.sortDir:av>bv?S.sortDir:0;});}
   var html=filtersBar(true,true,true);
   html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
   html+='<div style="font-size:13px;color:var(--muted)">Showing <strong style="color:var(--text)">'+filtered.length+'</strong> entries</div>';
   html+='<button class="btn btn-outline btn-sm" onclick="openAddLog()">+ Add manually</button></div>';
-
   if(!filtered.length){
     html+='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No entries found</div><div class="empty-sub">Try adjusting your filters or add a new entry</div></div>';
   }else{
-    var types=['VARIATION','DAYWORK','MATERIAL_ORDER','TIMESHEET','UNKNOWN'];
     html+='<div class="section-card"><div class="tbl-wrap"><table><thead><tr>';
     var cols=[{k:'type',l:'Type'},{k:'description',l:'Description'},{k:'site_name',l:'Site'},{k:'location',l:'Location'},{k:'hours',l:'Hrs'},{k:'cost_estimate',l:'Cost'},{k:'status',l:'Status'},{k:'created_at',l:'Date'}];
     cols.forEach(function(c){var dir=S.sortCol===c.k?(S.sortDir===1?' ↑':' ↓'):'';html+='<th onclick="sortBy(\''+c.k+'\')">'+c.l+dir+'</th>';});
     html+='<th></th></tr></thead><tbody>';
-    // Active = pending, chasing, sent | Historic = approved + cancelled only
     var active=filtered.filter(function(l){return l.status!=='approved'&&l.status!=='cancelled';});
     var historic=filtered.filter(function(l){return l.status==='approved'||l.status==='cancelled';});
-
     function logRow(l,isHistoric){
       var types=['VARIATION','DAYWORK','MATERIAL_ORDER','TIMESHEET','UNKNOWN'];
       var typeOpts=types.map(function(t){return '<option value="'+t+'"'+(l.type===t?' selected':'')+'>'+t.replace('_',' ')+'</option>';}).join('');
@@ -706,7 +651,7 @@ function renderLogs(){
         r+='<td class="cell-pad"><span class="status-sel s-'+l.status+'">'+(l.status||'')+'</span></td>';
         r+='<td class="cell-pad" style="color:var(--faint);font-size:12px">'+date+'</td>';
         r+='<td class="cell-pad"><button class="btn-restore" onclick="restoreLog('+l.id+')" title="Restore to pending">↩ Restore</button> <button class="btn-ghost-red" onclick="deleteLog('+l.id+')">✕</button></td>';
-      } else {
+      }else{
         r+='<td style="padding:6px 14px"><select style="border:none;background:transparent;font-size:11px;font-weight:700;cursor:pointer;font-family:Manrope,sans-serif;color:inherit;outline:none" onchange="saveField('+l.id+',\'type\',this.value)">'+typeOpts+'</select></td>';
         r+='<td><div class="cell" contenteditable="true" onblur="saveField('+l.id+',\'description\',this.innerText.trim())">'+(l.description||'')+'</div></td>';
         r+='<td><div class="cell" style="min-width:100px" contenteditable="true" onblur="saveField('+l.id+',\'site_name\',this.innerText.trim())">'+(l.site_name||'')+'</div></td>';
@@ -720,7 +665,6 @@ function renderLogs(){
       r+='</tr>';
       return r;
     }
-
     active.forEach(function(l){html+=logRow(l,false);});
     if(historic.length){
       html+='<tr class="historic-divider"><td colspan="9">📁 History — '+historic.length+' completed items</td></tr>';
@@ -729,22 +673,18 @@ function renderLogs(){
   }
   document.getElementById('page-content').innerHTML=html;
 }
-
 function sortBy(col){if(S.sortCol===col){S.sortDir*=-1;}else{S.sortCol=col;S.sortDir=1;}renderLogs();}
 
 // ── SITES ──────────────────────────────────────────────────────────────────
 function renderSites(){
   var d=S.data||{};
-  var bySite=d.by_site||{};
   var allLogs=getAllLogs();
   var projects=d.projects||[];
   var html='';
-
   if(!projects.length){
     html='<div class="empty-state"><div class="empty-icon">📍</div><div class="empty-title">No sites yet</div><div class="empty-sub">Add your first site via WhatsApp or from My Account</div></div>';
     document.getElementById('page-content').innerHTML=html;return;
   }
-
   projects.forEach(function(p){
     var siteLogs=allLogs.filter(function(l){return l.site_name===p.site_name;});
     var filteredSiteLogs=getFilteredLogs(siteLogs);
@@ -756,9 +696,16 @@ function renderSites(){
     html+='<div class="site-folder" id="'+fid+'">';
     html+='<div class="site-folder-header" onclick="toggleFolder(this)">';
     html+='<div><div class="site-folder-name">📍 '+p.site_name+'</div>';
+
+    // Show client name and address under the site name if available
+    var clientMeta='';
+    if(p.client_name) clientMeta+=p.client_name;
+    if(p.client_address) clientMeta+=(clientMeta?' · ':'')+p.client_address;
+    if(clientMeta) html+='<div class="site-folder-meta" style="color:var(--amber);font-size:10px;margin-top:1px">'+clientMeta+'</div>';
+
     html+='<div class="site-folder-meta">'+filteredSiteLogs.length+' total · £'+totalVal.toFixed(2)+' · '+pendCount+' pending</div></div>';
     html+='<div style="display:flex;align-items:center;gap:8px">';
-    html+='<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal(\''+p.site_name+'\')">'+'Generate PDF</button>';
+    html+='<button class="btn btn-amber btn-sm" onclick="event.stopPropagation();openGenModal(\''+p.site_name+'\')">Generate PDF</button>';
     html+='<span class="folder-chevron">▶</span></div></div>';
     html+='<div class="site-folder-body">';
     if(filteredSiteLogs.length){
@@ -778,9 +725,8 @@ function renderSites(){
         html+='<tr class="historic-divider"><td colspan="6">📁 '+historicLogs.length+' completed</td></tr>';
         historicLogs.forEach(function(l){
           var hd=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
-          var ht=(l.type||'').replace('_',' ');
           html+='<tr class="row-historic">';
-          html+='<td class="cell-pad"><span class="type-pill t-'+l.type+'">'+ht+'</span></td>';
+          html+='<td class="cell-pad"><span class="type-pill t-'+l.type+'">'+(l.type||'').replace('_',' ')+'</span></td>';
           html+='<td class="cell-pad">'+(l.description||'—')+'</td>';
           html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
           html+='<td class="cell-pad">'+(l.hours?l.hours+' hrs':'—')+'</td>';
@@ -789,15 +735,13 @@ function renderSites(){
         });
       }
       html+='</tbody></table></div>';
-    } else {
+    }else{
       html+='<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">No logs in this period for this site</div>';
     }
     html+='</div></div>';
   });
-
   document.getElementById("page-content").innerHTML=filtersBar(false,true,true)+html;
 }
-
 function toggleFolder(header){header.parentElement.classList.toggle('folder-open');}
 
 // ── PURCHASE ORDERS ────────────────────────────────────────────────────────
@@ -812,7 +756,6 @@ function renderPOs(){
     bySupplier[sup].count++;
     bySupplier[sup].logs.push(l);
   });
-
   var grandTotal=filtered.reduce(function(a,l){return a+parseFloat(l.cost_estimate||0);},0);
   var html=filtersBar(true,false,false);
   html+='<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">';
@@ -823,7 +766,6 @@ function renderPOs(){
   html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">';
   html+='<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:2px;color:var(--text)">By Supplier</div>';
   html+='<button class="btn btn-amber btn-sm" onclick="openAddLog();document.getElementById(\'al-type\').value=\'MATERIAL_ORDER\'">+ Add order</button></div>';
-
   if(!Object.keys(bySupplier).length){
     html+='<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-title">No purchase orders</div><div class="empty-sub">Material orders logged via WhatsApp appear here, or add manually above</div></div>';
   }else{
@@ -892,29 +834,20 @@ function renderDocuments(){
 function statusSelect(id,status){
   var opts=['pending','approved','chasing','cancelled','sent'];
   var s=status||'pending';
-  var cls='s-'+s;
-  var html='<select class="status-sel '+cls+'" onchange="updateStatus('+id+',this)">';
+  var html='<select class="status-sel s-'+s+'" onchange="updateStatus('+id+',this)">';
   opts.forEach(function(o){html+='<option value="'+o+'"'+(s===o?' selected':'')+'>'+o.charAt(0).toUpperCase()+o.slice(1)+'</option>';});
   html+='</select>';
   return html;
 }
-
 async function updateStatus(id,el){
   var val=el.value;
   el.className='status-sel s-'+val;
   var r=await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:val})});
   if(r&&r.ok){
-    // Update S.data cache in-place
-    if(S.data&&S.data.all_logs){
-      var log=S.data.all_logs.find(function(l){return l.id===id;});
-      if(log)log.status=val;
-    }
+    if(S.data&&S.data.all_logs){var log=S.data.all_logs.find(function(l){return l.id===id;});if(log)log.status=val;}
     showToast('Status updated','success');
     renderPage();
-  } else {
-    showToast('Update failed','error');
-    await loadData();renderPage();
-  }
+  }else{showToast('Update failed','error');await loadData();renderPage();}
 }
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -925,46 +858,27 @@ async function saveField(id,field,value){
   else{payload[field]=value;}
   var r=await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify(payload)});
   if(r&&r.ok){
-    // Update S.data cache in-place so navigation doesn't revert the change
-    if(S.data&&S.data.all_logs){
-      var log=S.data.all_logs.find(function(l){return l.id===id;});
-      if(log){log[field]=(field==='hours'||field==='cost_estimate')?payload[field]:value;}
-    }
+    if(S.data&&S.data.all_logs){var log=S.data.all_logs.find(function(l){return l.id===id;});if(log){log[field]=(field==='hours'||field==='cost_estimate')?payload[field]:value;}}
     showToast('Saved ✓','success');
-  } else {
-    showToast('Save failed — try again','error');
-  }
+  }else{showToast('Save failed — try again','error');}
 }
-
 async function deleteLog(id){
   if(!confirm('Delete this entry?'))return;
   var r=await api('/api/log/'+id,{method:'DELETE'});
   if(r&&r.ok){
-    // Remove from S.data cache immediately so overview/charts update without reload flash
-    if(S.data&&S.data.all_logs){
-      S.data.all_logs=S.data.all_logs.filter(function(l){return l.id!==id;});
-    }
-    // Remove from by_site cache
-    if(S.data&&S.data.by_site){
-      Object.values(S.data.by_site).forEach(function(site){
-        if(site.logs)site.logs=site.logs.filter(function(l){return l.id!==id;});
-      });
-    }
+    if(S.data&&S.data.all_logs){S.data.all_logs=S.data.all_logs.filter(function(l){return l.id!==id;});}
+    if(S.data&&S.data.by_site){Object.values(S.data.by_site).forEach(function(site){if(site.logs)site.logs=site.logs.filter(function(l){return l.id!==id;});});}
     var row=document.getElementById('row-'+id);if(row)row.remove();
     showToast('Deleted','success');
-    renderPage();  // re-render from updated cache — no network round trip needed
-  } else {
-    showToast('Delete failed — try again','error');
-  }
+    renderPage();
+  }else{showToast('Delete failed — try again','error');}
 }
-
 async function unsendLog(id){
   await api('/api/log/'+id+'/unsend',{method:'POST'});
   if(S.data&&S.data.all_logs){var l=S.data.all_logs.find(function(x){return x.id===id;});if(l)l.status='pending';}
   showToast('Moved back to pending','success');
   renderPage();
 }
-
 async function restoreLog(id){
   await api('/api/log/'+id,{method:'PATCH',body:JSON.stringify({status:'pending'})});
   if(S.data&&S.data.all_logs){var l=S.data.all_logs.find(function(x){return x.id===id;});if(l)l.status='pending';}
@@ -1006,10 +920,10 @@ async function confirmGenerate(){
   closeModal('gen-modal');showToast('⏳ Generating PDF...','');
   var r=await api('/api/generate',{method:'POST',body:JSON.stringify({site_name:S.currentSite,doc_type:docType,from_number:S.num})});
   var d=await r.json();
-  if(d.ok){S.currentPdf=d;showToast('✅ PDF ready!','success');
+  if(d.ok){
+    S.currentPdf=d;showToast('✅ PDF ready!','success');
     document.getElementById('pdf-ref').textContent=d.doc_ref+' — Ready';
     document.getElementById('pdf-desc').textContent=d.items+' item(s) · '+(S.currentSite||'All Sites');
-    document.getElementById('pdf-email').value='';
     document.getElementById('pdf-btns').innerHTML=
       '<a href="'+d.pdf_url+'" download="'+d.filename+'" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:#0c0d10;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif">⬇ Download PDF</a>'+
       '<a href="'+d.pdf_url+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:var(--bg3);color:var(--text);text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif;border:1px solid var(--border)">👁 Preview</a>';
@@ -1018,48 +932,31 @@ async function confirmGenerate(){
     await loadData();renderPage();
   }else{showToast('❌ '+(d.error||'Failed'),'error');}
 }
-
 function buildShareButtons(pdf){
-  var url = pdf.pdf_url || '';
-  var ref = pdf.doc_ref || 'Document';
-  var site = S.currentSite || '';
-  var co = (S.data&&S.data.company&&S.data.company.company_name) || '';
-  var msg = ref + ' for ' + site + (co ? ' from ' + co : '') + '. View here: ' + url;
-  var waHref = 'https://wa.me/?text=' + encodeURIComponent(msg);
-  var mailSub = encodeURIComponent(ref + (site ? ' — ' + site : ''));
-  var mailBody = encodeURIComponent('Dear Client,' + '\n\n' +
-    'Please find your document here:' + '\n' + url + '\n\n' +
-    'Please review and approve at your earliest convenience.' + '\n\n' +
-    'Kind regards,' + '\n' + co);
-  var mailHref = 'mailto:?subject=' + mailSub + '&body=' + mailBody;
-
-  var sh = document.getElementById('pdf-share-btns');
-  sh.innerHTML = '';
-
-  // WhatsApp button
-  var wa = document.createElement('a');
-  wa.href = waHref;
-  wa.target = '_blank';
-  wa.textContent = 'Share via WhatsApp';
-  wa.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:#25d366;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
+  var url=pdf.pdf_url||'';
+  var ref=pdf.doc_ref||'Document';
+  var site=S.currentSite||'';
+  var co=(S.data&&S.data.company&&S.data.company.company_name)||'';
+  var msg=ref+' for '+site+(co?' from '+co:'')+'. View here: '+url;
+  var waHref='https://wa.me/?text='+encodeURIComponent(msg);
+  var mailSub=encodeURIComponent(ref+(site?' — '+site:''));
+  var mailBody=encodeURIComponent('Dear Client,\n\nPlease find your document here:\n'+url+'\n\nPlease review and approve at your earliest convenience.\n\nKind regards,\n'+co);
+  var mailHref='mailto:?subject='+mailSub+'&body='+mailBody;
+  var sh=document.getElementById('pdf-share-btns');
+  sh.innerHTML='';
+  var wa=document.createElement('a');
+  wa.href=waHref;wa.target='_blank';wa.textContent='Share via WhatsApp';
+  wa.style.cssText='display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:#25d366;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
   sh.appendChild(wa);
-
-  // Email button
-  var em = document.createElement('a');
-  em.href = mailHref;
-  em.textContent = 'Send via Email';
-  em.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--amber);color:#0c0d10;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
+  var em=document.createElement('a');
+  em.href=mailHref;em.textContent='Send via Email';
+  em.style.cssText='display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--amber);color:#0c0d10;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
   sh.appendChild(em);
-
-  // Copy link button
-  var cp = document.createElement('button');
-  cp.id = 'copy-link-btn';
-  cp.textContent = 'Copy link';
-  cp.onclick = copyPdfLink;
-  cp.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--bg3);color:var(--text);border:1px solid var(--border);font-size:13px;font-weight:700;font-family:Manrope,sans-serif;cursor:pointer';
+  var cp=document.createElement('button');
+  cp.id='copy-link-btn';cp.textContent='Copy link';cp.onclick=copyPdfLink;
+  cp.style.cssText='display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--bg3);color:var(--text);border:1px solid var(--border);font-size:13px;font-weight:700;font-family:Manrope,sans-serif;cursor:pointer';
   sh.appendChild(cp);
 }
-
 function copyPdfLink(){
   if(!S.currentPdf||!S.currentPdf.pdf_url)return;
   var btn=document.getElementById('copy-link-btn');
@@ -1071,16 +968,13 @@ function copyPdfLink(){
     showToast('Link copied!','success');
   });
 }
-
 function closeModal(id){document.getElementById(id).style.display='none';}
-
 function showToast(msg,type){
   var t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;
   document.body.appendChild(t);setTimeout(function(){t.remove();},3000);
 }
 
-
-// ── CLIENTS ───────────────────────────────────────────────────────────────
+// ── CLIENTS ────────────────────────────────────────────────────────────────
 function renderClients(){
   var d=S.data||{};
   var projects=d.projects||[];
@@ -1089,31 +983,37 @@ function renderClients(){
     html+='<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">No sites yet</div><div class="empty-sub">Add sites from My Account first</div></div>';
     document.getElementById('page-content').innerHTML=html;return;
   }
-  html+='<div class="section-card"><div class="tbl-wrap"><table><thead><tr><th>Site</th><th style="min-width:160px">Client Name</th><th style="min-width:200px">Email Address</th><th style="min-width:130px">Phone</th></tr></thead><tbody>';
+  // 5 columns: Site, Client Name, Email, Phone, Address
+  html+='<div class="section-card"><div class="tbl-wrap"><table><thead><tr>';
+  html+='<th>Site</th>';
+  html+='<th style="min-width:160px">Client Name</th>';
+  html+='<th style="min-width:200px">Email Address</th>';
+  html+='<th style="min-width:130px">Phone</th>';
+  html+='<th style="min-width:200px">Address</th>';
+  html+='</tr></thead><tbody>';
   projects.forEach(function(p){
     html+='<tr>';
     html+='<td class="cell-pad"><strong>'+(p.site_name||'')+'</strong></td>';
     html+='<td><div class="cell" contenteditable="true" onblur="saveClientField('+p.id+',\'client_name\',this.innerText.trim())">'+(p.client_name||'')+'</div></td>';
     html+='<td><div class="cell" contenteditable="true" onblur="saveClientField('+p.id+',\'client_email\',this.innerText.trim())">'+(p.client_email||'')+'</div></td>';
     html+='<td><div class="cell" contenteditable="true" onblur="saveClientField('+p.id+',\'client_phone\',this.innerText.trim())">'+(p.client_phone||'')+'</div></td>';
+    html+='<td><div class="cell" contenteditable="true" onblur="saveClientField('+p.id+',\'client_address\',this.innerText.trim())">'+(p.client_address||'')+'</div></td>';
     html+='</tr>';
   });
   html+='</tbody></table></div></div>';
-  html+='<div style="margin-top:12px;padding:14px 18px;background:var(--amber-dim);border:1px solid rgba(245,158,11,0.2);border-radius:10px;font-size:13px;color:var(--text2)">💡 <strong>Tip:</strong> Once you add a client name here, the bot recognises it in WhatsApp messages automatically.</div>';
+  html+='<div style="margin-top:12px;padding:14px 18px;background:var(--amber-dim);border:1px solid rgba(245,158,11,0.2);border-radius:10px;font-size:13px;color:var(--text2)">💡 <strong>Tip:</strong> Once you add a client name here, the bot recognises it in WhatsApp messages automatically. The address appears on generated PDFs.</div>';
   document.getElementById('page-content').innerHTML=html;
 }
+
 async function saveClientField(projectId,field,value){
   var r=await api('/api/client/'+projectId,{method:'PATCH',body:JSON.stringify({[field]:value})});
   if(r&&r.ok){
-    // Update S.data.projects cache so navigation doesn't revert
     if(S.data&&S.data.projects){
       var proj=S.data.projects.find(function(p){return p.id===projectId;});
       if(proj) proj[field]=value;
     }
     showToast('Saved ✓','success');
-  } else {
-    showToast('Save failed — try again','error');
-  }
+  }else{showToast('Save failed — try again','error');}
 }
 
 // ── BOOT ───────────────────────────────────────────────────────────────────
