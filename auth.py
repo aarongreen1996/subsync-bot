@@ -197,7 +197,7 @@ def login():
     if not stored_pw:
         return jsonify({"ok": False, "error": "No password set. Use the magic link instead — send 'login' on WhatsApp."}), 401
 
-    if stored_pw != password:
+    if not secrets.compare_digest(stored_pw, password):
         return jsonify({"ok": False, "error": "Wrong password. Try again or send 'login' on WhatsApp for a magic link."}), 401
 
     whatsapp = company.get("whatsapp_number", "").replace("whatsapp:", "")
@@ -206,12 +206,26 @@ def login():
 
 
 # ── Magic link request ────────────────────────────────────────────────────────
+# Simple in-memory rate limit for magic-request (max 3 per number per 10 min)
+_magic_attempts = {}
+
 @auth_bp.route("/api/auth/magic-request", methods=["POST"])
 def magic_request():
+    from datetime import datetime, timezone, timedelta
     data     = request.json or {}
     login_id = data.get("login", "").strip()
     if not login_id:
         return jsonify({"ok": False, "error": "Enter your phone number or username"}), 400
+
+    # Rate limit: max 3 magic link requests per 10 minutes per login_id
+    now = datetime.now(timezone.utc)
+    key = login_id.lower()
+    attempts = _magic_attempts.get(key, [])
+    attempts = [t for t in attempts if now - t < timedelta(minutes=10)]
+    if len(attempts) >= 3:
+        return jsonify({"ok": False, "error": "Too many attempts. Wait 10 minutes then try again."}), 429
+    attempts.append(now)
+    _magic_attempts[key] = attempts
 
     company = find_company(login_id)
     if not company:
@@ -249,6 +263,6 @@ def auth_check():
     data = request.json or {}
     pw   = data.get("password", "")
     # Only admin/webhook use — not for end users
-    if pw == os.environ.get("DASHBOARD_PASSWORD", "n2q2026") or pw == "__magic__":
+    if pw == os.environ.get("DASHBOARD_PASSWORD", "n2q2026"):
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Unauthorized"}), 401
