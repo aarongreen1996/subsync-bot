@@ -24,14 +24,15 @@ def fetch_logo(logo_url):
 
 def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", site_label=None):
     """Route to the correct PDF layout based on document type."""
+    project_info = company.get("project_info", {}) or {}
     if doc_title == "Purchase Order":
-        return _generate_po(company, logs, doc_ref, site_label)
+        return _generate_po(company, logs, doc_ref, site_label, project_info)
     else:
-        return _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label)
+        return _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_info)
 
 
 # ── PURCHASE ORDER ────────────────────────────────────────────────────────────
-def _generate_po(company, logs, doc_ref, site_label):
+def _generate_po(company, logs, doc_ref, site_label, project_info=None):
     """Supplier-facing Purchase Order — clean, professional, order-focused."""
     buffer    = BytesIO()
     brand_hex = company.get("primary_color", "#f59e0b")
@@ -119,6 +120,7 @@ def _generate_po(company, logs, doc_ref, site_label):
         Paragraph("Email: ___________________________", box_sty),
     ]
 
+    project_info = project_info or {}
     delivery_content = [
         Paragraph("DELIVER TO", box_lbl),
         Spacer(1, 1*mm),
@@ -261,7 +263,7 @@ def _generate_po(company, logs, doc_ref, site_label):
 
 
 # ── VARIATION ORDER / DAYWORK SHEET ─────────────────────────────────────────
-def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label):
+def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_info=None):
     """Client-facing VO or DS — shows work done, cost, signatures."""
     buffer    = BytesIO()
     brand_hex = company.get("primary_color", "#1a3a6b")
@@ -317,7 +319,38 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label):
     story.append(header)
     story.append(Spacer(1, 4*mm))
     story.append(HRFlowable(width="100%", thickness=2, color=brand))
-    story.append(Spacer(1, 6*mm))
+    # Client details box (if available)
+    project_info = project_info or {}
+    client_name  = project_info.get("client_name", "")
+    client_addr  = project_info.get("address", "")
+    client_email = project_info.get("client_email", "")
+    client_phone = project_info.get("client_phone", "")
+
+    if any([client_name, client_addr, client_email, client_phone]):
+        box_lbl = ParagraphStyle("bl", fontSize=7, textColor=colors.grey,
+                                  fontName="Helvetica-Bold", leading=10)
+        box_sty = ParagraphStyle("bx", fontSize=9, textColor=dark, leading=13)
+        client_lines = []
+        if client_name:  client_lines.append(Paragraph(f"<b>{client_name}</b>", box_sty))
+        if client_addr:  client_lines.append(Paragraph(client_addr, box_sty))
+        if client_email: client_lines.append(Paragraph(client_email, box_sty))
+        if client_phone: client_lines.append(Paragraph(client_phone, box_sty))
+
+        client_content = [Paragraph("CLIENT / INSTRUCTED BY", box_lbl), Spacer(1, 1*mm)] + client_lines
+
+        client_tbl = Table([[client_content]], colWidths=[175*mm])
+        client_tbl.setStyle(TableStyle([
+            ("BOX",           (0,0), (-1,-1), 0.5, colors.HexColor("#dddddd")),
+            ("BACKGROUND",    (0,0), (-1,-1), colors.HexColor("#f7f7f7")),
+            ("LEFTPADDING",   (0,0), (-1,-1), 8),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 8),
+            ("TOPPADDING",    (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ]))
+        story.append(client_tbl)
+        story.append(Spacer(1, 6*mm))
+    else:
+        story.append(Spacer(1, 6*mm))
 
     header_row = ["#", "Description", "Location", "Hrs", "Est. Cost"]
     table_data = [header_row]
