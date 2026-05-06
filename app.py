@@ -87,12 +87,27 @@ def get_projects(from_number):
     result  = db_get("projects?whatsapp_number=eq." + encoded + "&status=eq.active&order=site_name.asc")
     return result if isinstance(result, list) else []
 def _similarity(a, b):
-    """Simple character-level similarity ratio between two strings."""
-    a, b = a.lower(), b.lower()
+    """Levenshtein-based similarity for typo detection."""
+    a, b = a.lower().strip(), b.lower().strip()
     if not a or not b: return 0.0
-    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-    matches = sum(1 for c in shorter if c in longer)
-    return matches / len(longer)
+    if a == b: return 1.0
+    # Minimum length filter — don't fuzzy-match short words
+    if len(a) < 5 or len(b) < 5: return 0.0
+    # Levenshtein distance
+    la, lb = len(a), len(b)
+    dp = list(range(lb + 1))
+    for i in range(1, la + 1):
+        prev = dp[0]
+        dp[0] = i
+        for j in range(1, lb + 1):
+            temp = dp[j]
+            if a[i-1] == b[j-1]:
+                dp[j] = prev
+            else:
+                dp[j] = 1 + min(prev, dp[j], dp[j-1])
+            prev = temp
+    dist = dp[lb]
+    return 1.0 - dist / max(la, lb)
 
 def match_site(msg, projects):
     """Match site name from message using exact, partial, word-level and fuzzy matching."""
@@ -203,7 +218,10 @@ def transcribe_voice(media_url):
                                      headers=headers, files=files, data=data, timeout=30)
         if groq_r.status_code == 200:
             text = groq_r.json().get("text", "").strip()
-            return preprocess_transcription(text)
+            result = preprocess_transcription(text)
+            if result:
+                result = result + " __TRANSCRIBED__"  # marker to skip double preprocessing
+            return result
         return None
     except Exception as e:
         print(f"Transcription error: {e}")
@@ -241,7 +259,7 @@ LINGO_CORRECTIONS = {
     "purchase all that": "purchase order",
     "pounds": "£",
     "quid": "£",
-    "grand": "000",
+    "a grand": "£1000", "two grand": "£2000", "half a grand": "£500",
 }
 
 def preprocess_transcription(text):
@@ -374,11 +392,14 @@ SUMMARY_KEYWORDS   = [
     "summary", "overview", "my summary", "show summary", "stats",
     "how am i doing", "my stats", "what have i logged", "show me everything",
     "whats outstanding", "what's outstanding", "how much", "total",
+    "outstanding",
 ]
 PENDING_KEYWORDS   = [
     "pending", "what's pending", "whats pending", "show pending",
-    "outstanding", "not approved", "not been approved", "waiting",
+    "not approved", "not been approved",
     "what needs doing", "whats left",
+    # Note: "outstanding" removed — "outstanding on [site]" goes to site query
+    # Plain "outstanding" or "what's outstanding" goes to summary
 ]
 APPROVE_KEYWORDS   = [
     "approve", "approved", "mark approved", "all approved", "client approved",
@@ -423,7 +444,13 @@ DATE_QUERY_KEYWORDS = [
 ]
 
 def is_generate_command(msg):    return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
-def is_help_command(msg):        return any(kw in msg.lower() for kw in HELP_KEYWORDS)
+def is_help_command(msg):
+    m = msg.strip().lower()
+    # Only trigger help if message IS the keyword, not if it contains it
+    # ("help me log this" should go to handle_log, not show help text)
+    exact = ["help", "guide", "commands", "what can you do", "how does this work",
+             "what do i say", "confused", "stuck", "how do i use this", "how do i start"]
+    return m in exact or any(m == kw for kw in HELP_KEYWORDS)
 def is_dashboard_command(msg):   return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
 def is_summary_command(msg):     return any(kw in msg.lower() for kw in SUMMARY_KEYWORDS)
 def is_pending_command(msg):     return any(kw in msg.lower() for kw in PENDING_KEYWORDS)
@@ -434,8 +461,16 @@ def is_correction(msg):          return any(kw in msg.lower() for kw in CORRECTI
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
-    if "daywork" in msg_lower: return "DAYWORK", "Daywork Sheet", "DS"
-    if "material" in msg_lower or "order" in msg_lower or "purchase" in msg_lower:
+    # Check specific phrases first to avoid "variation order" matching as MATERIAL_ORDER
+    if "daywork" in msg_lower or "day work" in msg_lower:
+        return "DAYWORK", "Daywork Sheet", "DS"
+    if "purchase order" in msg_lower or "purchase orders" in msg_lower or        "material order" in msg_lower or "material orders" in msg_lower or        ("po " in msg_lower and "purchase" in msg_lower):
+        return "MATERIAL_ORDER", "Purchase Order", "PO"
+    # "variation order" should NOT match material order — check variations first
+    if "variation" in msg_lower or "vo " in msg_lower or " vo" in msg_lower:
+        return "VARIATION", "Variation Order", "VO"
+    # Only plain "order" or "material" without "variation" context → PO
+    if "material" in msg_lower or "order" in msg_lower:
         return "MATERIAL_ORDER", "Purchase Order", "PO"
     return "VARIATION", "Variation Order", "VO"
 
@@ -686,21 +721,21 @@ def handle_pending(from_number, msg):
         # Status update flow (not a normal log)
         if log_data.get("_status_update"):
             from urllib.parse import quote as _q
-            encoded = encode_number(from_number)
+            encoded    = encode_number(from_number)
             new_status = log_data.get("new_status", "pending")
             past_tense = log_data.get("past_tense", "updated")
             emoji      = log_data.get("emoji", "✅")
-            logs = db_get("site_logs?from_number=eq." + encoded + "&status=eq.pending&site_name=eq." + _q(site_name))
+            logs = db_get("site_logs?from_number=eq." + encoded +
+                          "&status=in.(pending,chasing,sent)&site_name=eq." + _q(site_name))
             if isinstance(logs, list) and logs:
                 for log in logs:
                     db_patch("site_logs?id=eq." + str(log["id"]), {"status": new_status})
                 total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
-                total_val = sum(float(l.get("cost_estimate") or 0) for l in logs)
                 out = emoji + " *" + str(len(logs)) + " item(s) " + past_tense + "* for *" + site_name + "*"
                 out += "\nTotal value: £" + ("%.2f" % total_val)
                 return _reply(out)
-                return _reply(out)
-                return _reply("No pending items found for *" + site_name + "*.")
+            else:
+                return _reply("No active items found for *" + site_name + "*. Send *pending* to check what's outstanding.")
 
         # Multi-item bulk save
         if log_data.get("_multi"):
@@ -833,8 +868,11 @@ def handle_generate(from_number, msg):
 # ── Log handler ───────────────────────────────────────────────────────────────
 def handle_log(from_number, incoming_msg):
     try:
-        # Pre-process text to fix common supplier/lingo errors
-        processed_msg = preprocess_text(incoming_msg)
+        # Pre-process text — skip if already preprocessed by voice transcription
+        if incoming_msg.endswith(" __TRANSCRIBED__"):
+            processed_msg = incoming_msg[:-len(" __TRANSCRIBED__")].strip()
+        else:
+            processed_msg = preprocess_text(incoming_msg)
         msg_lower = processed_msg.lower()
 
         # Short conversational messages — don't try to log them
@@ -893,7 +931,7 @@ def handle_log(from_number, incoming_msg):
             # Ask for site once for all items
             elif projects:
                 pending_selections[from_number] = {
-                    "_multi": True, "_items": items,
+                    "pending_log": {"_multi": True, "_items": items},
                     "projects": projects,
                     "awaiting_type": False, "awaiting_site": True,
                 }
