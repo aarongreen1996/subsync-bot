@@ -1020,57 +1020,54 @@ async function confirmGenerate(){
 }
 
 function buildShareButtons(pdf){
-  var url      = pdf.pdf_url || '';
-  var ref      = pdf.doc_ref || 'Document';
-  var site     = S.currentSite || '';
-  var company  = (S.data&&S.data.company&&S.data.company.company_name) || '';
+  var url = pdf.pdf_url || '';
+  var ref = pdf.doc_ref || 'Document';
+  var site = S.currentSite || '';
+  var co = (S.data&&S.data.company&&S.data.company.company_name) || '';
+  var msg = ref + ' for ' + site + (co ? ' from ' + co : '') + '. View here: ' + url;
+  var waHref = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  var mailSub = encodeURIComponent(ref + (site ? ' — ' + site : ''));
+  var mailBody = encodeURIComponent('Dear Client,' + '\n\n' +
+    'Please find your document here:' + '\n' + url + '\n\n' +
+    'Please review and approve at your earliest convenience.' + '\n\n' +
+    'Kind regards,' + '\n' + co);
+  var mailHref = 'mailto:?subject=' + mailSub + '&body=' + mailBody;
 
-  // Build message text
-  var msgText  = ref + ' — ' + site + (company?' from '+company:'') +
-                 '. Please find your document here: ' + url;
-  var emailSub = encodeURIComponent(ref + (site?' — '+site:''));
-  var emailBody= encodeURIComponent('Dear Client,' +
-    '
+  var sh = document.getElementById('pdf-share-btns');
+  sh.innerHTML = '';
 
-Please find attached ' + ref + ' for works at ' + site + '.' +
-    '
+  // WhatsApp button
+  var wa = document.createElement('a');
+  wa.href = waHref;
+  wa.target = '_blank';
+  wa.textContent = 'Share via WhatsApp';
+  wa.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:#25d366;color:#fff;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
+  sh.appendChild(wa);
 
-You can view and download it here:
-' + url +
-    '
+  // Email button
+  var em = document.createElement('a');
+  em.href = mailHref;
+  em.textContent = 'Send via Email';
+  em.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--amber);color:#0c0d10;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif';
+  sh.appendChild(em);
 
-Please review and approve at your earliest convenience.' +
-    '
-
-Kind regards,
-' + company);
-  var waText   = encodeURIComponent(msgText);
-
-  var btnStyle = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:700;font-family:Manrope,sans-serif;border:none;cursor:pointer;white-space:nowrap';
-
-  var shareHtml =
-    '<a href="https://wa.me/?text='+waText+'" target="_blank" style="'+btnStyle+';background:#25d366;color:#fff">'+
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.504 3.93 1.39 5.6L0 24l6.584-1.364A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.001-1.366l-.36-.213-3.707.768.789-3.61-.233-.373A9.818 9.818 0 1112 21.818z"/></svg>'+
-    'Share via WhatsApp</a>'+
-    '<a href="mailto:?subject='+emailSub+'&body='+emailBody+'" style="'+btnStyle+';background:var(--amber);color:#0c0d10">'+
-    '✉ Send via Email app</a>'+
-    '<button onclick="copyPdfLink()" style="'+btnStyle+';background:var(--bg3);color:var(--text);border:1px solid var(--border)" id="copy-link-btn">'+
-    '🔗 Copy link</button>';
-
-  document.getElementById('pdf-share-btns').innerHTML = shareHtml;
+  // Copy link button
+  var cp = document.createElement('button');
+  cp.id = 'copy-link-btn';
+  cp.textContent = 'Copy link';
+  cp.onclick = copyPdfLink;
+  cp.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9px;background:var(--bg3);color:var(--text);border:1px solid var(--border);font-size:13px;font-weight:700;font-family:Manrope,sans-serif;cursor:pointer';
+  sh.appendChild(cp);
 }
 
 function copyPdfLink(){
   if(!S.currentPdf||!S.currentPdf.pdf_url)return;
+  var btn=document.getElementById('copy-link-btn');
   navigator.clipboard.writeText(S.currentPdf.pdf_url).then(function(){
-    var btn=document.getElementById('copy-link-btn');
-    if(btn){btn.textContent='✅ Copied!';setTimeout(function(){btn.textContent='🔗 Copy link';},2000);}
+    if(btn){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy link';},2000);}
   }).catch(function(){
-    // Fallback for older browsers
-    var ta=document.createElement('textarea');
-    ta.value=S.currentPdf.pdf_url;
-    document.body.appendChild(ta);ta.select();
-    document.execCommand('copy');document.body.removeChild(ta);
+    var ta=document.createElement('textarea');ta.value=S.currentPdf.pdf_url;
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
     showToast('Link copied!','success');
   });
 }
