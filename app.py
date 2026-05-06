@@ -832,7 +832,8 @@ def handle_generate(from_number, msg):
                       "&status=in.(pending,chasing)" + type_filter +
                       "&order=created_at.asc")
         if site_name:
-            base_query += "&site_name=eq." + encode_text(site_name)
+            # ilike = case-insensitive match
+            base_query += "&site_name=ilike." + encode_text(site_name)
 
         logs = db_get(base_query)
         if not isinstance(logs, list) or not logs:
