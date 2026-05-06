@@ -10,7 +10,7 @@ SUPABASE_KEY           = os.environ.get("SUPABASE_KEY", "")
 TWILIO_ACCOUNT_SID     = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN      = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-APP_URL                = os.environ.get("APP_URL", "https://www.subsync.xyz")
+APP_URL                = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
 
 
 def sb_headers():
@@ -48,8 +48,8 @@ def mark_sent(company_id, message_type):
 def encode(n):
     return n.replace("+", "%2B")
 
-def get_logs(whatsapp):
-    return db_get(f"site_logs?from_number=eq.{encode(whatsapp)}&order=created_at.desc")
+def get_logs(whatsapp, limit=200):
+    return db_get(f"site_logs?from_number=eq.{encode(whatsapp)}&order=created_at.desc&limit={limit}")
 
 
 # ── ONBOARDING DRIP ───────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ def run_onboarding_drip():
 # ── MONDAY WEEKLY SUMMARY ─────────────────────────────────────────────────────
 def run_weekly_summary():
     now = datetime.now(timezone.utc)
-    if now.weekday() != 0 or now.hour != 8: return
+    if now.weekday() != 0 or now.hour not in (7, 8, 9): return  # Window: 7-9am
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -152,7 +152,7 @@ def run_weekly_summary():
 def run_chasing_reminders():
     now = datetime.now(timezone.utc)
     # Run Monday and Thursday at 9am UTC
-    if now.weekday() not in (0, 3) or now.hour != 9: return
+    if now.weekday() not in (0, 3) or now.hour not in (8, 9, 10): return  # Window: 8-10am
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -176,8 +176,13 @@ def run_chasing_reminders():
         old_chasing = []
         for l in chasing:
             try:
-                updated = datetime.fromisoformat((l.get("updated_at") or l.get("created_at", "")).replace("Z", "+00:00"))
-                if (now - updated).days >= 3:
+                # Use created_at as fallback since site_logs has no updated_at column
+                date_str = l.get("created_at", "")
+                if date_str:
+                    created = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    if (now - created).days >= 3:
+                        old_chasing.append(l)
+                else:
                     old_chasing.append(l)
             except Exception:
                 old_chasing.append(l)
@@ -203,7 +208,7 @@ def run_chasing_reminders():
 # ── HIGH VALUE ALERT (daily 8am) ──────────────────────────────────────────────
 def run_high_value_alerts():
     now = datetime.now(timezone.utc)
-    if now.hour != 8: return
+    if now.hour not in (7, 8, 9): return  # Window: 7-9am
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -252,7 +257,7 @@ def run_high_value_alerts():
 # ── FRIDAY UNSENT NUDGE (Friday 4pm) ─────────────────────────────────────────
 def run_friday_nudge():
     now = datetime.now(timezone.utc)
-    if now.weekday() != 4 or now.hour != 16: return
+    if now.weekday() != 4 or now.hour not in (15, 16, 17): return  # Window: 3-5pm
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -307,7 +312,7 @@ def run_month_end_summary():
     next_friday = now + timedelta(days=7)
     if next_friday.month == now.month: return  # Not last Friday
 
-    if now.hour != 9: return
+    if now.hour not in (8, 9, 10): return  # Window: 8-10am
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
