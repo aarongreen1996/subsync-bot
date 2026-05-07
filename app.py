@@ -893,7 +893,12 @@ _LANDING_B64 = 'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj48aGVhZD48bWV0YSBjaGFy
 def landing():
     try:
         return read_html('landing.html')
-    except:
+    except FileNotFoundError:
+        print("WARNING: landing.html not found — using fallback")
+        html = _b64.b64decode(_LANDING_B64).decode('utf-8')
+        return Response(html, mimetype='text/html')
+    except Exception as e:
+        print(f"WARNING: landing.html error: {e} — using fallback")
         html = _b64.b64decode(_LANDING_B64).decode('utf-8')
         return Response(html, mimetype='text/html')
 
