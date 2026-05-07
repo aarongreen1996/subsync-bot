@@ -762,34 +762,55 @@ def handle_log(from_number, incoming_msg):
 
         # ── Multi-item list ───────────────────────────────────────────────────
         if isinstance(parsed, list) and len(parsed) > 0:
-            ai_sites = [i.get("site_name") for i in parsed if i.get("site_name")]
-            site_name = ai_sites[0] if ai_sites else None
-            if not site_name:
-                site_name = match_site(incoming_msg, projects)
-
-            if site_name and site_name not in [p["site_name"] for p in projects]:
-                create_site(from_number, site_name)
-
             items      = [build_insert(from_number, incoming_msg, i) for i in parsed]
             total_cost = sum(float(i.get("cost_estimate") or 0) for i in parsed)
 
-            if site_name:
-                saved = 0
-                for item in items:
+            # Match site per item individually — don't force all items to one site
+            saved      = 0
+            needs_site = []
+            known_site_names = [p["site_name"] for p in projects]
+
+            for item, raw in zip(items, parsed):
+                ai_site   = raw.get("site_name") or ""
+                site_name = None
+
+                if ai_site:
+                    # Try to match to a known project
+                    site_name = match_site(ai_site, projects)
+                    if not site_name:
+                        # Genuinely new site — auto-create it
+                        site_name = ai_site
+                        if site_name not in known_site_names:
+                            create_site(from_number, site_name)
+                            known_site_names.append(site_name)
+                else:
+                    # No site in this item — try the raw message as fallback
+                    site_name = match_site(incoming_msg, projects)
+
+                if site_name:
                     item["site_name"] = site_name
                     try:
-                        db_post("site_logs", item); saved += 1
+                        db_post("site_logs", item)
+                        saved += 1
                     except Exception:
                         pass
-                cost_tag = " · Est. £" + ("%.0f" % total_cost) if total_cost else ""
-                return _reply("✅ Logged " + str(saved) + " item(s) for *" + site_name + "*" + cost_tag + "!")
-            else:
+                else:
+                    needs_site.append(item)
+
+            cost_tag = " · Est. £" + ("%.0f" % total_cost) if total_cost else ""
+
+            # Some items had no site — ask once for the remainder
+            if needs_site:
                 pending_selections[from_number] = {
-                    "pending_log": {"_multi": True, "_items": items},
+                    "pending_log": {"_multi": True, "_items": needs_site},
                     "projects": projects, "awaiting_type": False, "awaiting_site": True,
                     "original_msg": incoming_msg,
                 }
-                return _reply("✅ Got " + str(len(parsed)) + " items.\n\nWhich site are these all for? Just type the site name.")
+                saved_msg = ("✅ Logged " + str(saved) + " item(s) to their sites" + cost_tag + ".\n\n") if saved else ""
+                return _reply(saved_msg + "Which site are the remaining " + str(len(needs_site)) +
+                              " item(s) for? Just type the site name.")
+
+            return _reply("✅ Logged " + str(saved) + " item(s) across sites" + cost_tag + "!")
 
         # ── Single item ───────────────────────────────────────────────────────
         if isinstance(parsed, dict):
