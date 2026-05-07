@@ -326,7 +326,7 @@ CORRECTION_KEYWORDS = ["no not", "not £", "its £", "it's £", "no it's", "no i
                        "not right", "change that", "update that", "fix that",
                        "i meant", "i mean", "should be", "actually",
                        "not that", "no the cost", "no the hours", "no the description"]
-SITE_QUERY_KEYWORDS = ["outstanding on", "update on", "status of", "show me",
+SITE_QUERY_KEYWORDS = ["outstanding on", "update on", "status of",
                        "what's on", "whats on", "how is", "how's",
                        "any updates", "updates on", "progress on", "what have we got on",
                        "what's happening on", "whats happening on",
@@ -464,15 +464,25 @@ def webhook():
             "", "Start your 14-day free trial at:", signup_url
         ]))
 
+    # Always check commands first even if pending state — prevents accidental logging
+    if is_dashboard_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_dashboard_command(from_number)
+    if is_summary_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_summary(from_number)
+    if is_help_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return _reply(HELP_TEXT)
+    if is_generate_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_generate(from_number, incoming_msg)
+
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
 
-    if is_dashboard_command(incoming_msg):  return handle_dashboard_command(from_number)
-    if is_summary_command(incoming_msg):    return handle_summary(from_number)
     if is_pending_command(incoming_msg):    return handle_pending_summary(from_number)
     if is_status_command(incoming_msg):     return handle_status_update(from_number, incoming_msg)
-    if is_help_command(incoming_msg):       return _reply(HELP_TEXT)
-    if is_generate_command(incoming_msg):   return handle_generate(from_number, incoming_msg)
 
     _msg_lower = incoming_msg.lower()
     _log_hints = ["hours", "hour", "mins", "materials", "quid", "£", "standard day",
@@ -480,10 +490,12 @@ def webhook():
                   "boarded", "plastered", "fixed", "sorted", "done", "completed"]
     _looks_like_log = any(h in _msg_lower for h in _log_hints)
 
-    if not _looks_like_log and is_site_query(incoming_msg):
-        return handle_site_query(from_number, incoming_msg)
+    # ── FIX: date queries BEFORE site queries ──
     if not _looks_like_log and is_date_query(incoming_msg):
         return handle_date_query(from_number, incoming_msg)
+    if not _looks_like_log and is_site_query(incoming_msg):
+        return handle_site_query(from_number, incoming_msg)
+
     if is_correction(incoming_msg):
         return handle_correction(from_number, incoming_msg)
 
@@ -504,9 +516,7 @@ def handle_pending(from_number, msg):
 
     # ── Type clarification ────────────────────────────────────────────────────
     if state.get("awaiting_type"):
-        # Accept any natural language answer, not just 1/2/3
         log_type = None
-
         if any(w in msg_clean for w in ["variation", "vo", "extra", "client", "site manager", "they asked"]):
             log_type = "VARIATION"
         elif any(w in msg_clean for w in ["daywork", "day work", "i did", "myself", "extra work"]):
@@ -515,12 +525,10 @@ def handle_pending(from_number, msg):
             log_type = "MATERIAL_ORDER"
         elif any(w in msg_clean for w in ["timesheet", "hours", "time"]):
             log_type = "TIMESHEET"
-        # Fallback to numbers
         elif msg.strip() == "1": log_type = "VARIATION"
         elif msg.strip() == "2": log_type = "DAYWORK"
         elif msg.strip() == "3": log_type = "MATERIAL_ORDER"
 
-        # If message looks like a new log entry — process it fresh
         if not log_type and len(msg.strip()) > 15:
             del pending_selections[from_number]
             return handle_log(from_number, msg)
@@ -529,8 +537,6 @@ def handle_pending(from_number, msg):
             return _reply("Just say variation, daywork, or material order — or cancel to start again.")
 
         log_data["type"] = log_type
-
-        # Now check site — use original message first
         original_msg = state.get("original_msg", "")
         site_name = match_site(original_msg, projects) if original_msg else None
 
@@ -540,12 +546,10 @@ def handle_pending(from_number, msg):
             db_post("site_logs", log_data)
             return _reply(f"✅ Logged as *{log_type}* for *{site_name}*!")
         elif log_data.get("site_name"):
-            # Site was captured from AI extraction — just save
             del pending_selections[from_number]
             db_post("site_logs", log_data)
             return _reply(f"✅ Logged as *{log_type}* for *{log_data['site_name']}*!")
         else:
-            # Need site
             del pending_selections[from_number]
             pending_selections[from_number] = {
                 "pending_log": log_data, "projects": projects,
@@ -556,7 +560,6 @@ def handle_pending(from_number, msg):
 
     # ── Site selection ────────────────────────────────────────────────────────
     if state.get("awaiting_site"):
-        # Fuzzy suggestion confirmation
         if state.get("_fuzzy_suggest"):
             fuzzy_match = state["_fuzzy_suggest"]
             if msg_clean in ["yes", "y", "yeah", "yep", "correct", "that one", "that's it", "thats it"]:
@@ -568,9 +571,7 @@ def handle_pending(from_number, msg):
                 state.pop("_fuzzy_suggest", None)
                 pending_selections[from_number] = state
                 return _reply("What's the site name? Just type it.")
-            # Fall through — treat as new site name
 
-        # Looks like a completely new log message? Process it fresh
         new_log_keywords = ["hours", "variation", "daywork", "order", "timesheet",
                             "boarded", "fitted", "installed", "fixed", "repaired"]
         looks_like_new_log = (len(msg.strip()) > 20 and
@@ -579,7 +580,6 @@ def handle_pending(from_number, msg):
             del pending_selections[from_number]
             return handle_log(from_number, msg)
 
-        # Try to match to existing site
         site_name = None
         if msg.strip().isdigit():
             idx = int(msg.strip()) - 1
@@ -589,7 +589,6 @@ def handle_pending(from_number, msg):
         if not site_name:
             site_name = match_site(msg, projects)
 
-        # Auto-create if no match — just use what they typed
         if not site_name:
             site_name = msg.strip().title()
             create_site(from_number, site_name)
@@ -704,7 +703,6 @@ def handle_generate(from_number, msg):
         doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
         company["site_label"] = site_label
 
-        # Fetch project/client info
         project_info = {}
         if site_name:
             projs = db_get(f"projects?whatsapp_number=eq.{encode_number(from_number)}&site_name=ilike.{encode_text(site_name)}&limit=1")
@@ -769,7 +767,6 @@ def handle_log(from_number, incoming_msg):
             if not site_name:
                 site_name = match_site(incoming_msg, projects)
 
-            # If site is new, auto-create it
             if site_name and site_name not in [p["site_name"] for p in projects]:
                 create_site(from_number, site_name)
 
@@ -792,7 +789,7 @@ def handle_log(from_number, incoming_msg):
                     "projects": projects, "awaiting_type": False, "awaiting_site": True,
                     "original_msg": incoming_msg,
                 }
-                return _reply("✅ Got " + str(len(parsed)) + " items logged.\n\nWhich site are these all for? Just type the site name.")
+                return _reply("✅ Got " + str(len(parsed)) + " items.\n\nWhich site are these all for? Just type the site name.")
 
         # ── Single item ───────────────────────────────────────────────────────
         if isinstance(parsed, dict):
@@ -801,7 +798,6 @@ def handle_log(from_number, incoming_msg):
             needs_clarification = data.get("needs_clarification", False)
             confirmation        = data.get("confirmation_message", "✅ Got it!")
 
-            # Trust AI's site extraction — check against known projects
             ai_site_name = data.get("site_name") or ""
             site_name = None
 
@@ -810,7 +806,6 @@ def handle_log(from_number, incoming_msg):
                 if known_match:
                     site_name = known_match
                 else:
-                    # Check for typo of a known site
                     fuzzy_match, score = fuzzy_site_suggestions(ai_site_name, projects)
                     if fuzzy_match and score >= 0.72:
                         insert_data["site_name"] = ai_site_name
@@ -824,16 +819,13 @@ def handle_log(from_number, incoming_msg):
                             "Reply yes to confirm, or type the correct site name."
                         )
                     else:
-                        # Genuinely new site — create it automatically, no need to ask
                         site_name = ai_site_name
                         create_site(from_number, site_name)
             else:
-                # Try to match from the raw message
                 site_name = match_site(incoming_msg, projects)
 
-            # Type needs clarification — ask naturally, not with a numbered menu
             if needs_clarification:
-                insert_data["site_name"] = site_name  # save whatever site we have
+                insert_data["site_name"] = site_name
                 pending_selections[from_number] = {
                     "pending_log": insert_data, "projects": projects,
                     "awaiting_type": True, "awaiting_site": False,
@@ -849,7 +841,6 @@ def handle_log(from_number, incoming_msg):
                 db_post("site_logs", insert_data)
                 return _reply(confirmation + f"\n📍 *{site_name}*")
             else:
-                # No site at all — ask once, naturally
                 pending_selections[from_number] = {
                     "pending_log": insert_data, "projects": projects,
                     "awaiting_type": False, "awaiting_site": True,
@@ -865,9 +856,9 @@ def handle_log(from_number, incoming_msg):
         return _reply(f"⚠️ Something went wrong. ({str(e)[:100]})")
 
 
-# ── Landing (base64 embedded) ──────────────────────────────────────────────────
+# ── Landing ───────────────────────────────────────────────────────────────────
 import base64 as _b64
-_LANDING_B64 = 'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIiBkYXRhLXRoZW1lPSJsaWdodCI+CjxoZWFkPgo8bWV0YSBjaGFyc2V0PSJVVEYtOCI+CjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MS4wIj4KPHRpdGxlPk5vdGUyUXVvdGUg4oCUIEZyb20gVm9pY2UgTm90ZSB0byBQb2xpc2hlZCBQREYuIEluc3RhbnRseS48L3RpdGxlPgo8c3R5bGU+Ym9keXtmb250LWZhbWlseTpzYW5zLXNlcmlmO21hcmdpbjowO3BhZGRpbmc6NDhweDtiYWNrZ3JvdW5kOiMwYzBkMTA7Y29sb3I6I2YwZWRlODt9PC9zdHlsZT48L2hlYWQ+Cjxib2R5PjxoMT5Ob3RlMlF1b3RlPC9oMT48cD5Db21pbmcgc29vbi48L3A+PC9ib2R5PjwvaHRtbD4='
+_LANDING_B64 = 'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj48aGVhZD48bWV0YSBjaGFyc2V0PSJVVEYtOCI+PHRpdGxlPk5vdGUyUXVvdGU8L3RpdGxlPjwvaGVhZD48Ym9keT48aDE+Tm90ZTJRdW90ZTwvaDE+PC9ib2R5PjwvaHRtbD4='
 
 @app.route('/')
 def landing():
@@ -1009,7 +1000,7 @@ def handle_status_update(from_number, msg):
         return _reply("⚠️ Couldn't update status. (" + str(e)[:80] + ")")
 
 
-# ── Site query ────────────────────────────────────────────────────────────────
+# ── Site query — with full detail per item ────────────────────────────────────
 def handle_site_query(from_number, msg):
     try:
         encoded  = encode_number(from_number)
@@ -1027,14 +1018,16 @@ def handle_site_query(from_number, msg):
 
         out = ["📍 *" + (site_name or "All Sites") + " — Current Status*", ""]
 
+        # ── FIX: Show type, hours and cost for each item ──
         def fmt_logs(log_list, limit=5):
             rows = []
             for l in log_list[:limit]:
-                desc = (l.get("description") or "—")[:45]
-                cost = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
-                row  = "  • " + desc
-                if cost: row += " · " + cost
-                rows.append(row)
+                desc  = (l.get("description") or "—")[:42]
+                ltype = (l.get("type") or "").replace("MATERIAL_ORDER", "Mat Order").replace("_", " ").title()
+                cost  = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
+                hrs   = str(l.get("hours")) + "h" if l.get("hours") else ""
+                parts = [x for x in [ltype, hrs, cost] if x]
+                rows.append("  • " + desc + (" [" + " · ".join(parts) + "]" if parts else ""))
             if len(log_list) > limit:
                 rows.append("  ... and " + str(len(log_list) - limit) + " more")
             return rows
@@ -1102,10 +1095,10 @@ def handle_date_query(from_number, msg):
                 desc   = (l.get("description") or "—")[:40]
                 status = l.get("status") or "pending"
                 cost   = "£" + ("%.2f" % float(l.get("cost_estimate") or 0)) if l.get("cost_estimate") else ""
+                ltype  = (l.get("type") or "").replace("MATERIAL_ORDER","Mat Order").replace("_"," ").title()
                 icon   = {"pending": "📋", "chasing": "⏰", "sent": "📄",
                           "approved": "✅", "cancelled": "❌"}.get(status, "•")
-                row = "  " + icon + " " + desc
-                if cost: row += " · " + cost
+                row = "  " + icon + " " + desc + " [" + ltype + (", " + cost if cost else "") + "]"
                 out.append(row)
             if len(logs) > 4:
                 out.append("  ... and " + str(len(logs) - 4) + " more")
