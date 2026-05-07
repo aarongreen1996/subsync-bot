@@ -361,7 +361,10 @@ def add_manual_log():
     r = http_requests.post(f"{SUPABASE_URL}/rest/v1/site_logs", json=payload,
         headers={"apikey":SUPABASE_KEY,"Authorization":f"Bearer {SUPABASE_KEY}",
                  "Content-Type":"application/json","Prefer":"return=minimal"})
-    return jsonify({"ok": r.status_code in (200,201)})
+    # Supabase returns 201 (with body) or 204 (no content) on success with return=minimal
+    if r.status_code in (200, 201, 204):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": f"DB error {r.status_code}: {r.text[:200]}"})
 
 
 # ── Client details ────────────────────────────────────────────────────────────
