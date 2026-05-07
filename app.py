@@ -1093,8 +1093,10 @@ def handle_date_query(from_number, msg):
         elif "today" in msg_lower:        since = now.replace(hour=0, minute=0, second=0); label = "Today"
         else:                             since = now - timedelta(days=7); label = "Last 7 days"
 
+        # Replace + in timezone offset with %2B so URL isn't malformed
+        since_str = since.isoformat().replace("+", "%2B")
         all_logs = db_get("site_logs?from_number=eq." + encoded +
-                          "&created_at=gte." + since.isoformat() + "&order=created_at.desc")
+                          "&created_at=gte." + since_str + "&order=created_at.desc")
         if not isinstance(all_logs, list): all_logs = []
         if not all_logs:
             return _reply("Nothing logged in the " + label.lower() + " period.")
