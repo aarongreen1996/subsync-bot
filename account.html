@@ -15,8 +15,6 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;}
 body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;transition:background .3s,color .3s;}
-
-/* LOGIN */
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;overflow:hidden;width:100%;max-width:400px;box-shadow:0 32px 64px var(--shadow2);animation:fadeUp .6s cubic-bezier(.16,1,.3,1) both;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
@@ -30,12 +28,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .btn-login{width:100%;background:var(--amber);color:#0c0d10;border:none;padding:13px;border-radius:10px;font-size:14px;font-weight:700;font-family:'Manrope',sans-serif;cursor:pointer;box-shadow:0 4px 0 var(--amber-d);transition:all .15s;}
 .btn-login:hover{transform:translateY(-1px);box-shadow:0 5px 0 var(--amber-d),0 10px 20px var(--amber-g);}
 .err{color:var(--red);font-size:12px;margin-top:6px;font-weight:500;}
-
-/* APP SHELL */
 #app{display:none;height:100vh;overflow:hidden;}
 .app-shell{display:flex;height:100%;}
-
-/* SIDEBAR */
 .sidebar{width:220px;flex-shrink:0;background:var(--nav-bg);display:flex;flex-direction:column;overflow-y:auto;}
 .sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}
 .sidebar-logo a{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;color:#fff;text-decoration:none;display:flex;align-items:center;gap:8px;}
@@ -56,8 +50,6 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .sidebar-avatar{width:30px;height:30px;background:var(--amber);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:#0c0d10;flex-shrink:0;}
 .sidebar-user-name{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .sidebar-user-role{font-size:10px;color:rgba(255,255,255,.3);}
-
-/* MAIN */
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
 .topbar{padding:16px 28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;transition:background .3s,border-color .3s;}
 .topbar-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--text);}
@@ -66,14 +58,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .theme-btn:hover{border-color:var(--amber);}
 .page-content{padding:24px 28px;}
 @media(max-width:768px){.sidebar{display:none;}.page-content{padding:16px;}}
-
-/* SECTIONS */
 .section{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;transition:background .3s,border-color .3s;animation:fadeUp .5s cubic-bezier(.16,1,.3,1) both;}
 .section-header{padding:14px 20px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;transition:background .3s,border-color .3s;}
 .section-title{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--text);transition:color .3s;}
 .section-body{padding:24px 20px;}
-
-/* SUBSCRIPTION */
 .sub-card{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:18px 20px;flex-wrap:wrap;gap:12px;transition:background .3s,border-color .3s;}
 .sub-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
 .dot-active{background:var(--green);box-shadow:0 0 6px rgba(34,197,94,.4);}
@@ -82,8 +70,6 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .sub-name{font-weight:700;font-size:15px;color:var(--text);}
 .sub-detail{font-size:12px;color:var(--muted);margin-top:2px;}
 .sub-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
-
-/* FORM */
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 @media(max-width:600px){.form-grid{grid-template-columns:1fr;}}
 .form-group{margin-bottom:0;}
@@ -94,8 +80,6 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .color-row{display:flex;gap:10px;align-items:center;}
 .color-row input[type="color"]{width:42px;height:40px;padding:2px 3px;border-radius:9px;cursor:pointer;flex-shrink:0;border:1.5px solid var(--border);background:var(--bg3);}
 .form-actions{display:flex;justify-content:flex-end;margin-top:18px;}
-
-/* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:'Manrope',sans-serif;transition:all .15s;letter-spacing:.3px;}
 .btn-amber{background:var(--amber);color:#0c0d10;box-shadow:0 3px 0 var(--amber-d);}
 .btn-amber:hover{transform:translateY(-1px);box-shadow:0 4px 0 var(--amber-d),0 8px 16px var(--amber-g);}
@@ -106,20 +90,12 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 .btn-outline-red{background:var(--card);color:var(--red);border:1.5px solid var(--red);}
 .btn-outline-red:hover{background:var(--red);color:#fff;}
 .btn-sm{padding:6px 12px;font-size:12px;}
-
-/* SITES */
 .site-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}
 .site-item{display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 16px;transition:background .3s,border-color .3s;}
 .site-item h4{font-size:14px;font-weight:600;color:var(--text);transition:color .3s;}
 .site-item p{font-size:12px;color:var(--muted);margin-top:2px;}
 .add-site-form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;background:var(--bg3);border:1.5px dashed var(--border);border-radius:10px;padding:14px;}
 @media(max-width:600px){.add-site-form{grid-template-columns:1fr;}}
-
-/* LOGO */
-.logo-upload-box{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3);}
-.logo-upload-box:hover{border-color:var(--amber);background:var(--amber-dim);}
-
-/* MISC */
 .spinner{display:inline-block;width:26px;height:26px;border:2.5px solid var(--border);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .loading{text-align:center;padding:48px;color:var(--faint);}
@@ -211,10 +187,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);-we
 var STATE={pw:'',num:'',data:null};
 
 function toggleTheme(){
-  var h=document.documentElement;
-  var n=h.getAttribute('data-theme')==='dark'?'light':'dark';
-  h.setAttribute('data-theme',n);
-  var icon=n==='dark'?'☀️':'🌙';
+  var h=document.documentElement;var n=h.getAttribute('data-theme')==='dark'?'light':'dark';
+  h.setAttribute('data-theme',n);var icon=n==='dark'?'☀️':'🌙';
   var b1=document.getElementById('theme-btn');var b2=document.getElementById('theme-btn2');
   if(b1)b1.textContent=icon+' Theme';if(b2)b2.textContent=icon;
   localStorage.setItem('n2q-theme',n);
@@ -239,18 +213,13 @@ function apiFetch(url,opts){
   return fetch(url,Object.assign({},opts,{headers:Object.assign({'Content-Type':'application/json','X-Dashboard-Password':STATE.pw},opts.headers||{})}));
 }
 
-async function showApp(){
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='block';
-  await loadAccount();
-}
+async function showApp(){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='block';await loadAccount();}
 
 async function loadAccount(){
   var r=await apiFetch('/api/account?number='+encodeURIComponent(STATE.num));
   var d=await r.json();
   STATE.data=d;
-  var c=d.company||{};
-  var name=c.company_name||'My Company';
+  var c=d.company||{};var name=c.company_name||'My Company';
   document.getElementById('sb-company').textContent=name;
   document.getElementById('sb-name').textContent=name;
   document.getElementById('sb-avatar').textContent=name.charAt(0).toUpperCase();
@@ -277,11 +246,11 @@ function renderAccount(d){
           '<input type="text" id="site-client-'+p.id+'" value="'+(p.client_name||'')+'" placeholder="Client name" style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:Manrope,sans-serif;background:var(--bg3);color:var(--text);outline:none" />'+
         '</div>'+
       '</div>'+
-      '<div style="display:flex;gap:6px;align-items:center">'+
+      '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0">'+
         '<button class="btn btn-outline btn-sm" id="site-edit-btn-'+p.id+'" onclick="toggleSiteEdit('+p.id+')">Edit</button>'+
         '<button class="btn btn-amber btn-sm" id="site-save-btn-'+p.id+'" onclick="saveSite('+p.id+')" style="display:none">Save</button>'+
-        '<button class="btn-ghost-red btn-sm" id="site-cancel-btn-'+p.id+'" onclick="cancelSiteEdit('+p.id+')" style="display:none;font-size:11px;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:600;background:rgba(220,38,38,0.08);color:var(--red);border:none">Cancel</button>'+
-        '<button class="btn-ghost-red" onclick="removeSite('+p.id+',\''+p.site_name+'\')">Remove</button>'+
+        '<button id="site-cancel-btn-'+p.id+'" onclick="cancelSiteEdit('+p.id+')" style="display:none;font-size:11px;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:600;background:rgba(220,38,38,0.08);color:var(--red);border:none">Cancel</button>'+
+        '<button style="background:rgba(220,38,38,0.08);color:var(--red);border:none;font-size:11px;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:Manrope,sans-serif;font-weight:600" onclick="removeSite('+p.id+',\''+p.site_name.replace(/'/g,"\\'")+'\')">Remove</button>'+
       '</div>'+
     '</div>';
   }).join(''):'<p style="color:var(--muted);font-size:14px;margin-bottom:12px">No sites yet. Add your first site below.</p>';
@@ -384,7 +353,7 @@ async function saveLoginSettings(){
   var username=document.getElementById('f-username').value.trim();
   var newPw=document.getElementById('f-new-pw').value.trim();
   if(!username){showToast('Please enter a username','error');return;}
-  var payload={username};if(newPw)payload.dashboard_password=newPw;
+  var payload={username:username};if(newPw)payload.dashboard_password=newPw;
   var r=await apiFetch('/api/account/login?number='+encodeURIComponent(STATE.num),{method:'PATCH',body:JSON.stringify(payload)});
   var d=await r.json();
   if(d.ok)showToast('✓ Login settings saved!','success');else showToast('❌ '+(d.error||'Failed'),'error');
@@ -418,18 +387,8 @@ async function removeSite(id,name){
   else showToast('❌ '+(d.error||'Failed'),'error');
 }
 
-function pauseSubscription(){
-  var s=STATE.data&&STATE.data.stripe;
-  if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
-  else{showToast('Contact support to pause your subscription','');}
-}
-
-function cancelSubscription(){
-  if(!confirm('Are you sure you want to cancel? You keep access until the end of your billing period.'))return;
-  var s=STATE.data&&STATE.data.stripe;
-  if(s&&s.billing_url){window.open(s.billing_url,'_blank');}
-  else{showToast('Contact support to cancel your subscription','');}
-}
+function pauseSubscription(){var s=STATE.data&&STATE.data.stripe;if(s&&s.billing_url){window.open(s.billing_url,'_blank');}else{showToast('Contact support to pause your subscription','');}}
+function cancelSubscription(){if(!confirm('Are you sure you want to cancel? You keep access until the end of your billing period.'))return;var s=STATE.data&&STATE.data.stripe;if(s&&s.billing_url){window.open(s.billing_url,'_blank');}else{showToast('Contact support to cancel your subscription','');}}
 
 function toggleSiteEdit(id){
   document.getElementById('site-view-'+id).style.display='none';
@@ -438,7 +397,6 @@ function toggleSiteEdit(id){
   document.getElementById('site-save-btn-'+id).style.display='inline-flex';
   document.getElementById('site-cancel-btn-'+id).style.display='inline-flex';
 }
-
 function cancelSiteEdit(id){
   document.getElementById('site-view-'+id).style.display='block';
   document.getElementById('site-edit-'+id).style.display='none';
@@ -446,25 +404,30 @@ function cancelSiteEdit(id){
   document.getElementById('site-save-btn-'+id).style.display='none';
   document.getElementById('site-cancel-btn-'+id).style.display='none';
 }
-
 async function saveSite(id){
   var name=document.getElementById('site-name-'+id).value.trim();
   var client=document.getElementById('site-client-'+id).value.trim();
   if(!name){showToast('Site name cannot be empty','error');return;}
   var r=await apiFetch('/api/account/sites/'+id,{method:'PATCH',body:JSON.stringify({site_name:name,client_name:client})});
   var d=await r.json();
-  if(d.ok){showToast('Site updated','success');await loadAccount();}
+  if(d.ok){showToast('Site updated ✓','success');await loadAccount();}
   else showToast('Failed: '+(d.error||'Unknown'),'error');
 }
 
-function showToast(msg,type){
-  var t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;
-  document.body.appendChild(t);setTimeout(function(){t.remove();},3000);
-}
+function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}
 
+// ── BOOT — FIX: check magic link session so /account auto-opens from dashboard ──
 window.addEventListener('DOMContentLoaded',function(){
-  var pw=localStorage.getItem('ss_password');var num=localStorage.getItem('ss_number');
-  if(pw&&num){STATE.pw=pw;STATE.num=num;showApp();}
+  // 1. Check magic link session (set when user logs in via WhatsApp link)
+  if(localStorage.getItem('ss_magic')==='1'){
+    var n=localStorage.getItem('ss_number');
+    if(n){STATE.pw='__magic__';STATE.num=n;showApp();return;}
+  }
+  // 2. Check password session
+  var pw=localStorage.getItem('ss_password');
+  var num=localStorage.getItem('ss_number');
+  if(pw&&num){STATE.pw=pw;STATE.num=num;showApp();return;}
+  // 3. Otherwise show login
 });
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 </script>
