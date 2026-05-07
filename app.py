@@ -301,11 +301,13 @@ Respond ONLY with valid JSON. No explanation, no markdown.
 # ── Keywords ──────────────────────────────────────────────────────────────────
 GENERATE_KEYWORDS  = [
     "generate variations", "generate dayworks", "generate purchase", "generate pos",
-    "generate report", "create invoice", "make invoice", "send invoice",
+    "generate report", "generate orders", "generate order", "generate materials",
+    "create invoice", "make invoice", "send invoice",
     "variation report", "daywork report", "material report", "produce report",
     "get variations", "send variations", "create pdf", "make pdf", "get pdf",
     "make a variation", "do a variation", "raise a variation", "raise variation",
     "create daywork sheet", "do the dayworks",
+    "purchase orders for", "purchase order for", "pos for",
 ]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands",
                       "what do i say", "how does this work", "confused", "stuck"]
