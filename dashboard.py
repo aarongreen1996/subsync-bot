@@ -1,7 +1,7 @@
 import os
 import re
 import base64
-from flask import Blueprint, request, jsonify, send_file, make_response
+from flask import Blueprint, request, jsonify
 from datetime import datetime
 import requests as http_requests
 from pdf_generator import generate_pdf
@@ -24,6 +24,11 @@ def db_get(path):
     r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
     return r.json() if r.status_code == 200 else []
 
+def db_post(path, payload):
+    r = http_requests.post(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
+                           headers={**sb_headers(), "Prefer": "return=minimal"})
+    return r
+
 def db_patch(path, payload):
     http_requests.patch(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
                         headers={**sb_headers(), "Prefer": "return=minimal"})
@@ -40,7 +45,6 @@ def slugify(text):
     return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
 
 def normalise(number):
-    """Convert any UK number format to whatsapp:%2B44... for Supabase queries."""
     n = number.strip()
     if n.startswith("whatsapp:"):
         n = n[9:]
@@ -117,7 +121,7 @@ def update_log(log_id):
         return jsonify({"error": "Unauthorized"}), 401
     data    = request.json or {}
     allowed = ["description", "type", "hours", "cost_estimate", "location",
-               "site_name", "requested_by", "status"]
+               "site_name", "requested_by", "status", "supplier"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
@@ -148,12 +152,65 @@ def delete_log(log_id):
     return jsonify({"ok": True})
 
 
-# ── Unsend (mark back to pending) ─────────────────────────────────────────────
+# ── Unsend ────────────────────────────────────────────────────────────────────
 @dashboard_bp.route("/api/log/<int:log_id>/unsend", methods=["POST"])
 def unsend_log(log_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
     db_patch(f"site_logs?id=eq.{log_id}", {"status": "pending"})
+    return jsonify({"ok": True})
+
+
+# ── Supplier rename — updates all matching logs ───────────────────────────────
+@dashboard_bp.route("/api/supplier/rename", methods=["POST"])
+def rename_supplier():
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    data     = request.json or {}
+    old_name = data.get("old_name", "").strip()
+    new_name = data.get("new_name", "").strip()
+    number   = data.get("from_number", "")
+    if not old_name or not new_name:
+        return jsonify({"error": "Both old and new name required"}), 400
+    encoded = normalise(number)
+    logs = db_get(f"site_logs?from_number=eq.{encoded}&supplier=eq.{quote(old_name)}")
+    count = 0
+    if isinstance(logs, list):
+        for log in logs:
+            db_patch(f"site_logs?id=eq.{log['id']}", {"supplier": new_name})
+            count += 1
+    return jsonify({"ok": True, "updated": count})
+
+
+# ── Site rename — renames project + all matching logs ─────────────────────────
+@dashboard_bp.route("/api/site/<int:project_id>/rename", methods=["PATCH"])
+def rename_site(project_id):
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    data     = request.json or {}
+    new_name = data.get("site_name", "").strip()
+    old_name = data.get("old_name", "").strip()
+    number   = data.get("from_number", "")
+    if not new_name:
+        return jsonify({"error": "New site name required"}), 400
+    # Rename in projects table
+    db_patch(f"projects?id=eq.{project_id}", {"site_name": new_name})
+    # Rename all matching logs so history stays consistent
+    if old_name and number:
+        encoded = normalise(number)
+        logs = db_get(f"site_logs?from_number=eq.{encoded}&site_name=eq.{quote(old_name)}")
+        if isinstance(logs, list):
+            for log in logs:
+                db_patch(f"site_logs?id=eq.{log['id']}", {"site_name": new_name})
+    return jsonify({"ok": True})
+
+
+# ── Site delete (soft — marks inactive, keeps all logs) ───────────────────────
+@dashboard_bp.route("/api/site/<int:project_id>", methods=["DELETE"])
+def delete_site(project_id):
+    if not check_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    db_patch(f"projects?id=eq.{project_id}", {"status": "inactive"})
     return jsonify({"ok": True})
 
 
@@ -200,9 +257,8 @@ def generate():
     doc_number = str(len(sent) + 1).zfill(3) if isinstance(sent, list) else "001"
     doc_ref    = f"{prefix}-{doc_number}"
 
-    # Include timestamp in filename to avoid 409 duplicate conflicts on regeneration
     ts = datetime.now().strftime('%d%b%Y_%H%M%S')
-    filename   = (
+    filename = (
         f"{doc_ref}_{slugify(company.get('company_name','Co').split()[0])}"
         f"_{slugify(site_label)}_{ts}.pdf"
     )
@@ -216,7 +272,6 @@ def generate():
 
     pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
 
-    # Upload to Supabase Storage — x-upsert:true prevents 409 if file somehow exists
     upload_url = f"{SUPABASE_URL}/storage/v1/object/documents/{filename}"
     r = http_requests.post(upload_url, data=pdf_bytes, headers={
         "apikey": SUPABASE_KEY,
@@ -244,7 +299,6 @@ def generate():
 def send_email():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
-
     if not RESEND_API_KEY:
         return jsonify({"error": "Email not configured. Add RESEND_API_KEY to Railway."}), 500
 
@@ -258,7 +312,6 @@ def send_email():
 
     if not to_email:
         return jsonify({"error": "Email address required"}), 400
-
     if not pdf_b64:
         pdf_url = data.get("pdf_url", "")
         if pdf_url:
@@ -276,10 +329,8 @@ def send_email():
             "<p>Dear " + (data.get("client_name") or "Client") + ",</p>"
             "<p>Please find attached <strong>" + doc_ref + "</strong> for works carried out at "
             "<strong>" + site_name + "</strong>.</p>"
-            "<p>Please review and sign at your earliest convenience. "
-            "If you have any questions please get in touch.</p>"
-            "<br>"
-            "<p>Kind regards,<br><strong>" + company_name + "</strong></p>"
+            "<p>Please review and sign at your earliest convenience.</p>"
+            "<br><p>Kind regards,<br><strong>" + company_name + "</strong></p>"
             "<p style='color:#aaa;font-size:11px;'>Sent via Note2Quote</p>"
         ),
         "attachments": [{"filename": filename, "content": pdf_b64}],
@@ -290,7 +341,6 @@ def send_email():
         headers={"Authorization": f"Bearer {RESEND_API_KEY}",
                  "Content-Type": "application/json"}
     )
-
     if r.status_code in (200, 201):
         return jsonify({"ok": True})
     return jsonify({"error": f"Email failed: {r.text[:200]}"}), 500
@@ -308,10 +358,8 @@ def add_manual_log():
     payload = {k: v for k, v in data.items() if k in allowed}
     if "status" not in payload:
         payload["status"] = "pending"
-    SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
-    SKEY = os.environ.get("SUPABASE_KEY","")
-    r = http_requests.post(f"{SURL}/rest/v1/site_logs", json=payload,
-        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
+    r = http_requests.post(f"{SUPABASE_URL}/rest/v1/site_logs", json=payload,
+        headers={"apikey":SUPABASE_KEY,"Authorization":f"Bearer {SUPABASE_KEY}",
                  "Content-Type":"application/json","Prefer":"return=minimal"})
     return jsonify({"ok": r.status_code in (200,201)})
 
@@ -322,7 +370,6 @@ def update_client(project_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
     data    = request.json or {}
-    # FIX: was "address", must be "client_address" to match the DB column
     allowed = ["client_name", "client_email", "client_phone", "client_address"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
