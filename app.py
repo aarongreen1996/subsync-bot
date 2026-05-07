@@ -480,12 +480,15 @@ def webhook():
     if is_generate_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_generate(from_number, incoming_msg)
+    if is_status_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_status_update(from_number, incoming_msg)
+    if is_pending_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_pending_summary(from_number)
 
     if from_number in pending_selections:
         return handle_pending(from_number, incoming_msg)
-
-    if is_pending_command(incoming_msg):    return handle_pending_summary(from_number)
-    if is_status_command(incoming_msg):     return handle_status_update(from_number, incoming_msg)
 
     _msg_lower = incoming_msg.lower()
     _log_hints = ["hours", "hour", "mins", "materials", "quid", "£", "standard day",
