@@ -102,9 +102,12 @@ def _similarity(a, b):
 
 def match_site(msg, projects):
     if not msg or not projects: return None
-    msg_lower = msg.lower()
+    msg_lower = msg.lower().strip()
     for p in projects:
         if p["site_name"].lower() in msg_lower: return p["site_name"]
+    # Reverse check: msg is a substring of a known site name (e.g. "Brookfield" → "Brookfield Site")
+    for p in projects:
+        if len(msg_lower) >= 5 and msg_lower in p["site_name"].lower(): return p["site_name"]
     for p in projects:
         cn = (p.get("client_name") or "").strip()
         if cn and len(cn) > 3 and cn.lower() in msg_lower: return p["site_name"]
