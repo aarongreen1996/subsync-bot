@@ -32,7 +32,7 @@ def db_post(path, payload):
         json=payload,
         headers={**sb_headers(), "Prefer": "return=minimal"}
     )
-    return r.status_code in (200, 201)
+    return r.status_code in (200, 201, 204)
 
 
 def db_patch(path, payload):
@@ -58,7 +58,8 @@ def check_auth():
 
 
 def encode_number(n):
-    """Normalise UK number then URL-encode for Supabase."""
+    """Normalise UK number and URL-encode for Supabase query strings.
+    Returns whatsapp:%2B44XXXXXXXXX — the + MUST be %2B or Supabase reads it as a space."""
     n = n.strip()
     if n.startswith("whatsapp:"):
         n = n[9:]
@@ -69,7 +70,23 @@ def encode_number(n):
         n = "+" + n
     if not n.startswith("+"):
         n = "+" + n
+    # URL-encode the + so Supabase doesn't read it as a space
     return "whatsapp:" + n.replace("+", "%2B")
+
+
+def raw_number(n):
+    """Return the raw whatsapp:+44... format for storing in DB (not URL-encoded)."""
+    n = n.strip()
+    if n.startswith("whatsapp:"):
+        n = n[9:]
+    n = n.replace(" ", "").replace("-", "").replace("%2B", "+")
+    if n.startswith("07") and len(n) == 11:
+        n = "+44" + n[1:]
+    if n.startswith("44") and not n.startswith("+"):
+        n = "+" + n
+    if not n.startswith("+"):
+        n = "+" + n
+    return "whatsapp:" + n
 
 
 # ── Get account data ──────────────────────────────────────────────────────────
@@ -78,12 +95,10 @@ def get_account():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    number = request.args.get("number", "")
-    encoded = encode_number(number)
-    if not encoded.startswith("whatsapp:"):
-        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
+    number  = request.args.get("number", "")
+    encoded = encode_number(number)  # URL-encoded for queries
 
-    company = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
+    company  = db_get(f"companies?whatsapp_number=eq.{encoded}&limit=1")
     projects = db_get(f"projects?whatsapp_number=eq.{encoded}&status=eq.active&order=site_name.asc")
 
     if not isinstance(company, list) or not company:
@@ -91,8 +106,8 @@ def get_account():
 
     c = company[0]
 
-    # Get Stripe subscription
-    stripe_info = {"status": "unknown", "trial_end": None, "next_billing": None, "cancel_url": None}
+    # Stripe subscription info
+    stripe_info = {"status": "unknown", "trial_end": None, "next_billing": None}
     try:
         customers = stripe.Customer.list(email=c.get("email", ""), limit=1)
         if customers.data:
@@ -100,12 +115,11 @@ def get_account():
             if subs.data:
                 sub = subs.data[0]
                 stripe_info = {
-                    "status": sub.status,
-                    "trial_end": sub.trial_end,
+                    "status":      sub.status,
+                    "trial_end":   sub.trial_end,
                     "next_billing": sub.current_period_end,
                     "subscription_id": sub.id,
                 }
-                # Generate billing portal URL
                 try:
                     session = stripe.billing_portal.Session.create(
                         customer=customers.data[0].id,
@@ -118,9 +132,9 @@ def get_account():
         pass
 
     return jsonify({
-        "company": c,
+        "company":  c,
         "projects": projects if isinstance(projects, list) else [],
-        "stripe": stripe_info,
+        "stripe":   stripe_info,
     })
 
 
@@ -130,14 +144,11 @@ def update_company():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    number = request.args.get("number", "")
+    number  = request.args.get("number", "")
     encoded = encode_number(number)
-    if not encoded.startswith("whatsapp:"):
-        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
-
-    data = request.json or {}
+    data    = request.json or {}
     allowed = ["company_name", "address", "email", "phone", "vat_number", "primary_color"]
-    update = {k: v for k, v in data.items() if k in allowed}
+    update  = {k: v for k, v in data.items() if k in allowed}
 
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
@@ -152,9 +163,9 @@ def add_site():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    number = request.args.get("number", "")
-    encoded_raw = number if number.startswith("whatsapp:") else "whatsapp:" + number
-    data = request.json or {}
+    number    = request.args.get("number", "")
+    wa_raw    = raw_number(number)  # store as whatsapp:+44... (not URL-encoded)
+    data      = request.json or {}
     site_name = data.get("site_name", "").strip()
     client_name = data.get("client_name", "").strip()
 
@@ -162,45 +173,52 @@ def add_site():
         return jsonify({"error": "Site name required"}), 400
 
     ok = db_post("projects", {
-        "whatsapp_number": encoded_raw,
-        "site_name": site_name,
-        "client_name": client_name,
-        "status": "active",
+        "whatsapp_number": wa_raw,
+        "site_name":       site_name,
+        "client_name":     client_name,
+        "status":          "active",
     })
     return jsonify({"ok": ok})
 
 
-# ── Delete site ───────────────────────────────────────────────────────────────
+# ── Update site ───────────────────────────────────────────────────────────────
 @account_bp.route("/api/account/sites/<int:site_id>", methods=["PATCH"])
 def update_site(site_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
+
     number  = request.args.get("number", "")
     encoded = encode_number(number)
-    # Verify this site belongs to the authenticated user
+
+    # Verify ownership — use URL-encoded number in query
     site = db_get(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}&limit=1")
     if not isinstance(site, list) or not site:
         return jsonify({"error": "Site not found or access denied"}), 403
+
     data    = request.json or {}
-    allowed = ["site_name", "client_name", "client_email", "client_phone"]
+    allowed = ["site_name", "client_name", "client_email", "client_phone", "client_address"]
     update  = {k: v for k, v in data.items() if k in allowed}
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
-    ok = db_patch(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}", update)
+
+    ok = db_patch(f"projects?id=eq.{site_id}", update)
     return jsonify({"ok": bool(ok)})
 
 
+# ── Delete site ───────────────────────────────────────────────────────────────
 @account_bp.route("/api/account/sites/<int:site_id>", methods=["DELETE"])
 def delete_site(site_id):
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
+
     number  = request.args.get("number", "")
     encoded = encode_number(number)
-    # Verify this site belongs to the authenticated user
+
     site = db_get(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}&limit=1")
     if not isinstance(site, list) or not site:
         return jsonify({"error": "Site not found or access denied"}), 403
-    ok = db_patch(f"projects?id=eq.{site_id}&whatsapp_number=eq.{encoded}", {"status": "archived"})
+
+    ok = db_patch(f"projects?id=eq.{site_id}", {"status": "archived"})
     return jsonify({"ok": ok})
 
 
@@ -210,30 +228,22 @@ def upload_logo():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    number = request.args.get("number", "")
-    encoded = encode_number(number)
-    if not encoded.startswith("whatsapp:"):
-        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
-
-    # Get file from request
+    number   = request.args.get("number", "")
+    encoded  = encode_number(number)
     file_data    = request.data
     content_type = request.headers.get("Content-Type", "image/png")
 
     if not file_data:
         return jsonify({"error": "No file data received"}), 400
-
-    # Validate file size (max 2MB)
     if len(file_data) > 2 * 1024 * 1024:
         return jsonify({"error": "Logo must be under 2MB"}), 400
 
-    # Validate content type is an image
     allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
     if content_type.split(";")[0].strip() not in allowed_types:
         return jsonify({"error": "File must be an image (PNG, JPG, GIF or WebP)"}), 400
 
-    # Upload to Supabase Storage logos bucket
-    ext      = "png" if "png" in content_type else "jpg" if "jpg" in content_type else "png"
-    filename = f"{encoded.replace('whatsapp:', '').replace('+', '').replace('%2B', '')}.{ext}"
+    ext      = "png" if "png" in content_type else "jpg"
+    filename = encoded.replace("whatsapp:", "").replace("%2B", "").replace("+", "") + "." + ext
 
     upload_url = f"{SUPABASE_URL}/storage/v1/object/logos/{filename}"
     headers = {
@@ -247,23 +257,18 @@ def upload_logo():
         return jsonify({"error": f"Storage error: {r.text}"}), 500
 
     logo_url = f"{SUPABASE_URL}/storage/v1/object/public/logos/{filename}"
-
-    # Save URL to company record
     ok = db_patch(f"companies?whatsapp_number=eq.{encoded}", {"logo_url": logo_url})
     return jsonify({"ok": ok, "logo_url": logo_url})
 
 
-# ── Login settings (username + password) ─────────────────────────────────────
+# ── Login settings ────────────────────────────────────────────────────────────
 @account_bp.route("/api/account/login", methods=["PATCH"])
 def update_login():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
-    number = request.args.get("number", "")
+    number  = request.args.get("number", "")
     encoded = encode_number(number)
-    if not encoded.startswith("whatsapp:"):
-        encoded = "whatsapp:" + encoded.lstrip("whatsapp:")
-
     data    = request.json or {}
     allowed = ["username", "dashboard_password"]
     update  = {k: v for k, v in data.items() if k in allowed}
@@ -271,12 +276,13 @@ def update_login():
     if not update:
         return jsonify({"error": "Nothing to update"}), 400
 
-    # Check username not already taken
+    # Check username not already taken by someone else
     if "username" in update:
         existing = db_get(f"companies?username=eq.{update['username']}&limit=1")
         if isinstance(existing, list) and existing:
             existing_num = existing[0].get("whatsapp_number", "")
-            if existing_num != encoded.replace("%2B", "+").replace("whatsapp:", "whatsapp:+"):
+            # Compare normalised forms
+            if encode_number(existing_num) != encoded:
                 return jsonify({"error": "Username already taken"}), 400
 
     ok = db_patch(f"companies?whatsapp_number=eq.{encoded}", update)
