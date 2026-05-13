@@ -1096,7 +1096,13 @@ def handle_date_query(from_number, msg):
         msg_lower = msg.lower()
         now       = datetime.now(timezone.utc)
 
-        if "yesterday" in msg_lower:      since = now - timedelta(days=1); label = "Yesterday"
+        # "yesterday" = midnight to midnight of the previous day — NOT last 24 hours
+        until_str = None
+        if "yesterday" in msg_lower:
+            since = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            until = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            until_str = until.isoformat().replace("+", "%2B")
+            label = "Yesterday"
         elif "last week" in msg_lower:    since = now - timedelta(days=7); label = "Last 7 days"
         elif "this week" in msg_lower:
             since = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
@@ -1108,8 +1114,11 @@ def handle_date_query(from_number, msg):
 
         # Replace + in timezone offset with %2B so URL isn't malformed
         since_str = since.isoformat().replace("+", "%2B")
-        all_logs = db_get("site_logs?from_number=eq." + encoded +
-                          "&created_at=gte." + since_str + "&order=created_at.desc")
+        query = "site_logs?from_number=eq." + encoded + "&created_at=gte." + since_str
+        if until_str:
+            query += "&created_at=lt." + until_str
+        query += "&order=created_at.desc"
+        all_logs = db_get(query)
         if not isinstance(all_logs, list): all_logs = []
         if not all_logs:
             return _reply("Nothing logged in the " + label.lower() + " period.")
