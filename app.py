@@ -376,17 +376,27 @@ def detect_doc_type(msg):
     return "VARIATION", "Variation Order", "VO"
 
 def slugify(text):
-    text = text.strip().replace(" ", "_")
-    return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25]
+    if not text: return "doc"
+    text = str(text).strip().replace(" ", "_")
+    return re.sub(r"[^a-zA-Z0-9_\-]", "", text)[:25] or "doc"
 
 def make_doc_ref_and_filename(company, logs, prefix, site_name):
-    sent = db_get(f"site_logs?from_number=eq.{encode_number(company.get('whatsapp_number',''))}"
-                  f"&status=eq.sent&select=id")
-    doc_number   = str(len(sent) + 1).zfill(3)
+    try:
+        wa = company.get("whatsapp_number") or ""
+        sent = db_get(f"site_logs?from_number=eq.{encode_number(wa)}&status=eq.sent&select=id")
+        doc_number = str((len(sent) if isinstance(sent, list) else 0) + 1).zfill(3)
+    except Exception:
+        doc_number = "001"
+    # Safe company slug — guard every possible None/empty case
+    try:
+        co_raw   = company.get("company_name")
+        co_name  = str(co_raw).strip() if co_raw else "Co"
+        co_parts = co_name.split()
+        co_first = co_parts[0] if co_parts else "Co"
+    except Exception:
+        co_first = "Co"
     site_slug    = slugify(site_name) if site_name else "AllSites"
-    co_name = (company.get("company_name") or "Company").strip() or "Company"
-    co_parts = co_name.split()
-    company_slug = slugify(co_parts[0] if co_parts else "Company")
+    company_slug = slugify(co_first)
     date_str     = datetime.now().strftime("%d%b%Y_%H%M%S")
     ref_str      = f"{prefix}-{doc_number}"
     return ref_str, f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
@@ -948,6 +958,8 @@ def handle_generate(from_number, msg):
         return Response(str(resp), mimetype="application/xml")
 
     except Exception as e:
+        import traceback
+        print(f"Generate error: {traceback.format_exc()}")
         return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
 
 
