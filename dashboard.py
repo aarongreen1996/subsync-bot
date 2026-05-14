@@ -259,7 +259,7 @@ def generate():
 
     ts = datetime.now().strftime('%d%b%Y_%H%M%S')
     filename = (
-        f"{doc_ref}_{slugify(company.get('company_name','Co').split()[0])}"
+        f"{doc_ref}_{slugify((company.get('company_name') or 'Co').strip().split()[0])}"
         f"_{slugify(site_label)}_{ts}.pdf"
     )
 
