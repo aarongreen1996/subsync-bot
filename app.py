@@ -48,7 +48,7 @@ def db_get(path):
 def db_post(path, payload):
     r = http_requests.post(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
                            headers={**sb_headers(), "Prefer": "return=minimal"})
-    if r.status_code not in (200, 201):
+    if r.status_code not in (200, 201, 204):
         raise Exception(f"DB Error {r.status_code}: {r.text}")
 
 def db_patch(path, payload):
@@ -578,16 +578,23 @@ def _provision_account(from_number, session):
     username = name.lower().replace(" ", ".").strip(".")[:30]
 
     try:
-        # Create company record
-        db_post("companies", {
-            "whatsapp_number":    wa_raw,
-            "company_name":       company,
-            "email":              email,
-            "phone":              phone,
-            "primary_color":      "#f59e0b",
-            "username":           username,
-            "dashboard_password": "note2quote",
-        })
+        # Check if already exists (in case they triggered this twice)
+        existing = db_get(f"companies?whatsapp_number=eq.{wa_enc}&limit=1")
+        if isinstance(existing, list) and existing:
+            # Already exists — just update company_name in case it was null
+            db_patch(f"companies?whatsapp_number=eq.{wa_enc}",
+                     {"company_name": company, "email": email})
+        else:
+            # Create company record
+            db_post("companies", {
+                "whatsapp_number":    wa_raw,
+                "company_name":       company,
+                "email":              email,
+                "phone":              phone,
+                "primary_color":      "#f59e0b",
+                "username":           username,
+                "dashboard_password": "note2quote",
+            })
 
         # Create magic login token (24hr)
         token   = secrets.token_urlsafe(32)
