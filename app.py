@@ -379,7 +379,8 @@ def make_doc_ref_and_filename(company, logs, prefix, site_name):
                   f"&status=eq.sent&select=id")
     doc_number   = str(len(sent) + 1).zfill(3)
     site_slug    = slugify(site_name) if site_name else "AllSites"
-    company_slug = slugify(company.get("company_name", "Company").split()[0])
+    co_name = (company.get("company_name") or "Company").strip() or "Company"
+    company_slug = slugify(co_name.split()[0])
     date_str     = datetime.now().strftime("%d%b%Y_%H%M%S")
     ref_str      = f"{prefix}-{doc_number}"
     return ref_str, f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
