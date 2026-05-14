@@ -11,6 +11,7 @@ TWILIO_ACCOUNT_SID     = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN      = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 APP_URL                = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
+STRIPE_PAYMENT_LINK    = os.environ.get("STRIPE_PAYMENT_LINK", "https://note2quote.co.uk/signup")
 
 
 def sb_headers():
@@ -72,36 +73,116 @@ def run_onboarding_drip():
 
         days = (now - created_at).days
 
+        # ── Day 3 — Check in ─────────────────────────────────────────────
         if days >= 3 and not has_sent(company_id, "day3_checkin"):
-            msg = (f"👋 Hey {name}! Just checking in — how are you getting on with Note2Quote?\n\n"
-                   f"Have you logged your first variation yet? Reply *Help* if you need a hand 💪")
+            msg = "\n".join([
+                f"👋 Hey {name}! Just checking in on your Note2Quote trial.",
+                "",
+                "Have you managed to log anything from site yet?",
+                "If you're stuck or anything feels confusing just reply here — I'll sort it.",
+                "",
+                "Quick reminder:",
+                "🎤 Just send a voice note or text from site, e.g.",
+                "'Extra rad in bedroom 3, 2 hours, £80'",
+                "",
+                "Reply *help* for the full guide 👷"
+            ])
             if send_whatsapp(whatsapp, msg):
                 mark_sent(company_id, "day3_checkin")
 
+        # ── Day 7 — Tips ─────────────────────────────────────────────────
         elif days >= 7 and not has_sent(company_id, "day7_tips"):
-            msg = (f"💡 *Note2Quote Tip*\n\nDid you know you can log material orders too?\n\n"
-                   f"Just say: _'Need to order 50 joist hangers from Screwfix for Brookfield Site'_\n\n"
-                   f"It'll save it and include it in your next Purchase Order PDF 📦\n\n"
-                   f"Reply *Help* to see all commands.")
+            msg = "\n".join([
+                f"💡 *Note2Quote Tip — Material Orders*",
+                "",
+                "Did you know you can log material orders too?",
+                "",
+                "Just say:",
+                "'Need to order 50 joist hangers from Screwfix for Brookfield Site'",
+                "",
+                "It saves it as a Purchase Order and generates a proper PO PDF.",
+                "No more scribbling on paper and losing track.",
+                "",
+                "Reply *help* to see all commands 👍"
+            ])
             if send_whatsapp(whatsapp, msg):
                 mark_sent(company_id, "day7_tips")
 
+        # ── Day 10 — Trial warning (4 days left) ─────────────────────────
+        elif days >= 10 and not has_sent(company_id, "day10_trial_warning"):
+            logs  = get_logs(whatsapp)
+            total = len(logs) if isinstance(logs, list) else 0
+            pend_val = sum(float(l.get("cost_estimate") or 0)
+                          for l in logs if isinstance(l, dict) and l.get("status") == "pending") if isinstance(logs, list) else 0
+            msg = "\n".join([
+                f"⏰ *{name} — 4 days left on your free trial*",
+                "",
+                f"You've logged *{total} items* worth *£{pend_val:.0f}* so far.",
+                "",
+                "Your trial ends in 4 days. After that it's *£49/month* to keep going.",
+                "",
+                "If you want to continue just head here to set up payment:",
+                STRIPE_PAYMENT_LINK,
+                "",
+                "Any questions just reply here 👍"
+            ])
+            if send_whatsapp(whatsapp, msg):
+                mark_sent(company_id, "day10_trial_warning")
+
+        # ── Day 12 — Trial ending soon (2 days left) ─────────────────────
         elif days >= 12 and not has_sent(company_id, "day12_trial_ending"):
-            msg = (f"⏰ *Your trial ends in 2 days*\n\n"
-                   f"If you're happy with Note2Quote, your £49/month subscription starts automatically.\n\n"
-                   f"To cancel: {APP_URL}/account\n\n"
-                   f"Any questions? Just reply here 👍")
+            msg = "\n".join([
+                f"🔔 *{name} — trial ends in 2 days*",
+                "",
+                "Just a heads up — your free Note2Quote trial ends on day 14.",
+                "",
+                "To keep all your logs, sites and dashboard access:",
+                f"👉 {STRIPE_PAYMENT_LINK}",
+                "",
+                "It's £49/month — less than an hour's labour.",
+                "Cancel anytime, no contracts.",
+                "",
+                "Want to keep going? Tap the link above and you're sorted ✅"
+            ])
             if send_whatsapp(whatsapp, msg):
                 mark_sent(company_id, "day12_trial_ending")
 
+        # ── Day 14 — Trial ended ──────────────────────────────────────────
+        elif days >= 14 and not has_sent(company_id, "day14_trial_ended"):
+            logs  = get_logs(whatsapp)
+            total = len(logs) if isinstance(logs, list) else 0
+            pend_val = sum(float(l.get("cost_estimate") or 0)
+                          for l in logs if isinstance(l, dict) and l.get("status") == "pending") if isinstance(logs, list) else 0
+            msg = "\n".join([
+                f"⚠️ *{name} — your free trial has ended*",
+                "",
+                f"You logged *{total} items* worth *£{pend_val:.0f}* during your trial.",
+                "",
+                "To keep using Note2Quote and keep all your data:",
+                f"👉 {STRIPE_PAYMENT_LINK}",
+                "",
+                "£49/month. No contracts. Cancel anytime.",
+                "",
+                "If you want to chat or have any questions just reply here.",
+                "Thanks for trialling Note2Quote 🙏"
+            ])
+            if send_whatsapp(whatsapp, msg):
+                mark_sent(company_id, "day14_trial_ended")
+
+        # ── Day 30 — Monthly review ───────────────────────────────────────
         elif days >= 30 and not has_sent(company_id, "day30_monthly"):
             logs  = get_logs(whatsapp)
             total = len(logs) if isinstance(logs, list) else 0
             sent  = sum(1 for l in logs if isinstance(l, dict) and l.get("status") == "sent") if isinstance(logs, list) else 0
-            msg = (f"📊 *Your Note2Quote month in review*\n\n"
-                   f"This month you logged *{total} items* and sent *{sent} documents*.\n\n"
-                   f"Keep logging everything on site — every variation logged is money protected 💰\n\n"
-                   f"Reply *summary* to see your full overview.")
+            msg = "\n".join([
+                f"📊 *{name} — your first month with Note2Quote*",
+                "",
+                f"This month you logged *{total} items* and sent *{sent} documents*.",
+                "",
+                "Keep logging everything on site — every variation logged is money protected 💰",
+                "",
+                "Reply *summary* to see your full overview."
+            ])
             if send_whatsapp(whatsapp, msg):
                 mark_sent(company_id, "day30_monthly")
 
@@ -109,7 +190,7 @@ def run_onboarding_drip():
 # ── MONDAY WEEKLY SUMMARY ─────────────────────────────────────────────────────
 def run_weekly_summary():
     now = datetime.now(timezone.utc)
-    if now.weekday() != 0 or now.hour not in (7, 8, 9): return  # Window: 7-9am
+    if now.weekday() != 0 or now.hour not in (7, 8, 9): return
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -135,14 +216,20 @@ def run_weekly_summary():
         chase_val = sum(float(l.get("cost_estimate") or 0) for l in chasing)
         sites     = list(set(l.get("site_name", "Unassigned") for l in pending))
 
-        msg = (f"☀️ *Good morning {name}! Your weekly summary*\n\n"
-               f"📋 *Pending:* {len(pending)} items · £{pend_val:.2f}\n"
-               f"⏰ *Chasing client:* {len(chasing)} items · £{chase_val:.2f}\n"
-               f"✅ *Approved:* {len(approved)} items\n\n"
-               f"📍 Active sites: {', '.join(sites[:3])}\n\n"
-               f"Ready to generate documents?\n"
-               f"_'Generate variations for [Site Name]'_\n\n"
-               f"Have a great week 💪")
+        msg = "\n".join([
+            f"☀️ *Good morning {name}! Weekly summary*",
+            "",
+            f"📋 *Pending:* {len(pending)} items · £{pend_val:.2f}",
+            f"⏰ *Chasing client:* {len(chasing)} items · £{chase_val:.2f}",
+            f"✅ *Approved:* {len(approved)} items",
+            "",
+            f"📍 Active sites: {', '.join(sites[:3])}",
+            "",
+            "Ready to generate documents?",
+            "'Generate variations for [Site Name]'",
+            "",
+            "Have a great week 💪"
+        ])
 
         if send_whatsapp(whatsapp, msg):
             mark_sent(company_id, msg_type)
@@ -151,8 +238,7 @@ def run_weekly_summary():
 # ── CHASING REMINDER (Mon + Thu 9am) ─────────────────────────────────────────
 def run_chasing_reminders():
     now = datetime.now(timezone.utc)
-    # Run Monday and Thursday at 9am UTC
-    if now.weekday() not in (0, 3) or now.hour not in (8, 9, 10): return  # Window: 8-10am
+    if now.weekday() not in (0, 3) or now.hour not in (8, 9, 10): return
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -172,11 +258,9 @@ def run_chasing_reminders():
         chasing = [l for l in logs if l.get("status") == "chasing"]
         if not chasing: continue
 
-        # Only flag items chasing for 3+ days
         old_chasing = []
         for l in chasing:
             try:
-                # Use created_at as fallback since site_logs has no updated_at column
                 date_str = l.get("created_at", "")
                 if date_str:
                     created = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
@@ -199,7 +283,7 @@ def run_chasing_reminders():
         for site, count in by_site.items():
             lines.append(f"📍 {site} — {count} item(s) awaiting approval")
         lines.append(f"\nTotal value chasing: *£{chase_val:.2f}*")
-        lines.append(f"\nReply *summary* to see full details or contact your clients to get these approved.")
+        lines.append(f"\nReply *summary* to see full details.")
 
         if send_whatsapp(whatsapp, "\n".join(lines)):
             mark_sent(company_id, msg_type)
@@ -208,7 +292,7 @@ def run_chasing_reminders():
 # ── HIGH VALUE ALERT (daily 8am) ──────────────────────────────────────────────
 def run_high_value_alerts():
     now = datetime.now(timezone.utc)
-    if now.hour not in (7, 8, 9): return  # Window: 7-9am
+    if now.hour not in (7, 8, 9): return
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -226,7 +310,6 @@ def run_high_value_alerts():
         if not isinstance(logs, list): continue
         pending = [l for l in logs if l.get("status") == "pending"]
 
-        # Find items over £500 that are 7+ days old
         alerts = []
         for l in pending:
             cost = float(l.get("cost_estimate") or 0)
@@ -241,23 +324,23 @@ def run_high_value_alerts():
         if not alerts: continue
 
         total = sum(float(l.get("cost_estimate") or 0) for l in alerts)
-        lines = [f"🚨 *Priority alert — high value items pending*\n"]
+        lines = [f"🚨 *Priority — high value items pending*\n"]
         for l in alerts:
             desc = l.get("description","—")[:40]
             site = l.get("site_name","—")
             cost = float(l.get("cost_estimate") or 0)
-            lines.append(f"• £{cost:.2f} — {desc} ({site})")
-        lines.append(f"\n*Total: £{total:.2f}* — these have been pending for 7+ days.")
+            lines.append(f"• £{cost:.0f} — {desc} ({site})")
+        lines.append(f"\n*Total: £{total:.0f}* — pending for 7+ days.")
         lines.append(f"\nReply *approve [site name]* or chase your client today.")
 
         if send_whatsapp(whatsapp, "\n".join(lines)):
             mark_sent(company_id, msg_type)
 
 
-# ── FRIDAY UNSENT NUDGE (Friday 4pm) ─────────────────────────────────────────
+# ── FRIDAY NUDGE (Friday 4pm) ─────────────────────────────────────────────────
 def run_friday_nudge():
     now = datetime.now(timezone.utc)
-    if now.weekday() != 4 or now.hour not in (15, 16, 17): return  # Window: 3-5pm
+    if now.weekday() != 4 or now.hour not in (15, 16, 17): return
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -276,7 +359,6 @@ def run_friday_nudge():
         if not isinstance(logs, list): continue
         pending = [l for l in logs if l.get("status") == "pending"]
 
-        # Only items 14+ days old
         old_pending = []
         for l in pending:
             try:
@@ -291,28 +373,33 @@ def run_friday_nudge():
         val   = sum(float(l.get("cost_estimate") or 0) for l in old_pending)
         sites = list(set(l.get("site_name","Unassigned") for l in old_pending))
 
-        msg = (f"📋 *Friday reminder — {len(old_pending)} items need documents*\n\n"
-               f"You have items logged 14+ days ago that haven't been turned into PDFs yet.\n\n"
-               f"Sites: {', '.join(sites[:3])}\n"
-               f"Est. value: *£{val:.2f}*\n\n"
-               f"Generate before the weekend:\n"
-               f"_'Generate variations for [Site Name]'_\n\n"
-               f"Have a good weekend 🍺")
+        msg = "\n".join([
+            f"📋 *Friday reminder — {len(old_pending)} items need documents*",
+            "",
+            f"You have items logged 14+ days ago not yet turned into PDFs.",
+            "",
+            f"Sites: {', '.join(sites[:3])}",
+            f"Est. value: *£{val:.0f}*",
+            "",
+            "Generate before the weekend:",
+            "'Generate variations for [Site Name]'",
+            "",
+            "Have a good weekend 🍺"
+        ])
 
         if send_whatsapp(whatsapp, msg):
             mark_sent(company_id, msg_type)
 
 
-# ── MONTH END SUMMARY (last Friday of month) ──────────────────────────────────
+# ── MONTH END SUMMARY ─────────────────────────────────────────────────────────
 def run_month_end_summary():
     now = datetime.now(timezone.utc)
-    if now.weekday() != 4: return  # Friday only
+    if now.weekday() != 4: return
 
-    # Check if this is the last Friday of the month
     next_friday = now + timedelta(days=7)
-    if next_friday.month == now.month: return  # Not last Friday
+    if next_friday.month == now.month: return
 
-    if now.hour not in (8, 9, 10): return  # Window: 8-10am
+    if now.hour not in (8, 9, 10): return
 
     companies = db_get("companies?order=created_at.asc")
     if not isinstance(companies, list): return
@@ -339,13 +426,18 @@ def run_month_end_summary():
         chase_val = sum(float(l.get("cost_estimate") or 0) for l in chasing)
         month     = now.strftime("%B")
 
-        msg = (f"📅 *{month} month end summary — {name}*\n\n"
-               f"✅ Approved: {len(approved)} items · £{appr_val:.2f}\n"
-               f"⏰ Still chasing: {len(chasing)} items · £{chase_val:.2f}\n"
-               f"📋 Pending (not yet sent): {len(pending)} items · £{pend_val:.2f}\n"
-               f"📄 Total docs sent: {len(sent)}\n\n"
-               f"⚠️ Before the month closes, make sure you've generated and sent all outstanding documents!\n\n"
-               f"Reply *summary* for full breakdown or *pending* to see the list.")
+        msg = "\n".join([
+            f"📅 *{month} month end — {name}*",
+            "",
+            f"✅ Approved: {len(approved)} items · £{appr_val:.2f}",
+            f"⏰ Still chasing: {len(chasing)} items · £{chase_val:.2f}",
+            f"📋 Pending (not yet sent): {len(pending)} items · £{pend_val:.2f}",
+            f"📄 Docs sent: {len(sent)}",
+            "",
+            "⚠️ Make sure you've generated and sent all outstanding documents before month closes!",
+            "",
+            "Reply *summary* for full breakdown."
+        ])
 
         if send_whatsapp(whatsapp, msg):
             mark_sent(company_id, msg_type)
@@ -366,7 +458,7 @@ def scheduler_loop():
             run_month_end_summary()
         except Exception as e:
             print(f"[Scheduler] Error: {e}")
-        time.sleep(3600)  # Every hour
+        time.sleep(3600)
 
 
 def start_scheduler():
