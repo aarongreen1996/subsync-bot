@@ -331,7 +331,12 @@ CORRECTION_KEYWORDS = ["no not", "not £", "its £", "it's £", "no it's", "no i
                        "wrong", "that's wrong", "thats wrong", "correction", "incorrect",
                        "not right", "change that", "update that", "fix that",
                        "i meant", "i mean", "should be", "actually",
-                       "not that", "no the cost", "no the hours", "no the description"]
+                       "not that", "no the cost", "no the hours", "no the description",
+                       "it's variation", "its variation", "it's a variation", "its a variation",
+                       "not daywork", "not day work", "not a daywork", "change to variation",
+                       "change to daywork", "change to material", "should be variation",
+                       "should be daywork", "it was variation", "it was a variation",
+                       "variation not", "daywork not", "not variation"]
 SITE_QUERY_KEYWORDS = ["outstanding on", "update on", "status of",
                        "what's on", "whats on", "how is", "how's",
                        "any updates", "updates on", "progress on", "what have we got on",
@@ -380,7 +385,8 @@ def make_doc_ref_and_filename(company, logs, prefix, site_name):
     doc_number   = str(len(sent) + 1).zfill(3)
     site_slug    = slugify(site_name) if site_name else "AllSites"
     co_name = (company.get("company_name") or "Company").strip() or "Company"
-    company_slug = slugify(co_name.split()[0])
+    co_parts = co_name.split()
+    company_slug = slugify(co_parts[0] if co_parts else "Company")
     date_str     = datetime.now().strftime("%d%b%Y_%H%M%S")
     ref_str      = f"{prefix}-{doc_number}"
     return ref_str, f"{ref_str}_{company_slug}_{site_slug}_{date_str}.pdf"
@@ -577,6 +583,15 @@ def _provision_account(from_number, session):
     # Generate username from name
     username = name.lower().replace(" ", ".").strip(".")[:30]
 
+    # Generate a unique readable password — 3 words + 2 digits
+    import random
+    _words = ["site","roof","pipe","wall","tile","beam","bolt","nail","wire","drill",
+              "build","fix","seal","weld","pour","sand","coat","fit","lay","cut"]
+    _pw_word1 = random.choice(_words).capitalize()
+    _pw_word2 = random.choice(_words).capitalize()
+    _pw_num   = str(random.randint(10, 99))
+    unique_password = _pw_word1 + _pw_word2 + _pw_num
+
     try:
         # Check if already exists (in case they triggered this twice)
         existing = db_get(f"companies?whatsapp_number=eq.{wa_enc}&limit=1")
@@ -593,7 +608,7 @@ def _provision_account(from_number, session):
                 "phone":              phone,
                 "primary_color":      "#f59e0b",
                 "username":           username,
-                "dashboard_password": "note2quote",
+                "dashboard_password": unique_password,
             })
 
         # Create magic login token (24hr)
@@ -621,7 +636,7 @@ def _provision_account(from_number, session):
             "",
             "🔑 *Manual login:*",
             f"Username: {username}",
-            "Password: note2quote",
+            f"Password: {unique_password}",
             "",
             "Now try it — just tell me something that happened on site today:",
             "🎤 *'Extra rad in bedroom 3, 2 hours, £80'*",
@@ -1384,16 +1399,35 @@ def handle_correction(from_number, msg):
         msg_lower = msg.lower()
         updates = {}
 
+        # ── Type correction (most important — check first) ──────────────
+        type_keywords = {
+            "VARIATION": ["variation", "vo", "it's a variation", "its a variation",
+                          "variation not", "change to variation", "should be variation",
+                          "it was variation", "it was a variation"],
+            "DAYWORK":   ["daywork", "day work", "change to daywork", "should be daywork"],
+            "MATERIAL_ORDER": ["material order", "purchase order", "po", "material"],
+        }
+        detected_type = None
+        for t, keywords in type_keywords.items():
+            if any(kw in msg_lower for kw in keywords):
+                detected_type = t
+                break
+        if detected_type:
+            updates["type"] = detected_type
+
+        # ── Cost correction ───────────────────────────────────────────────
         cost_match = re.search(r"[£$]?\s*(\d+(?:\.\d+)?)\s*(?:quid|pounds?)?", msg)
         if cost_match and any(kw in msg_lower for kw in ["£", "quid", "pound", "cost", "price", "not £", "its £"]):
             updates["cost_estimate"] = float(cost_match.group(1))
 
+        # ── Hours correction ──────────────────────────────────────────────
         hours_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)", msg_lower)
         if hours_match:
             updates["hours"] = float(hours_match.group(1))
 
+        # ── Description correction ────────────────────────────────────────
         no_match = re.search(r"(?:not|wrong|no)\s+.{0,30}(?:it[''s]*|actually|should be|i meant)\s+(.+)", msg_lower)
-        if no_match and not updates:
+        if no_match and "type" not in updates and "cost_estimate" not in updates:
             updates["description"] = no_match.group(1).strip().capitalize()
 
         if not updates:
@@ -1404,6 +1438,7 @@ def handle_correction(from_number, msg):
 
         desc = last.get("description", "last entry")[:40]
         parts = []
+        if "type" in updates: parts.append("type changed to " + updates["type"].replace("_"," ").title())
         if "cost_estimate" in updates: parts.append("cost updated to £" + ("%.2f" % updates["cost_estimate"]))
         if "hours" in updates: parts.append("hours updated to " + str(updates["hours"]))
         if "description" in updates: parts.append("description updated")
