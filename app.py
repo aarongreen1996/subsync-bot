@@ -747,8 +747,25 @@ def handle_log(from_number, incoming_msg):
 
         SHORT_CHAT = ["ok", "okay", "thanks", "cheers", "got it", "nice", "great",
                       "good", "perfect", "sweet", "yes", "no", "yep", "nope", "sure",
-                      "alright", "sorted", "cool", "brilliant", "brill", "ta"]
-        if processed_msg.strip().lower() in SHORT_CHAT or len(processed_msg.strip()) < 4:
+                      "alright", "sorted", "cool", "brilliant", "brill", "ta",
+                      "hello", "hi", "hey", "hiya", "morning", "afternoon", "evening",
+                      "hello there", "hi there", "hey there", "how are you", "howdy",
+                      "sup", "whats up", "yo", "helo", "hii"]
+        msg_clean = processed_msg.strip().lower()
+        if msg_clean in SHORT_CHAT or len(processed_msg.strip()) < 4:
+            greetings = ["hello","hi","hey","hiya","morning","afternoon","evening","howdy","yo","sup"]
+            if any(msg_clean.startswith(g) for g in greetings):
+                return _reply("\n".join([
+                    "👋 Hey! Welcome to Note2Quote.",
+                    "",
+                    "I'm your WhatsApp admin assistant for site work. Just tell me what happened on site and I'll log it instantly.",
+                    "",
+                    "For example:",
+                    "\U0001f3a4 'Site manager asked me to move the boiler flue at Brookfield, 2 hours, £120'",
+                    "\U0001f3a4 'Need to order copper fittings from Screwfix for Danes Park'",
+                    "",
+                    "Or send *help* to see everything I can do 👍"
+                ]))
             return _reply("👍 No problem! Send me a site update when you're ready.")
 
         ai_response = anthropic_client.messages.create(
