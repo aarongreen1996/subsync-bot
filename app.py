@@ -148,6 +148,7 @@ def create_site(from_number, site_name):
         print(f"Site create error: {e}")
 
 pending_selections = {}
+signup_sessions    = {}   # tracks WhatsApp signup conversations
 
 # ── Voice transcription ───────────────────────────────────────────────────────
 CONSTRUCTION_VOCAB = (
@@ -439,6 +440,201 @@ def build_insert(from_number, raw_message, item):
     return d
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
+# ── WhatsApp Signup Flow ──────────────────────────────────────────────────────
+SIGNUP_WELCOME = "\n".join([
+    "👋 Hey! Welcome to *Note2Quote*.",
+    "",
+    "I'm a WhatsApp admin tool built for UK subcontractors.",
+    "Send a voice note on site → get a variation order PDF in seconds.",
+    "No apps. No faff. Just WhatsApp.",
+    "",
+    "Want to start your *free 14-day trial*? No credit card needed.",
+    "",
+    "Reply *YES* to get set up right here in 2 minutes 👇",
+    "Or visit note2quote.co.uk to sign up online."
+])
+
+def handle_signup_flow(from_number, msg):
+    """Walk an unregistered user through WhatsApp signup conversation."""
+    msg_clean = msg.strip()
+    msg_lower = msg_clean.lower()
+    session   = signup_sessions.get(from_number, {})
+    step      = session.get("step", "welcome")
+
+    # ── CANCEL anytime ────────────────────────────────────────────────────
+    if msg_lower in ["cancel", "stop", "quit", "no thanks", "nope"]:
+        signup_sessions.pop(from_number, None)
+        return _reply("No problem! Come back anytime when you're ready.\nnote2quote.co.uk")
+
+    # ── WELCOME / START ───────────────────────────────────────────────────
+    if step == "welcome":
+        greetings = ["yes","yeah","yep","sure","ok","okay","start","go","sign up",
+                     "signup","trial","free","hello","hi","hey","interested","join"]
+        if any(g in msg_lower for g in greetings):
+            signup_sessions[from_number] = {"step": "name"}
+            return _reply("\n".join([
+                "Great! Let's get you set up 🚀",
+                "",
+                "First — what's your *name*?",
+                "(e.g. Aaron Green)"
+            ]))
+        return _reply(SIGNUP_WELCOME)
+
+    # ── NAME ─────────────────────────────────────────────────────────────
+    if step == "name":
+        if len(msg_clean) < 2:
+            return _reply("Just your name — e.g. *Aaron Green*")
+        session["name"] = msg_clean.title()
+        session["step"] = "company"
+        signup_sessions[from_number] = session
+        return _reply(f"Nice to meet you, *{session['name']}*! 👋\n\nWhat's your *company name*?\n(or just your own name if you're a sole trader)")
+
+    # ── COMPANY ───────────────────────────────────────────────────────────
+    if step == "company":
+        if len(msg_clean) < 2:
+            return _reply("What's your company name? (or your name if you're sole trader)")
+        session["company"] = msg_clean
+        session["step"]    = "trade"
+        signup_sessions[from_number] = session
+        return _reply("\n".join([
+            "What *trade* are you in?",
+            "",
+            "e.g. Plumber, Electrician, Builder, Roofer,",
+            "Plasterer, Joiner, Tiler, Ground Worker..."
+        ]))
+
+    # ── TRADE ─────────────────────────────────────────────────────────────
+    if step == "trade":
+        if len(msg_clean) < 2:
+            return _reply("Just your trade — e.g. *Plumber* or *Electrician*")
+        session["trade"] = msg_clean.title()
+        session["step"]  = "email"
+        signup_sessions[from_number] = session
+        return _reply("\n".join([
+            f"Almost there! Last thing — what's your *email address*?",
+            "",
+            "We'll send your dashboard login link there.",
+            "(e.g. aaron@greenplumbing.co.uk)"
+        ]))
+
+    # ── EMAIL ─────────────────────────────────────────────────────────────
+    if step == "email":
+        import re as _re
+        email_clean = msg_clean.lower().strip()
+        if not _re.match(r"[^@]+@[^@]+\.[^@]+", email_clean):
+            return _reply("That doesn't look right — can you send your *email address*?\n(e.g. aaron@greenplumbing.co.uk)")
+
+        session["email"] = email_clean
+        session["step"]  = "confirm"
+        signup_sessions[from_number] = session
+
+        return _reply("\n".join([
+            "✅ *Here's what I've got:*",
+            "",
+            f"👤 Name: {session['name']}",
+            f"🏢 Company: {session['company']}",
+            f"🔨 Trade: {session['trade']}",
+            f"📧 Email: {session['email']}",
+            "",
+            "Is that all correct? Reply *YES* to activate your free trial",
+            "or *NO* to start again."
+        ]))
+
+    # ── CONFIRM ───────────────────────────────────────────────────────────
+    if step == "confirm":
+        if msg_lower in ["no", "nope", "wrong", "incorrect", "start again", "redo"]:
+            signup_sessions.pop(from_number, None)
+            return _reply("No problem — let's start again.\n\n" + SIGNUP_WELCOME)
+
+        if msg_lower in ["yes", "yeah", "yep", "correct", "looks good", "ok", "okay", "go"]:
+            return _provision_account(from_number, session)
+
+        return _reply("Reply *YES* to confirm and activate your trial, or *NO* to start again.")
+
+    # Fallback — restart
+    signup_sessions.pop(from_number, None)
+    return _reply(SIGNUP_WELCOME)
+
+
+def _provision_account(from_number, session):
+    """Create the company record and send welcome with magic link."""
+    import secrets
+    from datetime import datetime, timezone, timedelta
+
+    wa_raw   = normalise_wa_number(from_number)
+    wa_enc   = wa_raw.replace("+", "%2B")
+    APP_URL  = os.environ.get("APP_URL", "https://www.note2quote.co.uk")
+    SURL     = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    SKEY     = os.environ.get("SUPABASE_KEY", "")
+
+    name     = session.get("name", "")
+    company  = session.get("company", "")
+    trade    = session.get("trade", "")
+    email    = session.get("email", "")
+    phone    = wa_raw.replace("whatsapp:", "")
+
+    # Generate username from name
+    username = name.lower().replace(" ", ".").strip(".")[:30]
+
+    try:
+        # Create company record
+        db_post("companies", {
+            "whatsapp_number":    wa_raw,
+            "company_name":       company,
+            "email":              email,
+            "phone":              phone,
+            "primary_color":      "#f59e0b",
+            "username":           username,
+            "dashboard_password": "note2quote",
+        })
+
+        # Create magic login token (24hr)
+        token   = secrets.token_urlsafe(32)
+        expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        http_requests.post(
+            SURL + "/rest/v1/auth_tokens",
+            json={"token": token, "whatsapp": wa_raw,
+                  "expires_at": expires, "used": False},
+            headers={"apikey": SKEY, "Authorization": "Bearer " + SKEY,
+                     "Content-Type": "application/json", "Prefer": "return=minimal"}
+        )
+        login_url = APP_URL + "/login?token=" + token
+
+        # Clear signup session
+        signup_sessions.pop(from_number, None)
+
+        return _reply("\n".join([
+            f"🎉 *Welcome to Note2Quote, {name}!*",
+            "",
+            "Your free 14-day trial is now active.",
+            "",
+            "📊 *Your dashboard (tap to open):*",
+            login_url,
+            "",
+            "🔑 *Manual login:*",
+            f"Username: {username}",
+            "Password: note2quote",
+            "",
+            "Now try it — just tell me something that happened on site today:",
+            "🎤 *'Extra rad in bedroom 3, 2 hours, £80'*",
+            "🎤 *'Site manager wants extra sockets in kitchen, £120'*",
+            "",
+            "Send *help* anytime for the full guide 👷"
+        ]))
+
+    except Exception as e:
+        print(f"Signup provisioning error: {e}")
+        signup_url = APP_URL + "/signup"
+        return _reply("\n".join([
+            "⚠️ Something went wrong setting up your account.",
+            "",
+            "Please sign up at:",
+            signup_url,
+            "",
+            "Or reply again and I'll try once more."
+        ]))
+
+
 @app.route("/whatsapp", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -462,12 +658,7 @@ def webhook():
     _wa_enc  = _wa_norm.replace("+", "%2B")
     companies = db_get("companies?whatsapp_number=eq." + _wa_enc + "&limit=1")
     if not isinstance(companies, list) or not companies:
-        signup_url = os.environ.get("APP_URL", "https://www.note2quote.co.uk") + "/signup"
-        return _reply("\n".join([
-            "This is Note2Quote - the WhatsApp admin tool for UK subcontractors.",
-            "", "It looks like you do not have an account yet.",
-            "", "Start your 14-day free trial at:", signup_url
-        ]))
+        return handle_signup_flow(from_number, incoming_msg)
 
     # Always check commands first even if pending state — prevents accidental logging
     if is_dashboard_command(incoming_msg):
