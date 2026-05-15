@@ -458,46 +458,174 @@ def build_insert(from_number, raw_message, item):
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
 # ── WhatsApp Signup Flow ──────────────────────────────────────────────────────
-SIGNUP_WELCOME = "\n".join([
-    "👋 Hey! Welcome to *Note2Quote*.",
+# ── Demo-first signup flow ────────────────────────────────────────────────────
+
+DEMO_HOOK = "\n".join([
+    "👋 *Alright! Welcome to Note2Quote.*",
     "",
-    "I'm a WhatsApp admin tool built for UK subcontractors.",
-    "Send a voice note on site → get a variation order PDF in seconds.",
-    "No apps. No faff. Just WhatsApp.",
+    "Let's get your evenings back. 🔨",
     "",
-    "Want to start your *free 14-day trial*? No credit card needed.",
+    "Before anything else — *let me show you exactly how this works.*",
     "",
-    "Reply *YES* to get set up right here in 2 minutes 👇",
-    "Or visit note2quote.co.uk to sign up online."
+    "Send me a quick voice note right now, pretending you're on site.",
+    "Something like:",
+    "🎤 *'Site manager asked me to move the boiler flue, 2 hours, £120'*",
+    "🎤 *'Extra double sockets in kitchen, 1 hour, £60'*",
+    "🎤 *'Need to order 10m of copper pipe from Screwfix'*",
+    "",
+    "Just hold the mic and say it naturally. I'll show you what happens ⬇️"
 ])
 
 def handle_signup_flow(from_number, msg):
-    """Walk an unregistered user through WhatsApp signup conversation."""
+    """Demo-first signup: show value, then collect details."""
     msg_clean = msg.strip()
     msg_lower = msg_clean.lower()
     session   = signup_sessions.get(from_number, {})
     step      = session.get("step", "welcome")
 
     # ── CANCEL anytime ────────────────────────────────────────────────────
-    if msg_lower in ["cancel", "stop", "quit", "no thanks", "nope"]:
+    if msg_lower in ["cancel", "stop", "quit"]:
         signup_sessions.pop(from_number, None)
-        return _reply("No problem! Come back anytime when you're ready.\nnote2quote.co.uk")
+        return _reply("No problem! Come back anytime.\nnote2quote.co.uk")
 
-    # ── WELCOME / START ───────────────────────────────────────────────────
+    # ── STEP 1: WELCOME → prompt for demo voice note ──────────────────────
     if step == "welcome":
-        greetings = ["yes","yeah","yep","sure","ok","okay","start","go","sign up",
-                     "signup","trial","free","hello","hi","hey","interested","join"]
-        if any(g in msg_lower for g in greetings):
-            signup_sessions[from_number] = {"step": "name"}
+        signup_sessions[from_number] = {"step": "demo_wait"}
+        return _reply(DEMO_HOOK)
+
+    # ── STEP 2: WAITING FOR DEMO (voice note or text) ─────────────────────
+    if step == "demo_wait":
+        # They sent something — use it to generate a demo PDF
+        is_transcript = "__TRANSCRIBED__" in msg_clean
+        demo_text = msg_clean.replace("__TRANSCRIBED__", "").strip()
+
+        if len(demo_text) < 8:
             return _reply("\n".join([
-                "Great! Let's get you set up 🚀",
+                "Just send me a quick voice note or text — pretend you're on site.",
                 "",
-                "First — what's your *name*?",
+                "🎤 *'Site manager wants extra sockets in the kitchen, £80'*",
+                "",
+                "Hold the mic button and give it a go 👇"
+            ]))
+
+        # Run it through Claude to extract job details
+        try:
+            demo_parsed = _parse_demo_log(demo_text)
+            desc     = demo_parsed.get("description", demo_text[:80])
+            hours    = demo_parsed.get("hours", 0)
+            cost     = demo_parsed.get("cost_estimate", 0)
+            log_type = demo_parsed.get("type", "VARIATION")
+            site     = demo_parsed.get("site_name", "Sample Site")
+
+            # Generate demo PDF
+            from pdf_generator import generate_pdf
+            demo_company = {
+                "company_name":  "Your Company",
+                "primary_color": "#f59e0b",
+                "address":       "",
+                "phone":         "",
+                "email":         "",
+                "vat_number":    "",
+                "logo_url":      None,
+                "project_info":  {},
+            }
+            demo_log = [{
+                "description":    desc,
+                "type":           log_type,
+                "hours":          hours,
+                "cost_estimate":  cost,
+                "location":       "",
+                "status":         "pending",
+            }]
+            doc_title = "Daywork Sheet" if log_type == "DAYWORK" else "Variation Order"
+            pdf_bytes = generate_pdf(demo_company, demo_log, doc_title, "DEMO-001", site)
+
+            # Upload to Supabase storage as demo file
+            import secrets as _sec
+            demo_filename = f"demo_{_sec.token_hex(8)}.pdf"
+            SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
+            SKEY = os.environ.get("SUPABASE_KEY","")
+            APP_URL = os.environ.get("APP_URL","https://www.note2quote.co.uk")
+            upload_r = http_requests.post(
+                f"{SURL}/storage/v1/object/documents/{demo_filename}",
+                data=pdf_bytes,
+                headers={"apikey": SKEY, "Authorization": f"Bearer {SKEY}",
+                         "Content-Type": "application/pdf", "x-upsert": "true"}
+            )
+            pdf_url = f"{SURL}/storage/v1/object/public/documents/{demo_filename}"
+
+            # Send PDF via Twilio
+            twilio_client = Client(
+                os.environ.get("TWILIO_ACCOUNT_SID",""),
+                os.environ.get("TWILIO_AUTH_TOKEN","")
+            )
+            try:
+                twilio_client.messages.create(
+                    from_=os.environ.get("TWILIO_WHATSAPP_NUMBER",""),
+                    to=from_number,
+                    body=f"📄 *Here's your demo {doc_title}* — generated in seconds from what you just said.",
+                    media_url=[pdf_url]
+                )
+            except Exception as e:
+                print(f"Demo PDF send error: {e}")
+
+            # Save what we parsed to session for signup pre-fill
+            session["demo_desc"] = desc
+            session["step"]      = "demo_react"
+            signup_sessions[from_number] = session
+
+            type_label = "variation order" if log_type == "VARIATION" else "daywork sheet"
+            return _reply("\n".join([
+                f"✅ *Logged: {desc[:60]}*",
+                f"📍 Site: {site}",
+                (f"⏱ {hours}h · £{cost:.0f}" if hours or cost else ""),
+                "",
+                f"👆 *That PDF just landed above* — a real {type_label}, ready to send to your client.",
+                "",
+                "That's Note2Quote. Every variation, every daywork, every material order — logged on site in seconds.",
+                "",
+                "Want your evenings back?",
+                "Reply *YES* to start your free 14-day trial 👇",
+                "(No credit card. Takes 2 minutes.)"
+            ]))
+
+        except Exception as e:
+            print(f"Demo generation error: {e}")
+            session["step"] = "demo_react"
+            signup_sessions[from_number] = session
+            return _reply("\n".join([
+                f"✅ *Got it — {msg_clean[:60]}*",
+                "",
+                "In your live account that would generate a branded PDF variation order",
+                "and send it straight back to you — ready to forward to your client.",
+                "",
+                "Ready to see it for real?",
+                "Reply *YES* to start your free 14-day trial 👇"
+            ]))
+
+    # ── STEP 3: REACTION TO DEMO ─────────────────────────────────────────
+    if step == "demo_react":
+        yes_words = ["yes","yeah","yep","sure","ok","okay","go","start","sign",
+                     "signup","trial","free","let's go","lets go","great","love it",
+                     "looks good","amazing","brilliant","nice","want it","in"]
+        if any(w in msg_lower for w in yes_words):
+            session["step"] = "name"
+            signup_sessions[from_number] = session
+            return _reply("\n".join([
+                "Let's get you set up! 🚀",
+                "",
+                "Takes 2 minutes. First — what's your *name*?",
                 "(e.g. Aaron Green)"
             ]))
-        return _reply(SIGNUP_WELCOME)
+        # Not ready — soft nudge
+        return _reply("\n".join([
+            "No worries — whenever you're ready just reply *YES*.",
+            "",
+            "Or visit note2quote.co.uk to find out more.",
+            "14-day free trial, no card needed 👍"
+        ]))
 
-    # ── NAME ─────────────────────────────────────────────────────────────
+    # ── STEP 4: NAME ─────────────────────────────────────────────────────
     if step == "name":
         if len(msg_clean) < 2:
             return _reply("Just your name — e.g. *Aaron Green*")
@@ -506,10 +634,10 @@ def handle_signup_flow(from_number, msg):
         signup_sessions[from_number] = session
         return _reply(f"Nice to meet you, *{session['name']}*! 👋\n\nWhat's your *company name*?\n(or just your own name if you're a sole trader)")
 
-    # ── COMPANY ───────────────────────────────────────────────────────────
+    # ── STEP 5: COMPANY ──────────────────────────────────────────────────
     if step == "company":
         if len(msg_clean) < 2:
-            return _reply("What's your company name? (or your name if you're sole trader)")
+            return _reply("What's your company name? (or your name if you're a sole trader)")
         session["company"] = msg_clean
         session["step"]    = "trade"
         signup_sessions[from_number] = session
@@ -520,7 +648,7 @@ def handle_signup_flow(from_number, msg):
             "Plasterer, Joiner, Tiler, Ground Worker..."
         ]))
 
-    # ── TRADE ─────────────────────────────────────────────────────────────
+    # ── STEP 6: TRADE ────────────────────────────────────────────────────
     if step == "trade":
         if len(msg_clean) < 2:
             return _reply("Just your trade — e.g. *Plumber* or *Electrician*")
@@ -528,23 +656,21 @@ def handle_signup_flow(from_number, msg):
         session["step"]  = "email"
         signup_sessions[from_number] = session
         return _reply("\n".join([
-            f"Almost there! Last thing — what's your *email address*?",
+            "Almost there! Last thing — what's your *email address*?",
             "",
             "We'll send your dashboard login link there.",
             "(e.g. aaron@greenplumbing.co.uk)"
         ]))
 
-    # ── EMAIL ─────────────────────────────────────────────────────────────
+    # ── STEP 7: EMAIL ────────────────────────────────────────────────────
     if step == "email":
         import re as _re
         email_clean = msg_clean.lower().strip()
         if not _re.match(r"[^@]+@[^@]+\.[^@]+", email_clean):
             return _reply("That doesn't look right — can you send your *email address*?\n(e.g. aaron@greenplumbing.co.uk)")
-
         session["email"] = email_clean
         session["step"]  = "confirm"
         signup_sessions[from_number] = session
-
         return _reply("\n".join([
             "✅ *Here's what I've got:*",
             "",
@@ -553,24 +679,46 @@ def handle_signup_flow(from_number, msg):
             f"🔨 Trade: {session['trade']}",
             f"📧 Email: {session['email']}",
             "",
-            "Is that all correct? Reply *YES* to activate your free trial",
+            "Is that correct? Reply *YES* to activate your free trial",
             "or *NO* to start again."
         ]))
 
-    # ── CONFIRM ───────────────────────────────────────────────────────────
+    # ── STEP 8: CONFIRM ──────────────────────────────────────────────────
     if step == "confirm":
         if msg_lower in ["no", "nope", "wrong", "incorrect", "start again", "redo"]:
             signup_sessions.pop(from_number, None)
-            return _reply("No problem — let's start again.\n\n" + SIGNUP_WELCOME)
-
-        if msg_lower in ["yes", "yeah", "yep", "correct", "looks good", "ok", "okay", "go"]:
+            return _reply("No problem — let's start again. Just reply *YES* when ready.")
+        if msg_lower in ["yes","yeah","yep","correct","looks good","ok","okay","go","confirm"]:
             return _provision_account(from_number, session)
-
         return _reply("Reply *YES* to confirm and activate your trial, or *NO* to start again.")
 
-    # Fallback — restart
+    # Fallback
     signup_sessions.pop(from_number, None)
-    return _reply(SIGNUP_WELCOME)
+    signup_sessions[from_number] = {"step": "demo_wait"}
+    return _reply(DEMO_HOOK)
+
+
+def _parse_demo_log(text):
+    """Quick AI parse of demo voice note to extract job details."""
+    try:
+        resp = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            system="""Extract job details from this message. Return ONLY valid JSON with these keys:
+description (string, max 80 chars), type (VARIATION/DAYWORK/MATERIAL_ORDER),
+hours (float or 0), cost_estimate (float or 0), site_name (string or "Sample Site").
+No explanation, just JSON.""",
+            messages=[{"role": "user", "content": text}]
+        )
+        import json as _json
+        raw = resp.content[0].text.strip()
+        if raw.startswith("```"): raw = raw.split("```")[1].replace("json","").strip()
+        return _json.loads(raw)
+    except Exception:
+        return {"description": text[:80], "type": "VARIATION",
+                "hours": 0, "cost_estimate": 0, "site_name": "Sample Site"}
+
+
 
 
 def _provision_account(from_number, session):
