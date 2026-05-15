@@ -1754,7 +1754,7 @@ def handle_calendar(from_number, msg):
     wa_raw   = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
     enc_wa   = wa_raw.replace("+","%2B")
 
-    # Determine date range
+    # Determine date range — always start from TODAY so future jobs show up
     if "tomorrow" in msg_l:
         since = (now + timedelta(days=1)).date()
         until = since + timedelta(days=1)
@@ -1769,19 +1769,15 @@ def handle_calendar(from_number, msg):
         until = since + timedelta(days=7)
         label = "Next week"
     elif "this month" in msg_l or "month" in msg_l:
-        since = now.date().replace(day=1)
-        # last day of month
-        if now.month == 12:
-            until = since.replace(year=now.year+1, month=1)
-        else:
-            until = since.replace(month=now.month+1)
-        label = now.strftime("%B")
+        # Next 30 days from today
+        since = now.date()
+        until = (now + timedelta(days=30)).date()
+        label = "Next 30 days"
     else:
-        # Default: this week Mon→Sun
-        days_since_mon = now.weekday()
-        since = (now - timedelta(days=days_since_mon)).date()
-        until = since + timedelta(days=7)
-        label = "This week"
+        # Default: next 7 days from TODAY (not from Monday)
+        since = now.date()
+        until = (now + timedelta(days=7)).date()
+        label = "Next 7 days"
 
     r = http_requests.get(
         f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
@@ -1844,11 +1840,18 @@ def handle_reminder(from_number, msg):
         days = (6 - now.weekday()) % 7 or 7
         send_at = (now + timedelta(days=days)).replace(hour=18, minute=0, second=0, microsecond=0)
     else:
-        day_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5}
+        day_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5,"sunday":6}
         for day, idx in day_map.items():
             if day in msg_l:
                 days_ahead = (idx - now.weekday()) % 7 or 7
-                send_at = (now + timedelta(days=days_ahead)).replace(hour=7,minute=0,second=0,microsecond=0)
+                # "before Monday" → Sunday evening; "before [day]" → day before at 6pm
+                if f"before {day}" in msg_l:
+                    days_ahead = max(days_ahead - 1, 1)
+                    send_at = (now + timedelta(days=days_ahead)).replace(
+                        hour=18, minute=0, second=0, microsecond=0)
+                else:
+                    send_at = (now + timedelta(days=days_ahead)).replace(
+                        hour=7, minute=0, second=0, microsecond=0)
                 break
     # Time extraction: "at 8am", "at 5pm"
     tm = _re.search(r"at (\d{1,2})(?::(\d{2}))? ?(am|pm)", msg_l)
@@ -1863,16 +1866,22 @@ def handle_reminder(from_number, msg):
         send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
 
     # ── Extract reminder message ──────────────────────────────────────────
-    # Strip trigger words to get the actual reminder content
-    reminder_text = msg
+    reminder_text = msg.strip()
+    # Remove trigger phrase from start
     for kw in ["remind me to","remind me","reminder to","don't forget to",
                 "remember to","alert me to","notify me to"]:
-        reminder_text = reminder_text.lower().replace(kw, "").strip()
-    reminder_text = reminder_text.strip(" .,!?")
+        if reminder_text.lower().startswith(kw):
+            reminder_text = reminder_text[len(kw):].strip()
+            break
+    # Remove time reference from end ("before Monday", "on Friday", "tomorrow morning")
+    import re as _re2
+    reminder_text = _re2.sub(
+        r"\s+(before|on|by|at|this|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|evening|tonight|tomorrow|weekend).*$",
+        "", reminder_text, flags=_re2.IGNORECASE
+    ).strip(" .,!?")
     if not reminder_text:
-        reminder_text = msg
-
-    # Capitalise first letter
+        reminder_text = msg.strip()
+    # Capitalise
     if reminder_text:
         reminder_text = reminder_text[0].upper() + reminder_text[1:]
 
