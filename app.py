@@ -1724,12 +1724,11 @@ def handle_booking(from_number, msg):
     notes = msg.strip()
 
     # ── Save to bookings table ────────────────────────────────────────────
-    # Always store in consistent whatsapp:+44... format
+    # Store as whatsapp:+44... (raw + sign, not %2B)
     _wa_store = from_number
     if not _wa_store.startswith("whatsapp:"):
         _wa_store = "whatsapp:" + _wa_store
-    if "%2B" in _wa_store:
-        _wa_store = _wa_store.replace("%2B", "+")
+    _wa_store = _wa_store.replace("%2B", "+")  # ensure + not %2B
     payload = {
         "whatsapp_number": _wa_store,
         "site_name":       site_name or "",
@@ -1793,18 +1792,15 @@ def handle_calendar(from_number, msg):
         until = (now + timedelta(days=7)).date()
         label = "Next 7 days"
 
-    # Use ilike with wildcard on number to handle +/0 format differences
-    # Extract just the digits portion so +44... and whatsapp:+44... both match
-    digits = wa_raw.replace("whatsapp:","").replace("+","").replace(" ","")
-    r = http_requests.get(
-        f"{SURL}/rest/v1/bookings?whatsapp_number=like.*{digits}*"
-        f"&booking_date=gte.{since.isoformat()}&booking_date=lt.{until.isoformat()}"
-        f"&status=neq.cancelled&order=booking_date.asc",
-        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}"}
-    )
-    print(f"[calendar] digits={digits} since={since} until={until} status={r.status_code}")
+    # Use eq with %2B-encoded + sign — Supabase decodes it correctly
+    enc_wa = wa_raw.replace("+", "%2B")
+    url = (f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
+           f"&booking_date=gte.{since.isoformat()}&booking_date=lt.{until.isoformat()}"
+           f"&status=neq.cancelled&order=booking_date.asc")
+    print(f"[calendar] url={url}")
+    r = http_requests.get(url, headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}"})
+    print(f"[calendar] status={r.status_code} body={r.text[:200]}")
     bookings = r.json() if r.status_code == 200 else []
-    print(f"[calendar] found {len(bookings)} bookings")
 
     if not bookings:
         return _reply(f"📅 Nothing booked for {label.lower()} yet.\n\n"
