@@ -717,15 +717,34 @@ function renderPOs(){
 // ── Supplier rename ────────────────────────────────────────────────────────────
 async function renameSupplier(oldName){
   var newName=prompt('Rename supplier "'+oldName+'" to:', oldName);
-  if(!newName||newName.trim()===oldName||!newName.trim()) return;
-  var r=await api('/api/supplier/rename',{method:'POST',body:JSON.stringify({old_name:oldName,new_name:newName.trim(),from_number:S.num})});
-  var d=await r.json();
-  if(d.ok){
-    showToast('Renamed to '+newName.trim()+' across '+d.updated+' orders ✓','success');
-    // Update cache so re-render is instant
-    if(S.data&&S.data.all_logs){S.data.all_logs.forEach(function(l){if(l.supplier===oldName)l.supplier=newName.trim();});}
-    renderPage();
-  }else showToast('Failed: '+(d.error||'Unknown'),'error');
+  if(!newName||!newName.trim()||newName.trim()===oldName) return;
+  try{
+    var r=await api('/api/supplier/rename',{method:'POST',body:JSON.stringify({
+      old_name:oldName,
+      new_name:newName.trim(),
+      from_number:S.num
+    })});
+    if(!r.ok){showToast('Server error '+r.status,'error');return;}
+    var d=await r.json();
+    if(d.ok){
+      if(d.updated===0){
+        showToast('Renamed (no logs found with that supplier — check spelling)','warning');
+      } else {
+        showToast('Renamed to "'+newName.trim()+'" across '+d.updated+' order'+(d.updated!==1?'s':'')+' ✓','success');
+      }
+      // Update cache so re-render is instant without reload
+      if(S.data&&S.data.all_logs){
+        S.data.all_logs.forEach(function(l){
+          if((l.supplier||'').toLowerCase()===oldName.toLowerCase()) l.supplier=newName.trim();
+        });
+      }
+      await loadData();
+    } else {
+      showToast('Failed: '+(d.error||'Unknown error'),'error');
+    }
+  } catch(e){
+    showToast('Error: '+e.message,'error');
+  }
 }
 
 // ── DOCUMENTS SENT ─────────────────────────────────────────────────────────────
