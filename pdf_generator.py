@@ -27,6 +27,9 @@ def generate_pdf(company, logs, doc_title="Variation Order", doc_ref="VO-001", s
     project_info = company.get("project_info", {}) or {}
     if doc_title == "Purchase Order":
         return _generate_po(company, logs, doc_ref, site_label, project_info)
+    elif doc_title == "Site Report":
+        # Combined report — all types together, use VO layout with ALL items
+        return _generate_vo_or_ds(company, logs, "Site Report", doc_ref, site_label, project_info)
     else:
         return _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_info)
 
@@ -74,8 +77,8 @@ def _generate_po(company, logs, doc_ref, site_label, project_info=None):
             logo_img = None
 
     # ── HEADER ─────────────────────────────────────────────────────────────
-    contact = " | ".join(filter(None, [company.get("phone"), company.get("email")]))
-    vat     = f"VAT: {company['vat_number']}" if company.get("vat_number") else ""
+    contact = " | ".join(filter(None, [(company.get("phone") or ""), (company.get("email") or "")]))
+    vat     = f"VAT: {company['vat_number']}" if (company.get("vat_number") or "") else ""
 
     left_col = [
         logo_img if logo_img else Paragraph((company.get("company_name") or ""), co_name_sty),
@@ -299,8 +302,8 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
     total_sty   = sty("vt",  fontSize=9,  textColor=dark, fontName="Helvetica-Bold",
                        leading=13, alignment=TA_RIGHT)
 
-    contact = " | ".join(filter(None, [company.get("phone"), company.get("email")]))
-    vat     = f"VAT No: {company['vat_number']}" if company.get("vat_number") else ""
+    contact = " | ".join(filter(None, [(company.get("phone") or ""), (company.get("email") or "")]))
+    vat     = f"VAT No: {company['vat_number']}" if (company.get("vat_number") or "") else ""
 
     logo_img  = None
     logo_data = fetch_logo(company.get("logo_url"))
