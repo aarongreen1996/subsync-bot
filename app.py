@@ -3,6 +3,7 @@ import json
 import re
 from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.request_validator import RequestValidator
 
 def _reply(text):
     resp = MessagingResponse()
@@ -586,28 +587,49 @@ def upload_pdf(pdf_bytes, filename):
     return f"{SUPABASE_URL}/storage/v1/object/public/documents/{filename}"
 
 HELP_TEXT = "\n".join([
-    "👷 Note2Quote Bot — Quick Guide", "",
-    "LOGGING ITEMS",
-    "Text or voice note, single or a list:",
-    "  Variation for Danes Park — ceramic tiling to bathroom, 1 hour £50",
-    "  Boarded loft flat 5, 3 hours, 80 quid materials",
-    "  Numbered list to log multiple items at once", "",
-    "MENTIONING THE SITE",
-    "  Just say the site name in your message — I'll log it there.",
-    "  New site? I'll add it automatically.", "",
-    "GENERATING DOCUMENTS",
-    "  Generate variations for Brookfield Site",
-    "  Generate dayworks for Flat 3 Refurb", "",
-    "STATUS UPDATES",
-    "  approve [site] — mark all pending items as approved",
-    "  chasing [site] — flag you are waiting on client", "",
-    "SITE QUERIES",
-    "  update on [site] — full status breakdown",
-    "  show me last week — logs from past 7 days", "",
-    "OTHER",
-    "  summary — full dashboard overview",
-    "  pending — see all outstanding items",
-    "  dashboard — get your login link",
+    "👷 *Note2Quote — Full Guide*", "",
+    "📝 *LOGGING WORK*",
+    "Just text or voice note naturally:",
+    "  • Variation — site manager asked for extra sockets, 2 hrs, £80",
+    "  • Daywork — boarded loft at Kings Road, 3 hours",
+    "  • Standard work — fitted bathroom suite, 6 hours £300",
+    "  • Materials — need copper fittings from Screwfix for Danes Park",
+    "  Mention the site and I'll log it there automatically", "",
+    "📄 *GENERATING PDFs*",
+    "  generate variations for [site]",
+    "  generate dayworks for [site]",
+    "  generate orders for [site]",
+    "  generate full report for [site] — variations + dayworks together",
+    "  (I'll ask which items to include if there are multiple)", "",
+    "✅ *STATUS UPDATES*",
+    "  approve [site] — mark all pending as approved",
+    "  chasing [site] — flag waiting on client",
+    "  cancel [site] — cancel pending items", "",
+    "📅 *CALENDAR & BOOKINGS*",
+    "  book Kings Road for Monday",
+    "  book 15 Mill Road for Thursday morning",
+    "  what have I got on this week?",
+    "  what's on tomorrow?",
+    "  what's on this month?", "",
+    "🔔 *REMINDERS*",
+    "  remind me to order materials before Monday",
+    "  remind me to call site manager tomorrow morning", "",
+    "💰 *EARNINGS & PERFORMANCE*",
+    "  how did I do this week?",
+    "  how did I do this month?",
+    "  what did I earn last week?",
+    "  set day rate for Kings Road to £280", "",
+    "📊 *QUERIES*",
+    "  update on [site] — full site status",
+    "  show me today / yesterday / last week / this month",
+    "  summary — full overview",
+    "  pending — all outstanding items", "",
+    "🔧 *CORRECTIONS*",
+    "  no it was £80 not £60 — fix last cost",
+    "  it's variation not daywork — fix last type",
+    "  actually it was 3 hours — fix last hours", "",
+    "⚙️ *OTHER*",
+    "  dashboard / login — get your dashboard link",
     "  help — see this guide",
 ])
 
@@ -1005,6 +1027,18 @@ def _provision_account(from_number, session):
 @app.route("/whatsapp", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # Verify request is genuinely from Twilio
+    _auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    if _auth_token:
+        try:
+            _validator = RequestValidator(_auth_token)
+            _sig = request.headers.get("X-Twilio-Signature", "")
+            _url = request.url
+            if not _validator.validate(_url, request.form, _sig):
+                print("[webhook] Invalid Twilio signature — rejected")
+                return "Forbidden", 403
+        except Exception as _ve:
+            print(f"[webhook] Signature check error: {_ve}")
     incoming_msg = request.form.get("Body", "").strip()
     from_number  = request.form.get("From", "")
     num_media    = int(request.form.get("NumMedia", 0))
@@ -1231,7 +1265,7 @@ def handle_pending(from_number, msg):
             db_post("site_logs", log_data)
             return _reply(f"✅ Logged for *{site_name}*!")
         except Exception as e:
-            return _reply(f"⚠️ Couldn't save. ({str(e)[:80]})")
+            return _reply("⚠️ Couldn't save that. Please try again.")
 
     del pending_selections[from_number]
     return _reply("Something went wrong. Please try sending that again.")
@@ -1338,7 +1372,7 @@ def handle_generate(from_number, msg):
     except Exception as e:
         import traceback
         print(f"Generate error: {traceback.format_exc()}")
-        return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
+        return _reply("⚠️ Couldn't generate the document right now. Please try again in a moment.")
 
 
 def handle_generate_selection(from_number, msg):
@@ -1425,7 +1459,7 @@ def _do_generate_pdf(from_number, company, logs, log_type, doc_title, prefix, si
     except Exception as e:
         import traceback
         print(f"PDF generation error: {traceback.format_exc()}")
-        return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
+        return _reply("⚠️ Couldn't generate the document right now. Please try again in a moment.")
 
 
 def handle_set_rate(from_number, msg):
