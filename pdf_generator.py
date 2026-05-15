@@ -78,10 +78,10 @@ def _generate_po(company, logs, doc_ref, site_label, project_info=None):
     vat     = f"VAT: {company['vat_number']}" if company.get("vat_number") else ""
 
     left_col = [
-        logo_img if logo_img else Paragraph(company.get("company_name", ""), co_name_sty),
+        logo_img if logo_img else Paragraph((company.get("company_name") or ""), co_name_sty),
         Spacer(1, 2*mm),
-        Paragraph(company.get("company_name", "") if logo_img else "", small_sty),
-        Paragraph(company.get("address", ""), small_sty),
+        Paragraph((company.get("company_name") or "") if logo_img else "", small_sty),
+        Paragraph((company.get("address") or ""), small_sty),
         Paragraph(contact, small_sty),
         Paragraph(vat, small_sty),
     ]
@@ -127,7 +127,7 @@ def _generate_po(company, logs, doc_ref, site_label, project_info=None):
         Paragraph("DELIVER TO", box_lbl), Spacer(1, 1*mm),
         Paragraph(f"<b>{company.get('company_name', '')}</b>", box_sty), Spacer(1, 2*mm),
         Paragraph(f"Site: {site_label or '___________________________'}", box_sty), Spacer(1, 2*mm),
-        Paragraph(company.get("address", "___________________________"), box_sty), Spacer(1, 2*mm),
+        Paragraph((company.get("address") or "___________________________"), box_sty), Spacer(1, 2*mm),
         Paragraph(f"Contact: {company.get('phone', '___________________________')}", box_sty),
     ]
 
@@ -165,14 +165,14 @@ def _generate_po(company, logs, doc_ref, site_label, project_info=None):
         total += cost
         materials = log.get("materials") or []
         mat_str   = ", ".join(materials) if isinstance(materials, list) and materials else ""
-        desc = log.get("description", "") or ""
+        desc = (log.get("description") or "") or ""
         if mat_str and mat_str.lower() not in desc.lower():
             desc = mat_str or desc
 
         table_data.append([
             Paragraph(str(i),                                           cell_sty),
             Paragraph(desc,                                             cell_sty),
-            Paragraph(log.get("location", "") or "—",                  cell_sty),
+            Paragraph((log.get("location") or "") or "—",                  cell_sty),
             Paragraph("—",                                              cell_r_sty),
             Paragraph(f"£{cost:.2f}" if cost else "—",                 cell_r_sty),
             Paragraph(f"£{cost:.2f}" if cost else "—",                 cell_r_sty),
@@ -312,12 +312,12 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
 
     if logo_img:
         left_col = [logo_img, Spacer(1, 2*mm),
-                    Paragraph(company.get("company_name", ""), sub_sty),
-                    Paragraph(company.get("address", ""), sub_sty),
+                    Paragraph((company.get("company_name") or ""), sub_sty),
+                    Paragraph((company.get("address") or ""), sub_sty),
                     Paragraph(contact, sub_sty), Paragraph(vat, sub_sty)]
     else:
-        left_col = [Paragraph(company.get("company_name", "Company Name"), name_sty),
-                    Paragraph(company.get("address", ""), sub_sty),
+        left_col = [Paragraph((company.get("company_name") or "Company Name"), name_sty),
+                    Paragraph((company.get("address") or ""), sub_sty),
                     Paragraph(contact, sub_sty), Paragraph(vat, sub_sty)]
 
     right_col = [
@@ -340,10 +340,10 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
 
     # Client box
     project_info = project_info or {}
-    client_name  = project_info.get("client_name", "")
-    client_addr  = project_info.get("client_address", "") or project_info.get("address", "")
-    client_email = project_info.get("client_email", "")
-    client_phone = project_info.get("client_phone", "")
+    client_name  = (project_info.get("client_name") or "")
+    client_addr  = (project_info.get("client_address") or "") or (project_info.get("address") or "")
+    client_email = (project_info.get("client_email") or "")
+    client_phone = (project_info.get("client_phone") or "")
 
     if any([client_name, client_addr, client_email, client_phone]):
         box_lbl = sty("bl2", fontSize=7, textColor=colors.grey,
@@ -392,8 +392,8 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
         total_hours += hours
         table_data.append([
             Paragraph(str(i),                                              cell_sty),
-            Paragraph(log.get("description", "") or "",                    cell_sty),
-            Paragraph(log.get("location", "") or "—",                      cell_sty),
+            Paragraph((log.get("description") or "") or "",                    cell_sty),
+            Paragraph((log.get("location") or "") or "—",                      cell_sty),
             Paragraph(str(hours) if hours else "—",                        cell_r_sty),
             Paragraph(f"£{cost:.2f}" if cost else "—",                     cell_r_sty),
         ])
