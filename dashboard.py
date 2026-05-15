@@ -172,12 +172,17 @@ def rename_supplier():
     number   = data.get("from_number", "")
     if not old_name or not new_name:
         return jsonify({"error": "Both old and new name required"}), 400
+    if not number:
+        return jsonify({"error": "from_number missing"}), 400
     encoded = normalise(number)
-    logs = db_get(f"site_logs?from_number=eq.{encoded}&supplier=eq.{quote(old_name)}")
+    print(f"[rename_supplier] encoded={encoded} old={old_name} new={new_name}")
+    # Use ilike for case-insensitive match + handle supplier name variations
+    logs = db_get(f"site_logs?from_number=eq.{encoded}&supplier=ilike.{quote(old_name)}")
+    print(f"[rename_supplier] found {len(logs) if isinstance(logs, list) else 0} logs")
     count = 0
     if isinstance(logs, list):
         for log in logs:
-            db_patch(f"site_logs?id=eq.{log['id']}", {"supplier": new_name})
+            r = db_patch(f"site_logs?id=eq.{log['id']}", {"supplier": new_name})
             count += 1
     return jsonify({"ok": True, "updated": count})
 
