@@ -937,44 +937,28 @@ async function saveClientField(projectId,field,value){
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 function bootApp(){
-  var params=new URLSearchParams(window.location.search);
-  var autologin=params.get('autologin');
-  var token=params.get('token');
-  // Handle autologin param (from /login redirect)
-  if(autologin){
-    var num = autologin.replace(/\D/g,''); // digits only
-    S.num = '+' + num;
-    S.pw = '__magic__';
+  // 1. Magic number injected by server into window.__magicNumber (most reliable)
+  if(window.__magicNumber){
+    S.num = window.__magicNumber;
+    S.pw  = '__magic__';
     localStorage.setItem('ss_number', S.num);
-    localStorage.setItem('ss_magic', '1');
+    localStorage.setItem('ss_magic',  '1');
     localStorage.removeItem('ss_password');
-    window.history.replaceState({}, '', '/dashboard');
+    window.__magicNumber = null;
     showApp();
     return;
   }
-  // Handle raw token param — validate server-side and log in
-  if(token){
-    fetch('/api/validate-token?token='+encodeURIComponent(token))
-      .then(function(r){return r.json();})
-      .then(function(d){
-        if(d.ok && d.number){
-          S.num = d.number;
-          S.pw  = '__magic__';
-          localStorage.setItem('ss_number', S.num);
-          localStorage.setItem('ss_magic', '1');
-          localStorage.removeItem('ss_password');
-          window.history.replaceState({}, '', '/dashboard');
-          showApp();
-        } else {
-          showToast('Login link expired — request a new one','error');
-        }
-      }).catch(function(){ showToast('Login failed — try again','error'); });
-    return;
+  // 2. Error injected by server
+  if(window.__magicError){
+    // just show login screen with message
+    console.log('Magic link error:', window.__magicError);
   }
+  // 3. Remembered magic session
   if(localStorage.getItem('ss_magic')==='1'){
     var n=localStorage.getItem('ss_number');
     if(n){S.num=n;S.pw='__magic__';showApp();return;}
   }
+  // 4. Remembered password session
   var pw=localStorage.getItem('ss_password'),num=localStorage.getItem('ss_number');
   if(pw&&num){S.pw=pw;S.num=num;showApp();}
 }
