@@ -83,15 +83,12 @@ def magic_login():
     except Exception:
         pass
 
-    # Mark token as used
-    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
+    # Don't mark as used yet — let the dashboard JS call /api/validate-token
+    # which marks it used after confirming. This handles redirects that
+    # WhatsApp's browser follows before the user sees the page.
 
-    # Extract the whatsapp number — strip whatsapp: prefix for the URL
-    wa = row.get("whatsapp", "")
-    number = wa.replace("whatsapp:", "").replace("+", "")
-
-    # Redirect to dashboard with autologin param
-    return redirect(f"{APP_URL}/dashboard?autologin={number}")
+    # Pass token to dashboard so JS can validate it client-side
+    return redirect(f"{APP_URL}/dashboard?token={token}")
 
 
 @auth_bp.route("/api/magic-link", methods=["POST"])
