@@ -149,6 +149,7 @@ def create_site(from_number, site_name):
 
 pending_selections = {}
 signup_sessions    = {}   # tracks WhatsApp signup conversations
+generate_sessions  = {}   # tracks PDF item selection conversations
 
 # ── Voice transcription ───────────────────────────────────────────────────────
 CONSTRUCTION_VOCAB = (
@@ -390,9 +391,23 @@ def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KE
 def is_site_query(msg):        return any(kw in msg.lower() for kw in SITE_QUERY_KEYWORDS)
 def is_date_query(msg):        return any(kw in msg.lower() for kw in DATE_QUERY_KEYWORDS)
 def is_correction(msg):        return any(kw in msg.lower() for kw in CORRECTION_KEYWORDS)
+def is_set_rate_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in [
+        "set day rate", "set daywork rate", "set rate", "day rate is",
+        "daywork rate is", "day rate for", "rate for", "my rate is",
+        "charge rate", "my day rate",
+    ])
 
 def detect_doc_type(msg):
     msg_lower = msg.lower()
+    # Combined / full report — both variations AND dayworks
+    if any(kw in msg_lower for kw in [
+        "full report", "all items", "everything", "combined", "full document",
+        "all for", "variations and dayworks", "dayworks and variations",
+        "all docs", "complete report",
+    ]):
+        return "ALL", "Site Report", "SR"
     if "daywork" in msg_lower or "day work" in msg_lower:
         return "DAYWORK", "Daywork Sheet", "DS"
     if "purchase order" in msg_lower or "material order" in msg_lower or \
@@ -470,14 +485,32 @@ def read_html(filename):
     with open(os.path.join(base, filename), "r", encoding="utf-8") as f:
         return f.read()
 
-def build_insert(from_number, raw_message, item):
+def build_insert(from_number, raw_message, item, projects=None):
+    log_type = item.get("type", "UNKNOWN")
     d = {
         "from_number": from_number, "raw_message": raw_message,
-        "type":        item.get("type", "UNKNOWN"),
+        "type":        log_type,
         "description": item.get("description", ""), "status": "pending",
     }
-    if item.get("hours"):         d["hours"]         = float(item["hours"])
-    if item.get("cost_estimate"): d["cost_estimate"] = float(item["cost_estimate"])
+    hours = float(item["hours"]) if item.get("hours") else None
+    cost  = float(item["cost_estimate"]) if item.get("cost_estimate") else None
+
+    # Daywork defaults: 8 hours, auto-apply site day rate if no cost given
+    if log_type == "DAYWORK":
+        if not hours:
+            hours = 8.0  # default full day
+        if not cost and projects:
+            site_name = item.get("site_name", "")
+            if site_name:
+                for p in projects:
+                    if p.get("site_name","").lower() == site_name.lower():
+                        day_rate = p.get("day_rate")
+                        if day_rate:
+                            cost = float(day_rate) * (hours / 8.0)
+                        break
+
+    if hours: d["hours"]         = hours
+    if cost:  d["cost_estimate"] = cost
     if item.get("location"):      d["location"]      = str(item["location"])
     if item.get("requested_by"):  d["requested_by"]  = str(item["requested_by"])
     if item.get("worker_name"):   d["worker_name"]   = str(item["worker_name"])
@@ -873,9 +906,18 @@ def webhook():
     if is_help_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return _reply(HELP_TEXT)
+    if is_set_rate_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_set_rate(from_number, incoming_msg)
     if is_generate_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
+        # Check if this is a response to a generate selection prompt
+        if from_number in generate_sessions:
+            del generate_sessions[from_number]
         return handle_generate(from_number, incoming_msg)
+    # Handle item selection response (numbers after generate prompt)
+    if from_number in generate_sessions:
+        return handle_generate_selection(from_number, incoming_msg)
     if is_status_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_status_update(from_number, incoming_msg)
@@ -1087,7 +1129,7 @@ def handle_generate(from_number, msg):
         site_label = site_name or "All Sites"
 
         type_filter = ""
-        if log_type != "ALL":
+        if log_type not in ("ALL",):
             type_filter = "&type=eq." + log_type
 
         base_query = ("site_logs?from_number=eq." + encode_number(from_number) +
@@ -1102,16 +1144,115 @@ def handle_generate(from_number, msg):
             return _reply("📋 No active " + type_label + site_label_msg + ".\n"
                           "Items must be logged (pending or chasing) to appear in a document.")
 
-        doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
-        company["site_label"] = site_label
+        # If only 1 item — generate immediately, no need to ask
+        if len(logs) == 1:
+            return _do_generate_pdf(from_number, company, logs, log_type,
+                                    doc_title, prefix, site_name, site_label)
 
+        # Multiple items — show numbered list and ask which to include
+        lines = [f"📋 *{site_label} — {len(logs)} item(s) available:*", ""]
+        for i, log in enumerate(logs, 1):
+            desc  = (log.get("description") or "")[:45]
+            cost  = float(log.get("cost_estimate") or 0)
+            ltype = log.get("type","").replace("_"," ").title()
+            cost_str = f" · £{cost:.0f}" if cost else ""
+            lines.append(f"{i}. *{ltype}* — {desc}{cost_str}")
+
+        lines += [
+            "",
+            "Which items do you want in the PDF?",
+            "• *all* — include everything",
+            "• *1,3* — specific items",
+            "• *1-3* — a range",
+        ]
+        if log_type == "ALL":
+            lines.append("• *variations* or *dayworks* — just one type")
+
+        # Save state for selection response
+        generate_sessions[from_number] = {
+            "logs":       logs,
+            "log_type":   log_type,
+            "doc_title":  doc_title,
+            "prefix":     prefix,
+            "site_name":  site_name,
+            "site_label": site_label,
+            "company":    company,
+        }
+        return _reply("\n".join(lines))
+
+    except Exception as e:
+        import traceback
+        print(f"Generate error: {traceback.format_exc()}")
+        return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
+
+
+def handle_generate_selection(from_number, msg):
+    """Handle numbered item selection after generate prompt."""
+    session = generate_sessions.get(from_number)
+    if not session:
+        return handle_log(from_number, msg)
+
+    msg_lower = msg.strip().lower()
+    logs      = session["logs"]
+    log_type  = session["log_type"]
+    doc_title = session["doc_title"]
+    prefix    = session["prefix"]
+    site_name = session["site_name"]
+    site_label = session["site_label"]
+    company   = session["company"]
+
+    selected = []
+
+    # "all" — include everything
+    if msg_lower in ["all", "all of them", "everything", "include all", "yes all"]:
+        selected = logs
+
+    # "variations" or "dayworks" filter within combined
+    elif "variation" in msg_lower and log_type == "ALL":
+        selected = [l for l in logs if l.get("type") == "VARIATION"]
+        doc_title, prefix = "Variation Order", "VO"
+    elif "daywork" in msg_lower and log_type == "ALL":
+        selected = [l for l in logs if l.get("type") == "DAYWORK"]
+        doc_title, prefix = "Daywork Sheet", "DS"
+
+    # Range: "1-3"
+    elif "-" in msg and not msg.startswith("-"):
+        try:
+            parts = msg.strip().split("-")
+            start, end = int(parts[0].strip()), int(parts[1].strip())
+            selected = [logs[i-1] for i in range(start, end+1) if 0 < i <= len(logs)]
+        except Exception:
+            del generate_sessions[from_number]
+            return _reply("Couldn't understand that. Reply with numbers like *1,3* or *all*")
+
+    # List: "1,3,5" or "1 3 5"
+    else:
+        import re as _re
+        nums = _re.findall(r"\d+", msg)
+        if nums:
+            selected = [logs[int(n)-1] for n in nums if 0 < int(n) <= len(logs)]
+
+    if not selected:
+        return _reply(f"No valid items selected. Reply with numbers (1-{len(logs)}) or *all*")
+
+    del generate_sessions[from_number]
+    return _do_generate_pdf(from_number, company, selected, log_type,
+                            doc_title, prefix, site_name, site_label)
+
+
+def _do_generate_pdf(from_number, company, logs, log_type, doc_title, prefix, site_name, site_label):
+    """Actually generate and send the PDF."""
+    try:
         project_info = {}
         if site_name:
-            projs = db_get(f"projects?whatsapp_number=eq.{encode_number(from_number)}&site_name=ilike.{encode_text(site_name)}&limit=1")
+            projs = db_get(f"projects?whatsapp_number=eq.{encode_number(from_number)}"
+                           f"&site_name=ilike.{encode_text(site_name)}&limit=1")
             if isinstance(projs, list) and projs:
                 project_info = projs[0]
         company["project_info"] = project_info
+        company["site_label"]   = site_label
 
+        doc_ref, filename = make_doc_ref_and_filename(company, logs, prefix, site_name)
         pdf_bytes = generate_pdf(company, logs, doc_title, doc_ref, site_label)
         pdf_url   = upload_pdf(pdf_bytes, filename)
 
@@ -1126,11 +1267,44 @@ def handle_generate(from_number, msg):
         )
         m.media(pdf_url)
         return Response(str(resp), mimetype="application/xml")
-
     except Exception as e:
         import traceback
-        print(f"Generate error: {traceback.format_exc()}")
+        print(f"PDF generation error: {traceback.format_exc()}")
         return _reply(f"⚠️ Couldn't generate document. ({str(e)[:150]})")
+
+
+def handle_set_rate(from_number, msg):
+    """Set the day rate for a site."""
+    import re as _re
+    msg_lower = msg.lower()
+    projects  = get_projects(from_number)
+
+    # Extract the rate (£280, 280, £280/day etc)
+    rate_match = _re.search(r"[£$]?\s*(\d+(?:\.\d+)?)", msg)
+    if not rate_match:
+        return _reply("What's the day rate? e.g. *Set day rate for Kings Road to £280*")
+
+    rate = float(rate_match.group(1))
+
+    # Find the site
+    site_name = match_site(msg, projects)
+    if not site_name:
+        # Try to find site name in message without a match
+        return _reply("Which site is this rate for? e.g. *Set day rate for Kings Road to £280*")
+
+    # Save to projects table
+    enc = encode_number(from_number)
+    db_patch(f"projects?whatsapp_number=eq.{enc}&site_name=ilike.{encode_text(site_name)}",
+             {"day_rate": rate})
+
+    return _reply("\n".join([
+        f"✅ *Day rate set — £{rate:.0f}/day for {site_name}*",
+        "",
+        "When you log a daywork I'll automatically apply this rate.",
+        "Dayworks default to 8 hours unless you specify otherwise.",
+        "",
+        f"e.g. *Boarded loft at {site_name}* → logged as 8hrs · £{rate:.0f}"
+    ]))
 
 
 # ── Log handler ───────────────────────────────────────────────────────────────
