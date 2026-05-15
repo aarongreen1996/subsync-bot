@@ -11,7 +11,7 @@ def _reply(text):
 
 import anthropic
 from supabase import create_client
-from datetime import datetime
+from datetime import datetime, timezone, timedelta, date
 import requests as http_requests
 from pdf_generator import generate_pdf
 from dashboard import dashboard_bp
@@ -1036,16 +1036,28 @@ def webhook():
         return handle_generate_selection(from_number, incoming_msg)
     if is_financial_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
-        return handle_financial_summary(from_number, incoming_msg)
+        try: return handle_financial_summary(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"financial_summary error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't load your earnings summary. Try again.")
     if is_calendar_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
-        return handle_calendar(from_number, incoming_msg)
+        try: return handle_calendar(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"calendar error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't load your calendar. Try again.")
     if is_booking_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
-        return handle_booking(from_number, incoming_msg)
+        try: return handle_booking(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"booking error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't save booking. Try again.")
     if is_reminder_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
-        return handle_reminder(from_number, incoming_msg)
+        try: return handle_reminder(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"reminder error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't save reminder. Try again.")
     if is_status_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_status_update(from_number, incoming_msg)
