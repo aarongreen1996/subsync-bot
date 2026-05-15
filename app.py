@@ -1512,7 +1512,7 @@ def handle_log(from_number, incoming_msg):
 
         # ── Multi-item list ───────────────────────────────────────────────────
         if isinstance(parsed, list) and len(parsed) > 0:
-            items      = [build_insert(from_number, incoming_msg, i) for i in parsed]
+            items      = [build_insert(from_number, incoming_msg, i, projects) for i in parsed]
             total_cost = sum(float(i.get("cost_estimate") or 0) for i in parsed)
 
             # Match site per item individually — don't force all items to one site
@@ -1565,7 +1565,7 @@ def handle_log(from_number, incoming_msg):
         # ── Single item ───────────────────────────────────────────────────────
         if isinstance(parsed, dict):
             data                = parsed
-            insert_data         = build_insert(from_number, incoming_msg, data)
+            insert_data         = build_insert(from_number, incoming_msg, data, projects)
             needs_clarification = data.get("needs_clarification", False)
             confirmation        = data.get("confirmation_message", "✅ Got it!")
 
