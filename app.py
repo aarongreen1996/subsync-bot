@@ -1655,6 +1655,34 @@ def signup():    return _html('signup.html')
 def welcome():   return _html('welcome.html')
 @app.route('/dashboard')
 def dashboard(): return _html('dashboard.html')
+
+@app.route('/api/validate-token')
+def validate_token():
+    """Validate a magic link token and return the phone number."""
+    from flask import jsonify as _jsonify
+    token = request.args.get('token','').strip()
+    if not token:
+        return _jsonify({"ok":False,"error":"No token"})
+    SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY = os.environ.get("SUPABASE_KEY","")
+    headers = {"apikey":SKEY,"Authorization":f"Bearer {SKEY}"}
+    r = http_requests.get(f"{SURL}/rest/v1/auth_tokens?token=eq.{token}&used=eq.false&limit=1", headers=headers)
+    rows = r.json() if r.status_code==200 else []
+    if not isinstance(rows,list) or not rows:
+        return _jsonify({"ok":False,"error":"Invalid or expired token"})
+    row = rows[0]
+    try:
+        from datetime import timezone as _tz
+        expires = datetime.fromisoformat(row.get("expires_at","").replace("Z","+00:00"))
+        if datetime.now(_tz.utc) > expires:
+            return _jsonify({"ok":False,"error":"Token expired"})
+    except Exception:
+        pass
+    # Mark used
+    http_requests.patch(f"{SURL}/rest/v1/auth_tokens?token=eq.{token}",
+        json={"used":True}, headers={**headers,"Content-Type":"application/json","Prefer":"return=minimal"})
+    wa = row.get("whatsapp","").replace("whatsapp:","")
+    return _jsonify({"ok":True,"number":wa})
 @app.route('/account')
 def account():   return _html('account.html')
 @app.route('/admin')
