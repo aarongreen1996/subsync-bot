@@ -177,47 +177,70 @@ signup_sessions    = {}   # tracks WhatsApp signup conversations
 generate_sessions  = {}   # tracks PDF item selection conversations
 
 # ── Voice transcription ───────────────────────────────────────────────────────
-# Whisper prompt — written as realistic example sentences, not just word lists.
-# Whisper uses the prompt as context for what it's about to hear.
-# Example sentences dramatically outperform word lists for accuracy.
+# Whisper prompt — example sentences prime it for construction speech.
+# MUST stay under 224 tokens (~896 chars) or Groq silently truncates it.
 CONSTRUCTION_VOCAB = (
-    "Site manager asked me to move the boiler flue at Brookfield Site, two hours labour, £120. "
-    "Variation order: extra double sockets in kitchen at Kings Road, one hour, £60 materials. "
-    "Logged daywork at The Oaklands, 8 hours day rate, £280. "
-    "Need to order lead flashing from Screwfix for 15 Mill Road, £80 materials. "
-    "Re-bedded 5 loose ridge tiles at 42 High Street, 1 hour labour, £20 materials. "
-    "Stripped felt and battens around chimney, found rotten timber, 3 hours labour £120. "
-    "Customer asked to clear gutters while scaffold was up, 1.5 hours variation. "
-    "Purchase order: 10 metres 22mm copper pipe from Toolstation, £45. "
-    "Variation at Danes Park — extra radiator in bedroom 3, 2 hours £80. "
-    "Daywork: boarded out loft at Manor House Job, 3 hours labour £90. "
-    "Site: 15 Mill Road. Kings Road. The Oaklands. 42 High Street. Danes Park. Brookfield Site. "
-    "Suppliers: Screwfix, Toolstation, Travis Perkins, BSS, CEF, Wolseley, Jewson, Wickes, City Plumbing. "
-    "Terms: variation order, daywork, VO, PO, snagging, first fix, second fix, making good, "
-    "day rate, CIS, retention, site manager, main contractor, labour only. "
-    "Materials: batten, joist, noggin, RSJ, lintel, DPC, MDPE, UPVC, OSB, MDF, "
-    "trunking, conduit, rad, TRV, combi boiler, ridge tile, lead flashing, felt, fascia, soffit. "
-    "Amounts spoken: fifty pounds, eighty pounds, one hundred and twenty pounds, two hundred and fifty. "
-    "Hours spoken: half an hour, one hour, one and a half hours, two hours, three hours, eight hours."
+    "Variation order: site manager asked to move boiler flue, two hours labour, £120. "
+    "Daywork: boarded loft, 8 hours, £280. Materials: lead flashing from Screwfix, £80. "
+    "Re-bedded 5 loose ridge tiles, 1 hour labour, £20 materials. "
+    "Extra radiator bedroom 3, two hours £80. Cleared gutters while scaffold up, 1.5 hours. "
+    "Sites: Kings Road, The Oaklands, 15 Mill Road, Danes Park, Brookfield Site. "
+    "Suppliers: Screwfix, Toolstation, Travis Perkins, BSS, CEF, Jewson, Wickes. "
+    "Terms: variation, daywork, VO, PO, day rate, snagging, retention, first fix, second fix. "
+    "Fifty pounds, eighty pounds, one twenty, two fifty. Half hour, one hour, two hours."
 )
 
 def transcribe_voice(media_url):
     try:
         twilio_sid  = os.environ.get("TWILIO_ACCOUNT_SID", "")
         twilio_auth = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=30)
-        if audio_r.status_code != 200: return None
-        files = {"file": ("audio.ogg", audio_r.content, "audio/ogg")}
-        data  = {"model": "whisper-large-v3", "language": "en", "prompt": CONSTRUCTION_VOCAB}
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-        groq_r  = http_requests.post("https://api.groq.com/openai/v1/audio/transcriptions",
-                                     headers=headers, files=files, data=data, timeout=30)
-        if groq_r.status_code == 200:
-            text = groq_r.json().get("text", "").strip()
-            result = preprocess_transcription(text)
-            if result:
-                result = result + " __TRANSCRIBED__"
-            return result
+        audio_r = http_requests.get(media_url, auth=(twilio_sid, twilio_auth), timeout=45)
+        if audio_r.status_code != 200:
+            print(f"Audio download failed: {audio_r.status_code} {media_url}")
+            return None
+
+        audio_bytes = audio_r.content
+        content_type = audio_r.headers.get("Content-Type", "audio/ogg")
+        print(f"Audio downloaded: {len(audio_bytes)} bytes, type: {content_type}")
+
+        # Determine correct filename extension for Groq
+        # WhatsApp via Meta API sends audio/ogg or audio/opus
+        if "opus" in content_type:
+            fname, mime = "audio.opus", "audio/opus"
+        elif "mp4" in content_type or "m4a" in content_type:
+            fname, mime = "audio.m4a", "audio/mp4"
+        elif "mpeg" in content_type or "mp3" in content_type:
+            fname, mime = "audio.mp3", "audio/mpeg"
+        elif "webm" in content_type:
+            fname, mime = "audio.webm", "audio/webm"
+        else:
+            fname, mime = "audio.ogg", "audio/ogg"
+
+        # Try primary format, fall back to ogg if it fails
+        for attempt_fname, attempt_mime in [(fname, mime), ("audio.ogg", "audio/ogg"), ("audio.mp3", "audio/mpeg")]:
+            files   = {"file": (attempt_fname, audio_bytes, attempt_mime)}
+            data    = {"model": "whisper-large-v3", "language": "en", "prompt": CONSTRUCTION_VOCAB}
+            headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+            try:
+                groq_r = http_requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers=headers, files=files, data=data, timeout=45
+                )
+                print(f"Groq response ({attempt_fname}): {groq_r.status_code}")
+                if groq_r.status_code == 200:
+                    text = groq_r.json().get("text", "").strip()
+                    if text:
+                        result = preprocess_transcription(text)
+                        if result:
+                            result = result + " __TRANSCRIBED__"
+                        print(f"Transcription: {result[:100]}")
+                        return result
+                else:
+                    print(f"Groq error ({attempt_fname}): {groq_r.text[:200]}")
+            except Exception as e:
+                print(f"Groq attempt failed ({attempt_fname}): {e}")
+                continue
+
         return None
     except Exception as e:
         print(f"Transcription error: {e}")
