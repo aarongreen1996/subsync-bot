@@ -936,14 +936,49 @@ async function saveClientField(projectId,field,value){
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded',function(){
+function bootApp(){
   var params=new URLSearchParams(window.location.search);
   var autologin=params.get('autologin');
-  if(autologin){S.num=autologin.startsWith('+')?autologin:'+'+autologin;S.pw='__magic__';localStorage.setItem('ss_number',S.num);localStorage.setItem('ss_magic','1');localStorage.removeItem('ss_password');window.history.replaceState({},'','/dashboard');showApp();return;}
-  if(localStorage.getItem('ss_magic')==='1'){var n=localStorage.getItem('ss_number');if(n){S.num=n;S.pw='__magic__';showApp();return;}}
+  var token=params.get('token');
+  // Handle autologin param (from /login redirect)
+  if(autologin){
+    var num = autologin.replace(/\D/g,''); // digits only
+    S.num = '+' + num;
+    S.pw = '__magic__';
+    localStorage.setItem('ss_number', S.num);
+    localStorage.setItem('ss_magic', '1');
+    localStorage.removeItem('ss_password');
+    window.history.replaceState({}, '', '/dashboard');
+    showApp();
+    return;
+  }
+  // Handle raw token param — validate server-side and log in
+  if(token){
+    fetch('/api/validate-token?token='+encodeURIComponent(token))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d.ok && d.number){
+          S.num = d.number;
+          S.pw  = '__magic__';
+          localStorage.setItem('ss_number', S.num);
+          localStorage.setItem('ss_magic', '1');
+          localStorage.removeItem('ss_password');
+          window.history.replaceState({}, '', '/dashboard');
+          showApp();
+        } else {
+          showToast('Login link expired — request a new one','error');
+        }
+      }).catch(function(){ showToast('Login failed — try again','error'); });
+    return;
+  }
+  if(localStorage.getItem('ss_magic')==='1'){
+    var n=localStorage.getItem('ss_number');
+    if(n){S.num=n;S.pw='__magic__';showApp();return;}
+  }
   var pw=localStorage.getItem('ss_password'),num=localStorage.getItem('ss_number');
   if(pw&&num){S.pw=pw;S.num=num;showApp();}
-});
+}
+window.addEventListener('DOMContentLoaded', bootApp);
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 
 // ── CALENDAR ────────────────────────────────────────────────────────────────
