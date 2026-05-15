@@ -1038,7 +1038,7 @@ function buildCalendarHTML(){
     var cellStyle = 'min-height:90px;background:var(--bg2);border-radius:8px;padding:8px;cursor:pointer;border:2px solid '+(isToday?'var(--amber)':'transparent')+';transition:all .15s;position:relative;';
     if(isPast&&!isToday) cellStyle += 'opacity:.6;';
 
-    html += '<div style="'+cellStyle+'" onclick="calDayClick(''+dateStr+'')" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor=''+(isToday?'var(--amber)':'transparent')+''">';
+    html += '<div data-date="'+dateStr+'" style="'+cellStyle+'" onclick="calDayClick(this.dataset.date)" onmouseover="this.style.borderColor=\'var(--amber)\'" onmouseout="this.style.borderColor=\'"+(isToday?\'var(--amber)\':\'transparent\')+\'\'">'; 
     html += '<div style="font-size:13px;font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--amber)':'var(--text)')+';margin-bottom:4px">'+day+'</div>';
 
     if(hasBooking){
@@ -1098,6 +1098,32 @@ function calNext(){ var [y,m]=calState.month.split('-').map(Number); m++; if(m>1
 function calToday(){ calState.month=new Date().toISOString().slice(0,7); renderCalendar(); }
 
 function calDayClick(dateStr){
+  var data = {bookings:calState.bookings.filter(function(b){return b.booking_date===dateStr;}),
+              logs:calState.logs.filter(function(l){return (l.created_at||'').slice(0,10)===dateStr;})};
+  if(!data.bookings.length && !data.logs.length){
+    document.getElementById('bk-date').value = dateStr;
+    showAddBooking();
+    return;
+  }
+  var lines = [dateStr, ''];
+  if(data.bookings.length){
+    lines.push('BOOKINGS:');
+    data.bookings.forEach(function(b){ lines.push('  ' + (b.site_name||'Job') + ' - ' + (b.duration||'full day')); });
+    lines.push('');
+  }
+  if(data.logs.length){
+    var total = data.logs.reduce(function(s,l){return s+parseFloat(l.cost_estimate||0);},0);
+    lines.push('WORK LOGGED (\u00a3'+Math.round(total)+'):');
+    data.logs.forEach(function(l){ lines.push('  ' + (l.description||'').slice(0,50)); });
+  }
+  alert(lines.join('\n'));
+}
+
+function calPrev(){ var [y,m]=calState.month.split('-').map(Number); m--; if(m<1){m=12;y--;} calState.month=y+'-'+(m<10?'0'+m:m); renderCalendar(); }
+function calNext(){ var [y,m]=calState.month.split('-').map(Number); m++; if(m>12){m=1;y++;} calState.month=y+'-'+(m<10?'0'+m:m); renderCalendar(); }
+function calToday(){ calState.month=new Date().toISOString().slice(0,7); renderCalendar(); }
+
+function calDayClick(dateStr){
   // Show day detail — bookings and logs
   var data = {bookings:calState.bookings.filter(function(b){return b.booking_date===dateStr;}),
               logs:calState.logs.filter(function(l){return (l.created_at||'').slice(0,10)===dateStr;})};
@@ -1107,19 +1133,11 @@ function calDayClick(dateStr){
     showAddBooking();
     return;
   }
-  var msg = dateStr+'
-
-';
-  if(data.bookings.length) msg += '📅 BOOKINGS:
-'+data.bookings.map(function(b){return '• '+(b.site_name||'Job')+' — '+(b.duration||'full day');}).join('
-')+'
-
-';
+  var msg = dateStr+'\n\n';
+  if(data.bookings.length) msg += '📅 BOOKINGS:\n'+data.bookings.map(function(b){return '• '+(b.site_name||'Job')+' — '+(b.duration||'full day');}).join('\n')+'\n\n';
   if(data.logs.length){
     var total = data.logs.reduce(function(s,l){return s+parseFloat(l.cost_estimate||0);},0);
-    msg += '📋 WORK LOGGED (£'+Math.round(total)+'):
-'+data.logs.map(function(l){return '• '+(l.description||'').slice(0,50);}).join('
-');
+    msg += '📋 WORK LOGGED (£'+Math.round(total)+'):\n'+data.logs.map(function(l){return '• '+(l.description||'').slice(0,50);}).join('\n');
   }
   alert(msg);
 }
@@ -1165,7 +1183,7 @@ async function renderEarnings(){
   ['week','last_week','month','year'].forEach(function(p){
     var lbl = {week:'This Week',last_week:'Last Week',month:'This Month',year:'This Year'}[p];
     var active = period===p;
-    html += '<button class="btn '+(active?'btn-amber':'btn-outline')+'" style="padding:7px 12px;font-size:11px" onclick="window._earningsPeriod=''+p+'';renderEarnings()">'+lbl+'</button>';
+    html += '<button class="btn '+(active?'btn-amber':'btn-outline')+'" style="padding:7px 12px;font-size:11px" onclick="window._earningsPeriod=this.dataset.p;renderEarnings()" data-p="'+p+'">'+lbl+'</button>';
   });
   html += '</div></div>';
 
