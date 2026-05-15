@@ -554,40 +554,33 @@ def handle_signup_flow(from_number, msg):
             )
             pdf_url = f"{SURL}/storage/v1/object/public/documents/{demo_filename}"
 
-            # Send PDF via Twilio
-            twilio_client = Client(
-                os.environ.get("TWILIO_ACCOUNT_SID",""),
-                os.environ.get("TWILIO_AUTH_TOKEN","")
-            )
-            try:
-                twilio_client.messages.create(
-                    from_=os.environ.get("TWILIO_WHATSAPP_NUMBER",""),
-                    to=from_number,
-                    body=f"📄 *Here's your demo {doc_title}* — generated in seconds from what you just said.",
-                    media_url=[pdf_url]
-                )
-            except Exception as e:
-                print(f"Demo PDF send error: {e}")
-
-            # Save what we parsed to session for signup pre-fill
+            # Save session before returning
             session["demo_desc"] = desc
             session["step"]      = "demo_react"
             signup_sessions[from_number] = session
 
             type_label = "variation order" if log_type == "VARIATION" else "daywork sheet"
-            return _reply("\n".join([
-                f"✅ *Logged: {desc[:60]}*",
-                f"📍 Site: {site}",
-                (f"⏱ {hours}h · £{cost:.0f}" if hours or cost else ""),
+
+            # Send PDF using TwiML media (same as real generate) — works in webhook context
+            from flask import Response as _Resp
+            from twilio.twiml.messaging_response import MessagingResponse as _MR
+            resp = _MR()
+            body_lines = [
+                f"✅ *{desc[:60]}*",
+                f"📍 {site}" + (f"  ·  ⏱ {hours}h · £{cost:.0f}" if hours or cost else ""),
                 "",
-                f"👆 *That PDF just landed above* — a real {type_label}, ready to send to your client.",
+                f"👆 *That's a real {type_label}* — generated in seconds from what you just said.",
+                "In your live account it'd have your logo and company details on it.",
                 "",
-                "That's Note2Quote. Every variation, every daywork, every material order — logged on site in seconds.",
+                "That's Note2Quote. Every variation, daywork and material order — logged on site in seconds.",
                 "",
-                "Want your evenings back?",
-                "Reply *YES* to start your free 14-day trial 👇",
+                "Want your evenings back? 🔨",
+                "Reply *YES* to start your free 14-day trial",
                 "(No credit card. Takes 2 minutes.)"
-            ]))
+            ]
+            m = resp.message("\n".join(body_lines))
+            m.media(pdf_url)
+            return _Resp(str(resp), mimetype="application/xml")
 
         except Exception as e:
             print(f"Demo generation error: {e}")
