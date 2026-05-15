@@ -476,10 +476,12 @@ FINANCIAL_KEYWORDS = [
     "weekly earnings", "monthly earnings", "revenue this", "income this",
 ]
 BOOKING_KEYWORDS = [
-    "book in", "book me in", "book for", "schedule me",
+    "book in", "book me in", "book for", "schedule me", "schedule for",
     "put in for", "got a job on", "lined up for", "booked for",
     "pencil in", "put down for", "add to diary", "add to calendar",
-    "new job for", "new booking",
+    "new job for", "new booking", "add a job", "add job for",
+    "job on monday", "job on tuesday", "job on wednesday",
+    "job on thursday", "job on friday",
 ]
 CALENDAR_KEYWORDS = [
     "what have i got", "what's on", "whats on", "what do i have on",
@@ -498,8 +500,14 @@ def is_financial_command(msg):
     m = msg.lower()
     return any(kw in m for kw in FINANCIAL_KEYWORDS)
 def is_booking_command(msg):
-    m = msg.lower()
-    return any(kw in m for kw in BOOKING_KEYWORDS)
+    import re as _re
+    m = msg.lower().strip()
+    if any(kw in m for kw in BOOKING_KEYWORDS):
+        return True
+    # Catch "book [site] for [day]" and "schedule [site] for [day]"
+    if _re.match(r"^(book|schedule|diary)\s+\w", m):
+        return True
+    return False
 def is_calendar_command(msg):
     m = msg.lower()
     return any(kw in m for kw in CALENDAR_KEYWORDS)
