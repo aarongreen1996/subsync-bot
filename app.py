@@ -177,19 +177,28 @@ signup_sessions    = {}   # tracks WhatsApp signup conversations
 generate_sessions  = {}   # tracks PDF item selection conversations
 
 # ── Voice transcription ───────────────────────────────────────────────────────
+# Whisper prompt — written as realistic example sentences, not just word lists.
+# Whisper uses the prompt as context for what it's about to hear.
+# Example sentences dramatically outperform word lists for accuracy.
 CONSTRUCTION_VOCAB = (
-    "Construction site UK subcontractor. Terms: variation order, daywork, VO, PO, "
-    "snagging, first fix, second fix, making good, day rate, labour only, "
-    "CIS, retention, practical completion, site manager, surveyor, main contractor, "
-    "Screwfix, Toolstation, Travis Perkins, BSS, CEF, Wolseley, Jewson, Wickes, "
-    "batten, joist, noggin, stud, RSJ, lintel, DPC, tanking, pointing, rendering, "
-    "coving, architrave, skirting, fascia, soffit, rafter, purlin, ridge, valley, "
-    "MDPE, UPVC, OSB, MDF, CLS, trunking, conduit, SWA, twin and earth, CPC, "
-    "RCD, MCB, consumer unit, distribution board, socket, switched fused spur, "
-    "rad, TRV, MVHR, UFH, combi, unvented, Megaflo, primatic, "
-    "skim, dot and dab, bonding, multifinish, thistle, sand and cement, "
-    "block, brick, mortar, rebar, shutter, pour, cure, "
-    "Manor House, Brookfield, site one, block one, block two, plot, phase"
+    "Site manager asked me to move the boiler flue at Brookfield Site, two hours labour, £120. "
+    "Variation order: extra double sockets in kitchen at Kings Road, one hour, £60 materials. "
+    "Logged daywork at The Oaklands, 8 hours day rate, £280. "
+    "Need to order lead flashing from Screwfix for 15 Mill Road, £80 materials. "
+    "Re-bedded 5 loose ridge tiles at 42 High Street, 1 hour labour, £20 materials. "
+    "Stripped felt and battens around chimney, found rotten timber, 3 hours labour £120. "
+    "Customer asked to clear gutters while scaffold was up, 1.5 hours variation. "
+    "Purchase order: 10 metres 22mm copper pipe from Toolstation, £45. "
+    "Variation at Danes Park — extra radiator in bedroom 3, 2 hours £80. "
+    "Daywork: boarded out loft at Manor House Job, 3 hours labour £90. "
+    "Site: 15 Mill Road. Kings Road. The Oaklands. 42 High Street. Danes Park. Brookfield Site. "
+    "Suppliers: Screwfix, Toolstation, Travis Perkins, BSS, CEF, Wolseley, Jewson, Wickes, City Plumbing. "
+    "Terms: variation order, daywork, VO, PO, snagging, first fix, second fix, making good, "
+    "day rate, CIS, retention, site manager, main contractor, labour only. "
+    "Materials: batten, joist, noggin, RSJ, lintel, DPC, MDPE, UPVC, OSB, MDF, "
+    "trunking, conduit, rad, TRV, combi boiler, ridge tile, lead flashing, felt, fascia, soffit. "
+    "Amounts spoken: fifty pounds, eighty pounds, one hundred and twenty pounds, two hundred and fifty. "
+    "Hours spoken: half an hour, one hour, one and a half hours, two hours, three hours, eight hours."
 )
 
 def transcribe_voice(media_url):
@@ -1799,17 +1808,30 @@ def handle_correction(from_number, msg):
         msg_lower = msg.lower()
         updates = {}
 
-        # ── Type correction (most important — check first) ──────────────
-        type_keywords = {
-            "VARIATION": ["variation", "vo", "it's a variation", "its a variation",
-                          "variation not", "change to variation", "should be variation",
-                          "it was variation", "it was a variation"],
-            "DAYWORK":   ["daywork", "day work", "change to daywork", "should be daywork"],
-            "MATERIAL_ORDER": ["material order", "purchase order", "po", "material"],
+        # ── Type correction — only fire if EXPLICITLY changing type ────
+        # Must include "not", "change", "should be", "it's a", "it was a" etc.
+        # Bare words like "material" in "No £80 material" must NOT trigger type change
+        type_change_phrases = {
+            "VARIATION": [
+                "it's a variation", "its a variation", "it's variation", "its variation",
+                "variation not daywork", "should be variation", "change to variation",
+                "it was a variation", "it was variation", "not daywork it's variation",
+                "not a daywork", "variation order not",
+            ],
+            "DAYWORK": [
+                "it's a daywork", "its a daywork", "it's daywork", "its daywork",
+                "should be daywork", "change to daywork", "it was daywork",
+                "it was a daywork", "daywork not variation",
+            ],
+            "MATERIAL_ORDER": [
+                "material order", "purchase order", "change to material",
+                "should be a purchase order", "it's a purchase order",
+                "its a material order",
+            ],
         }
         detected_type = None
-        for t, keywords in type_keywords.items():
-            if any(kw in msg_lower for kw in keywords):
+        for t, phrases in type_change_phrases.items():
+            if any(ph in msg_lower for ph in phrases):
                 detected_type = t
                 break
         if detected_type:
