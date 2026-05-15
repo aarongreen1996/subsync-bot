@@ -216,20 +216,34 @@ def run_weekly_summary():
         chase_val = sum(float(l.get("cost_estimate") or 0) for l in chasing)
         sites     = list(set(l.get("site_name", "Unassigned") for l in pending))
 
-        msg = "\n".join([
+        # Calculate this week's earnings across all work types
+        from datetime import date as _d
+        week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%dT00:00:00+00:00").replace("+","%2B")
+        week_all   = db_get(f"site_logs?from_number=eq.{encode(whatsapp)}&created_at=gte.{week_start}")
+        week_earned = 0
+        if isinstance(week_all, list):
+            week_earned = sum(float(l.get("cost_estimate") or 0) for l in week_all
+                              if l.get("type") in ["STANDARD_WORK","TIMESHEET","VARIATION","DAYWORK"])
+
+        earned_line = f"💰 *Earned this week:* £{week_earned:.0f}" if week_earned else ""
+        msg_lines = [
             f"☀️ *Good morning {name}! Weekly summary*",
             "",
-            f"📋 *Pending:* {len(pending)} items · £{pend_val:.2f}",
+        ]
+        if earned_line: msg_lines.append(earned_line)
+        msg_lines += [
+            f"📋 *Pending variations:* {len(pending)} items · £{pend_val:.2f}",
             f"⏰ *Chasing client:* {len(chasing)} items · £{chase_val:.2f}",
             f"✅ *Approved:* {len(approved)} items",
             "",
             f"📍 Active sites: {', '.join(sites[:3])}",
             "",
-            "Ready to generate documents?",
-            "'Generate variations for [Site Name]'",
+            "Reply *how did I do this week* for full breakdown.",
+            "Reply *generate variations for [site]* to claim.",
             "",
             "Have a great week 💪"
-        ])
+        ]
+        msg = "\n".join(msg_lines)
 
         if send_whatsapp(whatsapp, msg):
             mark_sent(company_id, msg_type)
