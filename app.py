@@ -43,7 +43,14 @@ def sb_headers():
 
 def db_get(path):
     r = http_requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers())
-    return r.json()
+    if r.status_code != 200:
+        print(f"[db_get] ERROR {r.status_code} for path={path[:120]} body={r.text[:200]}")
+        return []
+    try:
+        return r.json()
+    except Exception as e:
+        print(f"[db_get] JSON parse error: {e} body={r.text[:100]}")
+        return []
 
 def db_post(path, payload):
     r = http_requests.post(f"{SUPABASE_URL}/rest/v1/{path}", json=payload,
@@ -1724,11 +1731,13 @@ def handle_booking(from_number, msg):
     notes = msg.strip()
 
     # ── Save to bookings table ────────────────────────────────────────────
-    # Store as whatsapp:+44... (raw + sign, not %2B)
+    # Store as whatsapp:+44... — raw + sign, consistent with site_logs
     _wa_store = from_number
     if not _wa_store.startswith("whatsapp:"):
         _wa_store = "whatsapp:" + _wa_store
-    _wa_store = _wa_store.replace("%2B", "+")  # ensure + not %2B
+    _wa_store = _wa_store.replace("%2B", "+")
+    if _wa_store.startswith("whatsapp:") and not _wa_store[9:].startswith("+"):
+        _wa_store = "whatsapp:+" + _wa_store[9:]
     payload = {
         "whatsapp_number": _wa_store,
         "site_name":       site_name or "",
@@ -1764,8 +1773,8 @@ def handle_calendar(from_number, msg):
     now      = datetime.now(timezone.utc)
     SURL     = os.environ.get("SUPABASE_URL","").rstrip("/")
     SKEY     = os.environ.get("SUPABASE_KEY","")
-    wa_raw   = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
-    enc_wa   = wa_raw.replace("+","%2B")
+    # Use encode_number() — same function used for all site_logs queries
+    enc_wa   = encode_number(from_number)
 
     # Determine date range — always start from TODAY so future jobs show up
     if "tomorrow" in msg_l:
@@ -1792,15 +1801,17 @@ def handle_calendar(from_number, msg):
         until = (now + timedelta(days=7)).date()
         label = "Next 7 days"
 
-    # Use eq with %2B-encoded + sign — Supabase decodes it correctly
-    enc_wa = wa_raw.replace("+", "%2B")
-    url = (f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
-           f"&booking_date=gte.{since.isoformat()}&booking_date=lt.{until.isoformat()}"
+    # Use the same db_get pattern that works for all other queries
+    since_s = since.isoformat()
+    until_s = until.isoformat()
+    url = (f"bookings?whatsapp_number=eq.{enc_wa}"
+           f"&booking_date=gte.{since_s}&booking_date=lt.{until_s}"
            f"&status=neq.cancelled&order=booking_date.asc")
-    print(f"[calendar] url={url}")
-    r = http_requests.get(url, headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}"})
-    print(f"[calendar] status={r.status_code} body={r.text[:200]}")
-    bookings = r.json() if r.status_code == 200 else []
+    print(f"[calendar] enc_wa={enc_wa} since={since_s} until={until_s}")
+    bookings = db_get(url)
+    print(f"[calendar] result type={type(bookings)} len={len(bookings) if isinstance(bookings,list) else 'N/A'}")
+    if not isinstance(bookings, list):
+        bookings = []
 
     if not bookings:
         return _reply(f"📅 Nothing booked for {label.lower()} yet.\n\n"
