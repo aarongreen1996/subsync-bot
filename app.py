@@ -100,30 +100,55 @@ def _similarity(a, b):
             prev = temp
     return 1.0 - dp[lb] / max(la, lb)
 
+# Generic address words that should never trigger a site match on their own
+_GENERIC_WORDS = {
+    "road","lane","street","close","avenue","drive","way","place","court",
+    "site","house","flat","plot","block","phase","unit","floor","the",
+    "and","for","with","from","at","in","on","of","a","an",
+}
+
 def match_site(msg, projects):
     if not msg or not projects: return None
     msg_lower = msg.lower().strip()
+
+    # Check 1 — exact full site name in message (strongest)
     for p in projects:
         if p["site_name"].lower() in msg_lower: return p["site_name"]
-    # Reverse check: msg is a substring of a known site name (e.g. "Brookfield" → "Brookfield Site")
+
+    # Check 2 — message is substring of a site name (e.g. "Brookfield" → "Brookfield Site")
     for p in projects:
         if len(msg_lower) >= 5 and msg_lower in p["site_name"].lower(): return p["site_name"]
+
+    # Check 3 — client name match
     for p in projects:
         cn = (p.get("client_name") or "").strip()
-        if cn and len(cn) > 3 and cn.lower() in msg_lower: return p["site_name"]
+        if cn and len(cn) > 5 and cn.lower() in msg_lower: return p["site_name"]
+
+    # Check 4 — ALL meaningful words of site name appear in message
     for p in projects:
-        site_words = [w for w in p["site_name"].lower().split() if len(w) > 3]
-        if site_words and all(w in msg_lower for w in site_words): return p["site_name"]
+        site_words = [w for w in p["site_name"].lower().split()
+                      if len(w) > 3 and w not in _GENERIC_WORDS]
+        if site_words and all(w in msg_lower for w in site_words):
+            return p["site_name"]
+
+    # Check 5 — meaningful word from site name appears in message words
+    # Only if site has a distinctive word (not just "road", "lane" etc)
+    msg_words = set(msg_lower.split())
     for p in projects:
-        site_words = [w for w in p["site_name"].lower().split() if len(w) > 4]
-        msg_words  = set(msg_lower.split())
-        if site_words and any(w in msg_words for w in site_words): return p["site_name"]
-    msg_words = [w for w in msg_lower.split() if len(w) >= 4]
+        site_words = [w for w in p["site_name"].lower().split()
+                      if len(w) > 4 and w not in _GENERIC_WORDS]
+        if site_words and any(w in msg_words for w in site_words):
+            return p["site_name"]
+
+    # Check 6 — fuzzy match on meaningful words only (raise threshold to 0.82)
+    msg_meaningful = [w for w in msg_lower.split()
+                      if len(w) >= 4 and w not in _GENERIC_WORDS]
     for p in projects:
-        site_words = [w for w in p["site_name"].lower().split() if len(w) >= 4]
-        for sw in site_words:
-            for mw in msg_words:
-                if _similarity(sw, mw) >= 0.72: return p["site_name"]
+        site_meaningful = [w for w in p["site_name"].lower().split()
+                           if len(w) >= 4 and w not in _GENERIC_WORDS]
+        for sw in site_meaningful:
+            for mw in msg_meaningful:
+                if _similarity(sw, mw) >= 0.82: return p["site_name"]
     return None
 
 def fuzzy_site_suggestions(msg, projects):
@@ -207,6 +232,20 @@ LINGO_CORRECTIONS = {
     "purchase all that": "purchase order",
     "pounds": "£", "quid": "£",
     "a grand": "£1000", "two grand": "£2000", "half a grand": "£500",
+    # Number words → digits (prevent "eighty" being heard as "8")
+    "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50",
+    "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
+    "hundred": "100", "one hundred": "100", "one fifty": "150",
+    "two fifty": "250", "two hundred": "200", "three hundred": "300",
+    "four hundred": "400", "five hundred": "500",
+    "one twenty": "120", "one thirty": "130", "one forty": "140",
+    "one sixty": "160", "one seventy": "170", "one eighty": "180", "one ninety": "190",
+    "two twenty": "220", "two thirty": "230", "two forty": "240",
+    "two sixty": "260", "two seventy": "270", "two eighty": "280", "two ninety": "290",
+    # Also handle "£ eighty" → "£80"
+    "£ twenty": "£20", "£ thirty": "£30", "£ forty": "£40", "£ fifty": "£50",
+    "£ sixty": "£60", "£ seventy": "£70", "£ eighty": "£80", "£ ninety": "£90",
+    "£ hundred": "£100", "£ one hundred": "£100",
 }
 
 def preprocess_transcription(text):
@@ -354,7 +393,12 @@ CORRECTION_KEYWORDS = ["no not", "not £", "its £", "it's £", "no it's", "no i
                        "not daywork", "not day work", "not a daywork", "change to variation",
                        "change to daywork", "change to material", "should be variation",
                        "should be daywork", "it was variation", "it was a variation",
-                       "variation not", "daywork not", "not variation"]
+                       "variation not", "daywork not", "not variation",
+                       # Cost correction patterns — "no £80", "no it's £80", "no £80 not £8"
+                       "no £", "it was £", "should be £", "its £", "no it was £",
+                       "not £8", "not £9", "not £1", "not £2", "not £3",
+                       "£80 not", "£90 not", "£120 not", "£150 not", "£200 not",
+                       "no mate", "no the"]
 SITE_QUERY_KEYWORDS = ["outstanding on", "update on", "status of",
                        "what's on", "whats on", "how is", "how's",
                        "any updates", "updates on", "progress on", "what have we got on",
