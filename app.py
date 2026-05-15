@@ -466,6 +466,9 @@ def is_pending_command(msg):   return any(kw in msg.lower() for kw in PENDING_KE
 def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
 def is_site_query(msg):        return any(kw in msg.lower() for kw in SITE_QUERY_KEYWORDS)
 def is_date_query(msg):        return any(kw in msg.lower() for kw in DATE_QUERY_KEYWORDS)
+def is_financial_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in FINANCIAL_KEYWORDS)
 def is_correction(msg):        return any(kw in msg.lower() for kw in CORRECTION_KEYWORDS)
 def is_set_rate_command(msg):
     m = msg.lower()
@@ -994,6 +997,9 @@ def webhook():
     # Handle item selection response (numbers after generate prompt)
     if from_number in generate_sessions:
         return handle_generate_selection(from_number, incoming_msg)
+    if is_financial_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_financial_summary(from_number, incoming_msg)
     if is_status_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_status_update(from_number, incoming_msg)
@@ -1583,6 +1589,120 @@ def admin_page(): return _html('admin.html')
 
 
 # ── Summary command ───────────────────────────────────────────────────────────
+def handle_financial_summary(from_number, msg):
+    """Show earnings breakdown for this week, last week, or this month."""
+    import re as _re
+    now     = datetime.now(timezone.utc)
+    msg_l   = msg.lower()
+    encoded = encode_number(from_number)
+
+    # Determine period
+    if "last week" in msg_l:
+        # Mon–Sun of last week
+        days_since_mon = now.weekday() + 7
+        since = (now - timedelta(days=days_since_mon)).replace(hour=0,minute=0,second=0,microsecond=0)
+        until = (since + timedelta(days=7))
+        label = "Last week"
+    elif "month" in msg_l:
+        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        until = None
+        label = now.strftime("%B")
+    else:
+        # Default — this week Mon→now
+        days_since_mon = now.weekday()
+        since = (now - timedelta(days=days_since_mon)).replace(hour=0,minute=0,second=0,microsecond=0)
+        until = None
+        label = "This week"
+
+    since_str = since.isoformat().replace("+", "%2B")
+    query = f"site_logs?from_number=eq.{encoded}&created_at=gte.{since_str}&order=created_at.desc"
+    if until:
+        until_str = until.isoformat().replace("+", "%2B")
+        query += f"&created_at=lt.{until_str}"
+
+    logs = db_get(query)
+    if not isinstance(logs, list) or not logs:
+        return _reply(f"📊 No work logged for {label.lower()} yet.")
+
+    # Bucket by type
+    def earn(types):
+        return sum(float(l.get("cost_estimate") or 0)
+                   for l in logs if l.get("type") in types)
+    def count(types):
+        return sum(1 for l in logs if l.get("type") in types)
+
+    standard_earn = earn(["STANDARD_WORK", "TIMESHEET"])
+    variation_earn = earn(["VARIATION"])
+    daywork_earn   = earn(["DAYWORK"])
+    material_earn  = earn(["MATERIAL_ORDER"])
+    total_earn     = standard_earn + variation_earn + daywork_earn
+
+    standard_ct = count(["STANDARD_WORK", "TIMESHEET"])
+    variation_ct = count(["VARIATION"])
+    daywork_ct   = count(["DAYWORK"])
+
+    # Best site
+    site_totals = {}
+    for l in logs:
+        s = l.get("site_name") or "Unassigned"
+        site_totals[s] = site_totals.get(s, 0) + float(l.get("cost_estimate") or 0)
+    best_site = max(site_totals, key=site_totals.get) if site_totals else None
+    best_site_val = site_totals.get(best_site, 0) if best_site else 0
+
+    # Days worked (unique days with any log)
+    days_worked = len(set(
+        l.get("created_at","")[:10] for l in logs if l.get("created_at")
+    ))
+
+    # Compare to previous period for weekly
+    prev_total = None
+    if "week" in label.lower():
+        prev_since = since - timedelta(days=7)
+        prev_until = since
+        ps = prev_since.isoformat().replace("+","%2B")
+        pu = prev_until.isoformat().replace("+","%2B")
+        prev_logs = db_get(f"site_logs?from_number=eq.{encoded}&created_at=gte.{ps}&created_at=lt.{pu}")
+        if isinstance(prev_logs, list):
+            prev_total = sum(float(l.get("cost_estimate") or 0) for l in prev_logs
+                             if l.get("type") in ["STANDARD_WORK","TIMESHEET","VARIATION","DAYWORK"])
+
+    # Build message
+    lines = [f"📊 *{label} — Earnings Summary*", ""]
+
+    if standard_earn:
+        lines.append(f"🔨 Standard work: *£{standard_earn:.0f}* ({standard_ct} job{'s' if standard_ct!=1 else ''})")
+    if variation_earn:
+        lines.append(f"📋 Variations:    *£{variation_earn:.0f}* ({variation_ct} claim{'s' if variation_ct!=1 else ''})")
+    if daywork_earn:
+        lines.append(f"📝 Dayworks:      *£{daywork_earn:.0f}* ({daywork_ct} item{'s' if daywork_ct!=1 else ''})")
+    if material_earn:
+        lines.append(f"📦 Materials:     *£{material_earn:.0f}*")
+
+    lines.append("─────────────────────")
+    lines.append(f"💰 Total earned:  *£{total_earn:.0f}*")
+
+    if prev_total is not None and prev_total > 0:
+        diff = total_earn - prev_total
+        pct  = (diff / prev_total) * 100
+        arrow = "📈" if diff >= 0 else "📉"
+        sign  = "+" if diff >= 0 else ""
+        lines.append(f"{arrow} vs last week: £{prev_total:.0f} ({sign}{pct:.0f}%)")
+
+    if best_site and best_site_val > 0:
+        lines.append(f"\n🏆 Best site: {best_site} (£{best_site_val:.0f})")
+
+    lines.append(f"📅 Days logged: {days_worked}")
+
+    # Pending variations not yet claimed
+    pending_vars = [l for l in logs if l.get("type") in ["VARIATION","DAYWORK"]
+                    and l.get("status") in ["pending","chasing"]]
+    if pending_vars:
+        pv = sum(float(l.get("cost_estimate") or 0) for l in pending_vars)
+        lines.append(f"\n⚠️ Pending claims: £{pv:.0f} not yet approved")
+
+    return _reply("\n".join(lines))
+
+
 def handle_summary(from_number):
     try:
         encoded   = encode_number(from_number)
