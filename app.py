@@ -1716,8 +1716,14 @@ def handle_booking(from_number, msg):
     notes = msg.strip()
 
     # ── Save to bookings table ────────────────────────────────────────────
+    # Always store in consistent whatsapp:+44... format
+    _wa_store = from_number
+    if not _wa_store.startswith("whatsapp:"):
+        _wa_store = "whatsapp:" + _wa_store
+    if "%2B" in _wa_store:
+        _wa_store = _wa_store.replace("%2B", "+")
     payload = {
-        "whatsapp_number": from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number,
+        "whatsapp_number": _wa_store,
         "site_name":       site_name or "",
         "booking_date":    booking_date.isoformat(),
         "notes":           notes,
@@ -1779,13 +1785,18 @@ def handle_calendar(from_number, msg):
         until = (now + timedelta(days=7)).date()
         label = "Next 7 days"
 
+    # Use ilike with wildcard on number to handle +/0 format differences
+    # Extract just the digits portion so +44... and whatsapp:+44... both match
+    digits = wa_raw.replace("whatsapp:","").replace("+","").replace(" ","")
     r = http_requests.get(
-        f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
+        f"{SURL}/rest/v1/bookings?whatsapp_number=like.*{digits}*"
         f"&booking_date=gte.{since.isoformat()}&booking_date=lt.{until.isoformat()}"
         f"&status=neq.cancelled&order=booking_date.asc",
         headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}"}
     )
+    print(f"[calendar] digits={digits} since={since} until={until} status={r.status_code}")
     bookings = r.json() if r.status_code == 200 else []
+    print(f"[calendar] found {len(bookings)} bookings")
 
     if not bookings:
         return _reply(f"📅 Nothing booked for {label.lower()} yet.\n\n"
@@ -1826,7 +1837,11 @@ def handle_reminder(from_number, msg):
     msg_l = msg.lower()
     SURL  = os.environ.get("SUPABASE_URL","").rstrip("/")
     SKEY  = os.environ.get("SUPABASE_KEY","")
-    wa_raw = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
+    wa_raw = from_number
+    if not wa_raw.startswith("whatsapp:"):
+        wa_raw = "whatsapp:" + wa_raw
+    if "%2B" in wa_raw:
+        wa_raw = wa_raw.replace("%2B", "+")
 
     # ── Extract time/day ──────────────────────────────────────────────────
     send_at = None
