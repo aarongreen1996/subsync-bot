@@ -466,9 +466,46 @@ def is_pending_command(msg):   return any(kw in msg.lower() for kw in PENDING_KE
 def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
 def is_site_query(msg):        return any(kw in msg.lower() for kw in SITE_QUERY_KEYWORDS)
 def is_date_query(msg):        return any(kw in msg.lower() for kw in DATE_QUERY_KEYWORDS)
+FINANCIAL_KEYWORDS = [
+    "how did i do", "how have i done", "how am i doing",
+    "how much have i earned", "how much did i earn", "what have i earned",
+    "what did i earn", "earnings this week", "earnings this month",
+    "what have i made", "what did i make", "how much have i made",
+    "financial summary", "money this week", "money this month",
+    "performance this week", "performance this month",
+    "weekly earnings", "monthly earnings", "revenue this", "income this",
+]
+BOOKING_KEYWORDS = [
+    "book in", "book me in", "book for", "schedule me",
+    "put in for", "got a job on", "lined up for", "booked for",
+    "pencil in", "put down for", "add to diary", "add to calendar",
+    "new job for", "new booking",
+]
+CALENDAR_KEYWORDS = [
+    "what have i got", "what's on", "whats on", "what do i have on",
+    "what am i doing", "my schedule", "my diary", "my week",
+    "what's booked", "whats booked", "upcoming jobs", "upcoming work",
+    "what jobs have i got", "show my bookings", "show calendar",
+    "what's coming up", "whats coming up", "coming up this week",
+    "what's next", "whats next",
+]
+REMINDER_KEYWORDS = [
+    "remind me", "set a reminder", "reminder to",
+    "don't let me forget", "alert me", "notify me before",
+    "remember to pick up", "remind me to order", "remind me to get",
+]
 def is_financial_command(msg):
     m = msg.lower()
     return any(kw in m for kw in FINANCIAL_KEYWORDS)
+def is_booking_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in BOOKING_KEYWORDS)
+def is_calendar_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in CALENDAR_KEYWORDS)
+def is_reminder_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in REMINDER_KEYWORDS)
 def is_correction(msg):        return any(kw in msg.lower() for kw in CORRECTION_KEYWORDS)
 def is_set_rate_command(msg):
     m = msg.lower()
@@ -1000,6 +1037,15 @@ def webhook():
     if is_financial_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_financial_summary(from_number, incoming_msg)
+    if is_calendar_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_calendar(from_number, incoming_msg)
+    if is_booking_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_booking(from_number, incoming_msg)
+    if is_reminder_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_reminder(from_number, incoming_msg)
     if is_status_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_status_update(from_number, incoming_msg)
@@ -1589,6 +1635,255 @@ def admin_page(): return _html('admin.html')
 
 
 # ── Summary command ───────────────────────────────────────────────────────────
+
+# ── BOOKING HANDLER ───────────────────────────────────────────────────────────
+def handle_booking(from_number, msg):
+    """Parse a booking request and save to the bookings table."""
+    import re as _re
+    from datetime import date as _date
+    now      = datetime.now(timezone.utc)
+    msg_l    = msg.lower()
+    projects = get_projects(from_number)
+    encoded  = encode_number(from_number)
+    SURL     = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY     = os.environ.get("SUPABASE_KEY","")
+
+    # ── Extract date ──────────────────────────────────────────────────────
+    booking_date = None
+    date_label   = ""
+
+    day_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,
+               "friday":4,"saturday":5,"sunday":6}
+    for day_name, day_idx in day_map.items():
+        if day_name in msg_l:
+            days_ahead = (day_idx - now.weekday()) % 7
+            if days_ahead == 0: days_ahead = 7
+            booking_date = (now + timedelta(days=days_ahead)).date()
+            date_label   = day_name.capitalize()
+            break
+
+    if not booking_date:
+        # Try "tomorrow"
+        if "tomorrow" in msg_l:
+            booking_date = (now + timedelta(days=1)).date()
+            date_label   = "Tomorrow"
+        elif "today" in msg_l:
+            booking_date = now.date()
+            date_label   = "Today"
+        else:
+            # Try DD/MM or DD May style
+            m = _re.search(r"(\d{1,2})[/\-](\d{1,2})", msg)
+            if m:
+                try:
+                    booking_date = _date(now.year, int(m.group(2)), int(m.group(1)))
+                    date_label   = booking_date.strftime("%d %b")
+                except ValueError:
+                    pass
+
+    if not booking_date:
+        return _reply("When is this job? Just say a day like *Monday* or *tomorrow*.")
+
+    # ── Extract duration ──────────────────────────────────────────────────
+    duration = "full day"
+    for kw in ["half day","morning only","afternoon only","morning","afternoon","evening"]:
+        if kw in msg_l:
+            duration = kw
+            break
+    for h in _re.findall(r"(\d+(?:\.\d+)?)\s*hour", msg_l):
+        duration = f"{h} hours"
+        break
+
+    # ── Extract site ──────────────────────────────────────────────────────
+    site_name = match_site(msg, projects)
+    if not site_name:
+        # Guess from message — take last capitalised phrase
+        caps = _re.findall(r"[A-Z][a-z]+(?: [A-Z][a-z]+)*", msg)
+        if caps: site_name = caps[-1]
+
+    # ── Extract notes (anything after the date) ───────────────────────────
+    notes = msg.strip()
+
+    # ── Save to bookings table ────────────────────────────────────────────
+    payload = {
+        "whatsapp_number": from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number,
+        "site_name":       site_name or "",
+        "booking_date":    booking_date.isoformat(),
+        "notes":           notes,
+        "duration":        duration,
+        "status":          "booked",
+        "reminder_sent":   False,
+    }
+    r = http_requests.post(
+        f"{SURL}/rest/v1/bookings", json=payload,
+        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
+                 "Content-Type":"application/json","Prefer":"return=minimal"}
+    )
+    if r.status_code not in (200,201,204):
+        return _reply(f"⚠️ Couldn't save booking. Try again.")
+
+    site_str = f" at *{site_name}*" if site_name else ""
+    return _reply("\n".join([
+        f"📅 *Booked — {date_label}{site_str}*",
+        f"Duration: {duration.capitalize()}",
+        "",
+        "I'll remind you the evening before and morning of the job 🔔",
+        "",
+        f"Reply *what have I got on this week* to see your full schedule."
+    ]))
+
+
+# ── CALENDAR HANDLER ──────────────────────────────────────────────────────────
+def handle_calendar(from_number, msg):
+    """Show bookings for this week, next week, tomorrow, or today."""
+    msg_l    = msg.lower()
+    now      = datetime.now(timezone.utc)
+    SURL     = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY     = os.environ.get("SUPABASE_KEY","")
+    wa_raw   = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
+    enc_wa   = wa_raw.replace("+","%2B")
+
+    # Determine date range
+    if "tomorrow" in msg_l:
+        since = (now + timedelta(days=1)).date()
+        until = since + timedelta(days=1)
+        label = "Tomorrow"
+    elif "today" in msg_l:
+        since = now.date()
+        until = since + timedelta(days=1)
+        label = "Today"
+    elif "next week" in msg_l:
+        days_until_mon = (7 - now.weekday()) % 7 or 7
+        since = (now + timedelta(days=days_until_mon)).date()
+        until = since + timedelta(days=7)
+        label = "Next week"
+    elif "this month" in msg_l or "month" in msg_l:
+        since = now.date().replace(day=1)
+        # last day of month
+        if now.month == 12:
+            until = since.replace(year=now.year+1, month=1)
+        else:
+            until = since.replace(month=now.month+1)
+        label = now.strftime("%B")
+    else:
+        # Default: this week Mon→Sun
+        days_since_mon = now.weekday()
+        since = (now - timedelta(days=days_since_mon)).date()
+        until = since + timedelta(days=7)
+        label = "This week"
+
+    r = http_requests.get(
+        f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
+        f"&booking_date=gte.{since.isoformat()}&booking_date=lt.{until.isoformat()}"
+        f"&status=neq.cancelled&order=booking_date.asc",
+        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}"}
+    )
+    bookings = r.json() if r.status_code == 200 else []
+
+    if not bookings:
+        return _reply(f"📅 Nothing booked for {label.lower()} yet.\n\n"
+                      "To add a job: *Book Kings Road for Monday, full day tiling*")
+
+    day_names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    lines = [f"📅 *{label} — Your Schedule*", ""]
+
+    for b in bookings:
+        from datetime import date as _d
+        try:
+            bd    = _d.fromisoformat(b["booking_date"])
+            dname = day_names[bd.weekday()]
+            dstr  = bd.strftime(f"{dname} %d %b")
+        except Exception:
+            dstr = b.get("booking_date","?")
+
+        site     = b.get("site_name","") or "TBC"
+        duration = b.get("duration","full day").capitalize()
+        status   = b.get("status","booked")
+        status_icon = "✅" if status == "completed" else "📍"
+        lines.append(f"{status_icon} *{dstr}* — {site}")
+        lines.append(f"   {duration}")
+        notes = b.get("notes","")
+        if notes and len(notes) < 60:
+            lines.append(f"   _{notes}_")
+        lines.append("")
+
+    lines.append("To book a new job: *Book [site] for [day]*")
+    return _reply("\n".join(lines))
+
+
+# ── REMINDER HANDLER ──────────────────────────────────────────────────────────
+def handle_reminder(from_number, msg):
+    """Set a one-off reminder."""
+    import re as _re
+    now   = datetime.now(timezone.utc)
+    msg_l = msg.lower()
+    SURL  = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY  = os.environ.get("SUPABASE_KEY","")
+    wa_raw = from_number if from_number.startswith("whatsapp:") else "whatsapp:" + from_number
+
+    # ── Extract time/day ──────────────────────────────────────────────────
+    send_at = None
+
+    if "tomorrow morning" in msg_l or "tomorrow" in msg_l:
+        send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+    elif "tonight" in msg_l or "this evening" in msg_l:
+        send_at = now.replace(hour=18, minute=0, second=0, microsecond=0)
+        if send_at < now: send_at += timedelta(days=1)
+    elif "sunday" in msg_l:
+        days = (6 - now.weekday()) % 7 or 7
+        send_at = (now + timedelta(days=days)).replace(hour=18, minute=0, second=0, microsecond=0)
+    else:
+        day_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5}
+        for day, idx in day_map.items():
+            if day in msg_l:
+                days_ahead = (idx - now.weekday()) % 7 or 7
+                send_at = (now + timedelta(days=days_ahead)).replace(hour=7,minute=0,second=0,microsecond=0)
+                break
+    # Time extraction: "at 8am", "at 5pm"
+    tm = _re.search(r"at (\d{1,2})(?::(\d{2}))? ?(am|pm)", msg_l)
+    if tm and send_at:
+        h = int(tm.group(1))
+        mins = int(tm.group(2) or 0)
+        if tm.group(3) == "pm" and h != 12: h += 12
+        if tm.group(3) == "am" and h == 12: h = 0
+        send_at = send_at.replace(hour=h, minute=mins)
+
+    if not send_at:
+        send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+
+    # ── Extract reminder message ──────────────────────────────────────────
+    # Strip trigger words to get the actual reminder content
+    reminder_text = msg
+    for kw in ["remind me to","remind me","reminder to","don't forget to",
+                "remember to","alert me to","notify me to"]:
+        reminder_text = reminder_text.lower().replace(kw, "").strip()
+    reminder_text = reminder_text.strip(" .,!?")
+    if not reminder_text:
+        reminder_text = msg
+
+    # Capitalise first letter
+    if reminder_text:
+        reminder_text = reminder_text[0].upper() + reminder_text[1:]
+
+    full_msg = f"🔔 *Reminder:* {reminder_text}"
+
+    # ── Save to reminders table ───────────────────────────────────────────
+    r = http_requests.post(
+        f"{SURL}/rest/v1/reminders", json={
+            "whatsapp_number": wa_raw,
+            "message":         full_msg,
+            "send_at":         send_at.isoformat(),
+            "sent":            False,
+        },
+        headers={"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
+                 "Content-Type":"application/json","Prefer":"return=minimal"}
+    )
+    if r.status_code not in (200,201,204):
+        return _reply("⚠️ Couldn't save reminder. Try again.")
+
+    time_str = send_at.strftime("%A %d %b at %I:%M %p").replace(" 0"," ")
+    return _reply(f"✅ *Reminder set*\n\n🔔 {reminder_text}\n\n📅 I'll message you {time_str}")
+
+
 def handle_financial_summary(from_number, msg):
     """Show earnings breakdown for this week, last week, or this month."""
     import re as _re
