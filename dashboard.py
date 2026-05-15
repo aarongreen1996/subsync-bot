@@ -352,6 +352,136 @@ def send_email():
 
 
 # ── Manual log entry ──────────────────────────────────────────────────────────
+@dashboard_bp.route("/api/calendar")
+def get_calendar():
+    if not check_auth(): return jsonify({"error":"Unauthorized"}), 401
+    number  = request.args.get("number","")
+    encoded = normalise(number)
+    month   = request.args.get("month", datetime.now().strftime("%Y-%m"))
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        from datetime import date
+        since = date(y, m, 1).isoformat()
+        if m == 12: until = date(y+1, 1, 1).isoformat()
+        else:       until = date(y, m+1, 1).isoformat()
+    except Exception:
+        from datetime import date, timedelta
+        since = date.today().isoformat()
+        until = (date.today() + timedelta(days=30)).isoformat()
+
+    bookings = db_get(f"bookings?whatsapp_number=eq.{encoded}&booking_date=gte.{since}&booking_date=lt.{until}&order=booking_date.asc")
+    logs     = db_get(f"site_logs?from_number=eq.{encoded}&created_at=gte.{since}T00:00:00&created_at=lt.{until}T00:00:00&order=created_at.asc")
+    return jsonify({"bookings": bookings if isinstance(bookings,list) else [],
+                    "logs":     logs     if isinstance(logs,list)     else []})
+
+
+@dashboard_bp.route("/api/calendar/booking", methods=["POST"])
+def add_booking():
+    if not check_auth(): return jsonify({"error":"Unauthorized"}), 401
+    number  = request.args.get("number","")
+    # Store with raw + sign
+    wa_raw  = number.replace("%2B","+")
+    if not wa_raw.startswith("whatsapp:"): wa_raw = "whatsapp:+" + wa_raw.lstrip("+")
+    data    = request.json or {}
+    payload = {
+        "whatsapp_number": wa_raw,
+        "site_name":       data.get("site_name",""),
+        "booking_date":    data.get("booking_date",""),
+        "notes":           data.get("notes",""),
+        "duration":        data.get("duration","full day"),
+        "status":          "booked",
+        "reminder_sent":   False,
+    }
+    r = http_requests.post(f"{SUPABASE_URL}/rest/v1/bookings", json=payload,
+        headers={**sb_headers(),"Prefer":"return=minimal"})
+    return jsonify({"ok": r.status_code in (200,201,204)})
+
+
+@dashboard_bp.route("/api/calendar/booking/<int:booking_id>", methods=["PATCH","DELETE"])
+def update_booking(booking_id):
+    if not check_auth(): return jsonify({"error":"Unauthorized"}), 401
+    if request.method == "DELETE":
+        db_patch(f"bookings?id=eq.{booking_id}", {"status":"cancelled"})
+        return jsonify({"ok":True})
+    data = request.json or {}
+    allowed = ["site_name","booking_date","notes","duration","status"]
+    update  = {k:v for k,v in data.items() if k in allowed}
+    if update: db_patch(f"bookings?id=eq.{booking_id}", update)
+    return jsonify({"ok":True})
+
+
+@dashboard_bp.route("/api/earnings")
+def get_earnings():
+    if not check_auth(): return jsonify({"error":"Unauthorized"}), 401
+    number  = request.args.get("number","")
+    encoded = normalise(number)
+    period  = request.args.get("period","week")  # week, month, year
+    from datetime import date, timedelta
+
+    today = date.today()
+    if period == "week":
+        since = (today - timedelta(days=today.weekday())).isoformat()
+        label = "This week"
+    elif period == "last_week":
+        mon   = today - timedelta(days=today.weekday()+7)
+        since = mon.isoformat()
+        until = (mon + timedelta(days=7)).isoformat()
+        label = "Last week"
+    elif period == "month":
+        since = today.replace(day=1).isoformat()
+        label = today.strftime("%B")
+    elif period == "year":
+        since = today.replace(month=1,day=1).isoformat()
+        label = str(today.year)
+    else:
+        since = (today - timedelta(days=30)).isoformat()
+        label = "Last 30 days"
+
+    until = locals().get("until", None)
+    query = f"site_logs?from_number=eq.{encoded}&created_at=gte.{since}T00:00:00"
+    if until: query += f"&created_at=lt.{until}T00:00:00"
+    query += "&order=created_at.asc"
+    logs = db_get(query)
+    if not isinstance(logs,list): logs=[]
+
+    def bucket(types):
+        return {"count": sum(1 for l in logs if l.get("type") in types),
+                "total": sum(float(l.get("cost_estimate") or 0) for l in logs if l.get("type") in types)}
+
+    # Group by day for chart
+    by_day = {}
+    for l in logs:
+        day = (l.get("created_at") or "")[:10]
+        if not day: continue
+        t = l.get("type","")
+        amt = float(l.get("cost_estimate") or 0)
+        if day not in by_day: by_day[day] = {"standard":0,"variation":0,"daywork":0,"material":0}
+        if t in ("STANDARD_WORK","TIMESHEET"): by_day[day]["standard"] += amt
+        elif t == "VARIATION":   by_day[day]["variation"] += amt
+        elif t == "DAYWORK":     by_day[day]["daywork"]   += amt
+        elif t == "MATERIAL_ORDER": by_day[day]["material"] += amt
+
+    # Group by site
+    by_site = {}
+    for l in logs:
+        s   = l.get("site_name") or "Unassigned"
+        amt = float(l.get("cost_estimate") or 0)
+        by_site[s] = by_site.get(s,0) + amt
+
+    return jsonify({
+        "label":    label,
+        "standard": bucket(["STANDARD_WORK","TIMESHEET"]),
+        "variation":bucket(["VARIATION"]),
+        "daywork":  bucket(["DAYWORK"]),
+        "material": bucket(["MATERIAL_ORDER"]),
+        "total":    sum(float(l.get("cost_estimate") or 0) for l in logs
+                        if l.get("type") in ["STANDARD_WORK","TIMESHEET","VARIATION","DAYWORK"]),
+        "by_day":   by_day,
+        "by_site":  by_site,
+        "log_count":len(logs),
+    })
+
+
 @dashboard_bp.route("/api/log/manual", methods=["POST"])
 def add_manual_log():
     if not check_auth():
