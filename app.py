@@ -301,14 +301,31 @@ Respond ONLY with valid JSON. No explanation, no markdown.
 
 # ── Keywords ──────────────────────────────────────────────────────────────────
 GENERATE_KEYWORDS  = [
-    "generate variations", "generate dayworks", "generate purchase", "generate pos",
-    "generate report", "generate orders", "generate order", "generate materials",
-    "create invoice", "make invoice", "send invoice",
+    # generate + doc type
+    "generate variation", "generate daywork", "generate day work", "generate purchase",
+    "generate pos", "generate report", "generate orders", "generate order",
+    "generate materials", "generate material", "generate pdf", "generate document",
+    "generate doc", "generate sheet",
+    # create / make
+    "create invoice", "make invoice", "send invoice", "create pdf", "make pdf",
+    "create variation", "make variation", "create daywork", "make daywork",
+    "create purchase", "make purchase",
+    # get / show / send me
+    "get pdf", "get variations", "get dayworks", "get variation", "get daywork",
+    "show pdf", "show me pdf", "show me the pdf", "show me a pdf", "show me my pdf",
+    "show variation", "show daywork",
+    "send pdf", "send me pdf", "send variation", "send daywork",
+    "send me variation", "send me daywork",
+    # raise / do / produce
+    "raise a variation", "raise variation", "raise daywork", "raise invoice",
+    "do a variation", "do the dayworks", "do a daywork",
+    "produce pdf", "produce variation", "produce daywork",
+    # natural phrasing
     "variation report", "daywork report", "material report", "produce report",
-    "get variations", "send variations", "create pdf", "make pdf", "get pdf",
-    "make a variation", "do a variation", "raise a variation", "raise variation",
-    "create daywork sheet", "do the dayworks",
+    "make a variation", "create daywork sheet",
     "purchase orders for", "purchase order for", "pos for",
+    # short
+    "pdf for", "vo for", "ds for", "po for",
 ]
 HELP_KEYWORDS      = ["help", "guide", "how do i", "what can you do", "commands",
                       "what do i say", "how does this work", "confused", "stuck"]
@@ -348,7 +365,19 @@ DATE_QUERY_KEYWORDS = ["show me yesterday", "show me last week", "show me this w
                        "what was logged yesterday", "logs from yesterday", "logs from last week",
                        "from yesterday", "from last week"]
 
-def is_generate_command(msg):  return any(kw in msg.lower() for kw in GENERATE_KEYWORDS)
+def is_generate_command(msg):
+    msg_lower = msg.lower().strip()
+    # Direct keyword match
+    if any(kw in msg_lower for kw in GENERATE_KEYWORDS):
+        return True
+    # Pattern: "generate [anything] for [site]" — catch all generate + for combos
+    import re as _re
+    if _re.search(r"^generate\s+\w", msg_lower):
+        return True
+    # Pattern: "send/show/get me [a] pdf/document/variation/daywork"
+    if _re.search(r"(send|show|get)\s+(me\s+)?(a\s+)?(pdf|document|variation|daywork|day\s*work|vo|ds|po)", msg_lower):
+        return True
+    return False
 def is_help_command(msg):
     m = msg.strip().lower()
     exact = ["help", "guide", "commands", "what can you do", "how does this work",
