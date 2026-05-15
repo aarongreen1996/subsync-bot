@@ -57,38 +57,102 @@ def create_magic_token(whatsapp_number: str) -> str:
 @auth_bp.route("/login")
 def magic_login():
     """
-    Validate a magic link token and redirect to the dashboard
-    with the phone number as ?autologin= so the JS can auto-log in.
+    Validate token and serve dashboard HTML directly with autologin data
+    injected — no redirect, so the token is never lost.
     """
+    import os as _os
     token = request.args.get("token", "").strip()
-    if not token:
-        return redirect(f"{APP_URL}/dashboard")
 
-    # Look up the token
+    # If no token just serve the dashboard normally
+    if not token:
+        path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dashboard.html")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read(), 200, {"Content-Type": "text/html"}
+
+    # Look up token
     rows = db_get(f"auth_tokens?token=eq.{token}&used=eq.false&limit=1")
 
     if not isinstance(rows, list) or not rows:
-        # Token not found or already used — redirect to dashboard login screen
-        return redirect(f"{APP_URL}/dashboard?expired=1")
+        # Expired/invalid — serve dashboard with error flag injected
+        path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dashboard.html")
+        with open(path, "r", encoding="utf-8") as f:
+            html = f.read()
+        html = html.replace("</head>", "<script>window.__magicError='expired';</script></head>", 1)
+        return html, 200, {"Content-Type": "text/html"}
 
     row = rows[0]
 
     # Check expiry
     try:
-        expires_at = datetime.fromisoformat(
-            row.get("expires_at", "").replace("Z", "+00:00")
-        )
+        expires_at = datetime.fromisoformat(row.get("expires_at","").replace("Z","+00:00"))
         if datetime.now(timezone.utc) > expires_at:
-            return redirect(f"{APP_URL}/dashboard?expired=1")
+            path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dashboard.html")
+            with open(path, "r", encoding="utf-8") as f:
+                html = f.read()
+            html = html.replace("</head>","<script>window.__magicError='expired';</script></head>",1)
+            return html, 200, {"Content-Type": "text/html"}
     except Exception:
         pass
 
-    # Don't mark as used yet — let the dashboard JS call /api/validate-token
-    # which marks it used after confirming. This handles redirects that
-    # WhatsApp's browser follows before the user sees the page.
+    # Mark as used
+    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
 
-    # Pass token to dashboard so JS can validate it client-side
-    return redirect(f"{APP_URL}/dashboard?token={token}")
+    # Get the phone number
+    wa     = row.get("whatsapp", "")
+    number = wa.replace("whatsapp:", "")  # e.g. +447711816351
+
+    # Serve dashboard HTML with autologin data injected into <head>
+    # This runs BEFORE any JS so the number is available immediately
+    path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dashboard.html")
+    with open(path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    inject = f"<script>window.__magicNumber='{number}';</script>"
+    html   = html.replace("</head>", inject + "</head>", 1)
+
+    return html, 200, {"Content-Type": "text/html"}
+
+
+@auth_bp.route("/api/auth/login", methods=["POST"])
+def api_login():
+    """Username/password login for dashboard."""
+    data     = request.json or {}
+    login    = data.get("login","").strip()
+    password = data.get("password","").strip()
+
+    if not login or not password:
+        return jsonify({"ok":False,"error":"Fill in both fields."})
+
+    # Try username first, then mobile number
+    SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY = os.environ.get("SUPABASE_KEY","")
+    heads = {"apikey":SKEY,"Authorization":f"Bearer {SKEY}"}
+
+    # Search by username
+    r = http_requests.get(f"{SURL}/rest/v1/companies?username=eq.{login}&limit=1", headers=heads)
+    rows = r.json() if r.status_code == 200 else []
+
+    # If not found, try by phone/whatsapp
+    if not rows:
+        # Normalise number
+        n = login.replace(" ","").replace("-","")
+        if n.startswith("07") and len(n)==11: n = "+44"+n[1:]
+        if not n.startswith("+"): n = "+"+n
+        wa = ("whatsapp:"+n).replace("+","%2B")
+        r2 = http_requests.get(f"{SURL}/rest/v1/companies?whatsapp_number=eq.{wa}&limit=1", headers=heads)
+        rows = r2.json() if r2.status_code == 200 else []
+
+    if not rows:
+        return jsonify({"ok":False,"error":"Account not found."})
+
+    company = rows[0]
+    stored_pw = company.get("dashboard_password","")
+
+    if stored_pw != password:
+        return jsonify({"ok":False,"error":"Wrong username or password."})
+
+    wa = company.get("whatsapp_number","")
+    return jsonify({"ok":True,"whatsapp":wa,"session_token":password})
 
 
 @auth_bp.route("/api/magic-link", methods=["POST"])
