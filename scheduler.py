@@ -457,6 +457,155 @@ def run_month_end_summary():
             mark_sent(company_id, msg_type)
 
 
+# ── BOOKING REMINDERS ─────────────────────────────────────────────────────────
+def run_booking_reminders():
+    """Send evening reminder for next day bookings, morning reminder for today."""
+    now  = datetime.now(timezone.utc)
+    SURL = SUPABASE_URL
+    SKEY = SUPABASE_KEY
+    headers = {"apikey":SKEY,"Authorization":f"Bearer {SKEY}","Content-Type":"application/json"}
+
+    tomorrow = (now + timedelta(days=1)).date().isoformat()
+    today    = now.date().isoformat()
+
+    # Evening reminder (6–8pm) for tomorrow's bookings
+    if 18 <= now.hour <= 20:
+        r = http_requests.get(
+            f"{SURL}/rest/v1/bookings?booking_date=eq.{tomorrow}"
+            f"&status=eq.booked&reminder_sent=eq.false",
+            headers=headers
+        )
+        bookings = r.json() if r.status_code == 200 else []
+        for b in bookings:
+            wa  = b.get("whatsapp_number","")
+            site = b.get("site_name","") or "site"
+            dur  = b.get("duration","full day")
+            msg = "\n".join([
+                f"🔔 *Tomorrow reminder*",
+                "",
+                f"📍 *{site}* — {dur.capitalize()}",
+                "",
+                "Don't forget to log your work tomorrow — any variations, dayworks or materials.",
+                "Just send a voice note from site 🎤"
+            ])
+            send_whatsapp(wa, msg)
+            http_requests.patch(
+                f"{SURL}/rest/v1/bookings?id=eq.{b['id']}",
+                json={"reminder_sent": True}, headers={**headers,"Prefer":"return=minimal"}
+            )
+
+    # Morning brief (6:30–8am) — today's bookings + summary
+    if 6 <= now.hour <= 8:
+        companies = db_get("companies?order=created_at.asc")
+        if not isinstance(companies, list): return
+        today_str = now.strftime("%Y-%m-%d")
+
+        for company in companies:
+            whatsapp   = company.get("whatsapp_number","")
+            company_id = company.get("id")
+            name       = company.get("company_name","")
+            if not whatsapp: continue
+
+            msg_type = f"morning_brief_{today_str}"
+            if has_sent(company_id, msg_type): continue
+
+            enc = whatsapp.replace("+","%2B")
+
+            # Today's bookings
+            r = http_requests.get(
+                f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc}"
+                f"&booking_date=eq.{today}&status=eq.booked",
+                headers=headers
+            )
+            todays = r.json() if r.status_code == 200 else []
+
+            # Upcoming this week
+            mon = (now - timedelta(days=now.weekday())).date().isoformat()
+            sun = (now + timedelta(days=6-now.weekday())).date().isoformat()
+            r2  = http_requests.get(
+                f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc}"
+                f"&booking_date=gte.{mon}&booking_date=lte.{sun}"
+                f"&status=eq.booked&order=booking_date.asc",
+                headers=headers
+            )
+            week_bookings = r2.json() if r2.status_code == 200 else []
+
+            # Outstanding variations
+            logs    = get_logs(whatsapp)
+            pending = [l for l in logs if l.get("status") == "pending"
+                       and l.get("type") in ["VARIATION","DAYWORK"]]
+            pend_val = sum(float(l.get("cost_estimate") or 0) for l in pending)
+
+            # Only send if there's something to say
+            if not todays and not pending: continue
+
+            lines = [f"☀️ *Good morning {name}!*", ""]
+
+            if todays:
+                lines.append("📅 *Today:*")
+                for b in todays:
+                    site = b.get("site_name","TBC")
+                    dur  = b.get("duration","full day").capitalize()
+                    lines.append(f"  • {site} — {dur}")
+                lines.append("")
+
+            if len(week_bookings) > len(todays):
+                lines.append("📆 *Coming up:*")
+                day_names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+                from datetime import date as _d
+                for b in week_bookings[:4]:
+                    try:
+                        bd   = _d.fromisoformat(b["booking_date"])
+                        if bd.isoformat() == today: continue
+                        dstr = day_names[bd.weekday()] + " " + bd.strftime("%d %b")
+                    except Exception:
+                        dstr = b.get("booking_date","?")
+                    site = b.get("site_name","TBC")
+                    dur  = b.get("duration","full day").capitalize()
+                    lines.append(f"  • {dstr} — {site} ({dur})")
+                lines.append("")
+
+            if pending and pend_val > 0:
+                lines.append(f"⚠️ *Outstanding:* {len(pending)} variation{'s' if len(pending)!=1 else ''} · £{pend_val:.0f} unclaimed")
+                lines.append("")
+
+            lines.append("Have a productive day 💪")
+
+            if send_whatsapp(whatsapp, "\n".join(lines)):
+                mark_sent(company_id, msg_type)
+
+
+# ── USER REMINDERS ────────────────────────────────────────────────────────────
+def run_user_reminders():
+    """Fire any due user-set reminders."""
+    now  = datetime.now(timezone.utc)
+    SURL = SUPABASE_URL
+    SKEY = SUPABASE_KEY
+    headers = {"apikey":SKEY,"Authorization":f"Bearer {SKEY}","Content-Type":"application/json"}
+
+    # Get all unsent reminders due in the past hour
+    since = (now - timedelta(hours=1)).isoformat().replace("+","%2B")
+    until = now.isoformat().replace("+","%2B")
+
+    r = http_requests.get(
+        f"{SURL}/rest/v1/reminders?sent=eq.false"
+        f"&send_at=gte.{since}&send_at=lte.{until}",
+        headers=headers
+    )
+    reminders = r.json() if r.status_code == 200 else []
+
+    for reminder in reminders:
+        wa  = reminder.get("whatsapp_number","")
+        msg = reminder.get("message","")
+        if not wa or not msg: continue
+        if send_whatsapp(wa, msg):
+            http_requests.patch(
+                f"{SURL}/rest/v1/reminders?id=eq.{reminder['id']}",
+                json={"sent": True},
+                headers={**headers,"Prefer":"return=minimal"}
+            )
+
+
 # ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 def scheduler_loop():
     print("Scheduler started ✅")
@@ -470,6 +619,8 @@ def scheduler_loop():
             run_high_value_alerts()
             run_friday_nudge()
             run_month_end_summary()
+            run_booking_reminders()
+            run_user_reminders()
         except Exception as e:
             print(f"[Scheduler] Error: {e}")
         time.sleep(3600)
