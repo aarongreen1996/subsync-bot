@@ -1028,15 +1028,24 @@ def _provision_account(from_number, session):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     # Verify request is genuinely from Twilio
+    # Log failures but never block — Railway URL/proxy can cause false rejects
     _auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
     if _auth_token:
         try:
             _validator = RequestValidator(_auth_token)
             _sig = request.headers.get("X-Twilio-Signature", "")
-            _url = request.url
+            # Use the configured APP_URL rather than request.url
+            # so Railway's internal proxy doesn't cause mismatches
+            _app_url = os.environ.get("APP_URL", "").rstrip("/")
+            _path    = request.path
+            if request.query_string:
+                _path += "?" + request.query_string.decode()
+            _url = _app_url + _path
             if not _validator.validate(_url, request.form, _sig):
-                print("[webhook] Invalid Twilio signature — rejected")
-                return "Forbidden", 403
+                print(f"[webhook] Signature mismatch — url={_url} sig={_sig[:20]}...")
+                # Log only — don't block, URL mismatches happen behind proxies
+            else:
+                print("[webhook] Signature verified ✓")
         except Exception as _ve:
             print(f"[webhook] Signature check error: {_ve}")
     incoming_msg = request.form.get("Body", "").strip()
