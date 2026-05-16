@@ -708,10 +708,24 @@ function renderPOs(){
       html+='<div class="supplier-total">£'+info.total.toFixed(2)+'</div>';
       html+='<button class="btn-ghost-amber" onclick="renameSupplier(\''+supEsc+'\')" title="Rename this supplier across all logs">✏️ Rename</button>';
       html+='</div></div>';
-      html+='<div class="tbl-wrap"><table style="font-size:12px"><thead><tr><th>Description</th><th>Site</th><th>Cost</th><th>Date</th></tr></thead><tbody>';
+      html+='<div class="tbl-wrap"><table style="font-size:12px"><thead><tr><th>Description</th><th>Site</th><th>Cost</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>';
       info.logs.forEach(function(l){
         var date=l.created_at?new Date(l.created_at).toLocaleDateString('en-GB'):'—';
-        html+='<tr><td class="cell-pad">'+(l.description||l.materials||'—')+'</td><td class="cell-pad">'+(l.site_name||'—')+'</td><td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td><td class="cell-pad" style="color:var(--faint)">'+date+'</td></tr>';
+        var st=l.status||'pending';
+        var stColor={pending:'#888',sent:'var(--amber)',approved:'var(--green)',cancelled:'#e55',chasing:'#5af'}[st]||'#888';
+        var stLabel={pending:'Pending',sent:'Ordered',approved:'Received',cancelled:'Cancelled',chasing:'Chasing'}[st]||st;
+        html+='<tr>';
+        html+='<td class="cell-pad">'+(l.description||l.materials||'—')+'</td>';
+        html+='<td class="cell-pad">'+(l.site_name||'—')+'</td>';
+        html+='<td class="cell-pad">'+(l.cost_estimate?'£'+parseFloat(l.cost_estimate).toFixed(2):'—')+'</td>';
+        html+='<td class="cell-pad"><span style="font-size:10px;font-weight:700;color:'+stColor+';text-transform:uppercase;letter-spacing:1px">'+stLabel+'</span></td>';
+        html+='<td class="cell-pad" style="color:var(--faint)">'+date+'</td>';
+        html+='<td class="cell-pad"><select style="font-size:10px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text)" onchange="changeStatus('+l.id+',this.value)">';
+        ['pending','sent','approved','chasing','cancelled'].forEach(function(s){
+          html+='<option value="'+s+'" '+(st===s?'selected':'')+'>'+(s==='sent'?'Ordered':s.charAt(0).toUpperCase()+s.slice(1))+'</option>';
+        });
+        html+='</select></td>';
+        html+='</tr>';
       });
       html+='</tbody></table></div></div>';
     });
@@ -1009,6 +1023,7 @@ function buildCalendarHTML(){
   html += '<button class="btn-ghost" onclick="calPrev()">← Prev</button>';
   html += '<button class="btn-amber btn" onclick="calToday()" style="padding:7px 14px;font-size:12px">Today</button>';
   html += '<button class="btn-ghost" onclick="calNext()">Next →</button>';
+  html += '<button class="btn-ghost" onclick="renderCalendar()" style="padding:7px 14px;font-size:12px">↻ Refresh</button>';
   html += '<button class="btn-amber btn" onclick="showAddBooking()" style="padding:7px 14px;font-size:12px">+ Book Job</button>';
   html += '</div></div>';
 
