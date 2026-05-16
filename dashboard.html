@@ -734,6 +734,21 @@ function renderPOs(){
 }
 
 // ── Supplier rename ────────────────────────────────────────────────────────────
+async function changeStatus(logId, newStatus){
+  try{
+    var r=await api('/api/log/status',{method:'PATCH',body:JSON.stringify({id:logId,status:newStatus,from_number:S.num})});
+    var d=await r.json();
+    if(d.ok){
+      // Update cache
+      if(S.data&&S.data.all_logs){
+        var log=S.data.all_logs.find(function(l){return l.id===logId;});
+        if(log) log.status=newStatus;
+      }
+      showToast('Status updated ✓','success');
+    } else showToast('Failed to update status','error');
+  } catch(e){ showToast('Error: '+e.message,'error'); }
+}
+
 async function renameSupplier(oldName){
   var newName=prompt('Rename supplier "'+oldName+'" to:', oldName);
   if(!newName||!newName.trim()||newName.trim()===oldName) return;
