@@ -326,11 +326,14 @@ If the user says ANY of these words → needs_clarification = FALSE, no exceptio
 When in doubt, default to DAYWORK with needs_clarification=false. DO NOT ask.
 
 === SITE NAME RULES ===
-- Extract any location/project name mentioned: "Danes Park", "Brookfield Site", "the flat job", "Manor House"
-- Accept ANY site name the user mentions, even if informal
-- NEVER use a person's name as site (Tim, Dave etc)
-- NEVER use a company name as site
-- If genuinely no location mentioned at all → return null (we will ask once)
+- Extract ONLY clear location/address/project names: "Danes Park", "Brookfield Site", "Kings Road", "15 Mill Road"
+- NEVER use a person's name as a site — names like "Marie Felton", "Dave Smith", "John" are PEOPLE not sites
+- NEVER use material names as sites — "re-felting", "copper pipe", "ridge tiles" are MATERIALS not sites
+- NEVER use a company name as a site
+- If the site name is ambiguous or unclear → return null (we will ask the user once)
+- Voice notes often mishear things — "Marie Felton" likely means "re-felting", not a site name
+- UNKNOWN type: ONLY use if message is completely unrelated to construction work (weather, greetings)
+  Any message that could be work-related → use DAYWORK or STANDARD_WORK instead
 
 === CLASSIFICATION TYPES ===
 
@@ -1116,6 +1119,10 @@ def webhook():
         except Exception as e:
             import traceback; print(f"reminder error: {traceback.format_exc()}")
             return _reply("⚠️ Couldn't save reminder. Try again.")
+    # "cancel" alone = escape pending state, not cancel site logs
+    if incoming_msg.strip().lower() in ["cancel", "abort", "stop", "clear", "reset"] and from_number in pending_selections:
+        del pending_selections[from_number]
+        return _reply("No problem — cancelled. Send your next message whenever you're ready 👍")
     if is_status_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_status_update(from_number, incoming_msg)
@@ -1343,9 +1350,11 @@ def handle_generate(from_number, msg):
                           "Items must be logged (pending or chasing) to appear in a document.")
 
         # If only 1 item — generate immediately, no need to ask
+        # Ensure site_label uses actual site name, not "All Sites"
+        actual_label = site_name or (logs[0].get("site_name") if logs else site_label) or site_label
         if len(logs) == 1:
             return _do_generate_pdf(from_number, company, logs, log_type,
-                                    doc_title, prefix, site_name, site_label)
+                                    doc_title, prefix, site_name or actual_label, actual_label)
 
         # Multiple items — show numbered list and ask which to include
         lines = [f"📋 *{site_label} — {len(logs)} item(s) available:*", ""]
@@ -1518,7 +1527,13 @@ def handle_log(from_number, incoming_msg):
                       "alright", "sorted", "cool", "brilliant", "brill", "ta",
                       "hello", "hi", "hey", "hiya", "morning", "afternoon", "evening",
                       "hello there", "hi there", "hey there", "how are you", "howdy",
-                      "sup", "whats up", "yo", "helo", "hii"]
+                      "sup", "whats up", "yo", "helo", "hii",
+                      "nice one", "legend", "sound", "lovely", "mint", "class",
+                      "safe", "lol", "haha", "ha", "😂", "👍", "🙏", "✅",
+                      "no worries", "no problem", "np", "👌", "🤙",
+                      "what", "when", "who", "where", "why", "how",
+                      "what's the weather", "whats the weather", "weather",
+                      "not sure", "dunno", "maybe", "perhaps"]
         msg_clean = processed_msg.strip().lower()
         if msg_clean in SHORT_CHAT or len(processed_msg.strip()) < 4:
             greetings = ["hello","hi","hey","hiya","morning","afternoon","evening","howdy","yo","sup"]
@@ -1932,27 +1947,50 @@ def handle_reminder(from_number, msg):
     # ── Extract time/day ──────────────────────────────────────────────────
     send_at = None
 
-    if "tomorrow morning" in msg_l or "tomorrow" in msg_l:
+    if "tomorrow morning" in msg_l:
+        send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+    elif "tomorrow" in msg_l:
         send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
     elif "tonight" in msg_l or "this evening" in msg_l:
         send_at = now.replace(hour=18, minute=0, second=0, microsecond=0)
         if send_at < now: send_at += timedelta(days=1)
+    elif "today" in msg_l and "morning" not in msg_l:
+        # "today" reminder — if before noon send at 4pm same day, else 7am tomorrow
+        if now.hour < 12:
+            send_at = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        else:
+            send_at = (now + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
     elif "sunday" in msg_l:
         days = (6 - now.weekday()) % 7 or 7
         send_at = (now + timedelta(days=days)).replace(hour=18, minute=0, second=0, microsecond=0)
     else:
-        day_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5,"sunday":6}
-        for day, idx in day_map.items():
+        WEEKDAYS = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5,"sunday":6}
+        for day, d_idx in WEEKDAYS.items():
             if day in msg_l:
-                days_ahead = (idx - now.weekday()) % 7 or 7
-                # "before Monday" → Sunday evening; "before [day]" → day before at 6pm
+                days_ahead = (d_idx - now.weekday()) % 7 or 7
+                is_order   = any(kw in msg_l for kw in ["order","collect","pick up","buy","get","material","fetch"])
                 if f"before {day}" in msg_l:
-                    days_ahead = max(days_ahead - 1, 1)
-                    send_at = (now + timedelta(days=days_ahead)).replace(
-                        hour=18, minute=0, second=0, microsecond=0)
+                    # "before Monday" for orders = Friday 4pm (last working day before)
+                    # "before Monday" for other = Sunday 6pm
+                    days_before = max(days_ahead - 1, 1)
+                    target_day  = (now + timedelta(days=days_before)).date()
+                    if is_order:
+                        # Roll back to nearest Friday if target is Sat/Sun
+                        wd = target_day.weekday()
+                        if wd == 5: target_day = target_day - timedelta(days=1)   # Sat → Fri
+                        elif wd == 6: target_day = target_day - timedelta(days=2) # Sun → Fri
+                        send_at = datetime.combine(target_day, datetime.min.time().replace(hour=16)).replace(tzinfo=timezone.utc)
+                    else:
+                        send_at = (now + timedelta(days=days_before)).replace(hour=18,minute=0,second=0,microsecond=0)
+                elif is_order:
+                    # Orders: next working day AM (skip weekend)
+                    target_day = (now + timedelta(days=days_ahead)).date()
+                    wd = target_day.weekday()
+                    if wd == 5: target_day += timedelta(days=2)  # Sat → Mon
+                    elif wd == 6: target_day += timedelta(days=1) # Sun → Mon
+                    send_at = datetime.combine(target_day, datetime.min.time().replace(hour=7)).replace(tzinfo=timezone.utc)
                 else:
-                    send_at = (now + timedelta(days=days_ahead)).replace(
-                        hour=7, minute=0, second=0, microsecond=0)
+                    send_at = (now + timedelta(days=days_ahead)).replace(hour=7,minute=0,second=0,microsecond=0)
                 break
     # Time extraction: "at 8am", "at 5pm"
     tm = _re.search(r"at (\d{1,2})(?::(\d{2}))? ?(am|pm)", msg_l)
