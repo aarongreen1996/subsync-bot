@@ -1133,7 +1133,21 @@ def webhook():
         return handle_pending_summary(from_number)
 
     if from_number in pending_selections:
-        return handle_pending(from_number, incoming_msg)
+        # Allow explicit commands to escape pending state naturally
+        _escape_commands = (
+            is_reminder_command(incoming_msg) or
+            is_calendar_command(incoming_msg) or
+            is_booking_command(incoming_msg) or
+            is_financial_command(incoming_msg) or
+            is_generate_command(incoming_msg) or
+            is_date_query(incoming_msg) or
+            is_dashboard_command(incoming_msg)
+        )
+        if not _escape_commands:
+            return handle_pending(from_number, incoming_msg)
+        else:
+            # Clean up pending state and let command through
+            del pending_selections[from_number]
 
     _msg_lower = incoming_msg.lower()
     _log_hints = ["hours", "hour", "mins", "materials", "quid", "£", "standard day",
@@ -1236,13 +1250,21 @@ def handle_pending(from_number, msg):
             idx = int(msg.strip()) - 1
             if 0 <= idx < len(projects):
                 site_name = projects[idx]["site_name"]
+        
+        # Auto-create new site if typed name not found — no confirmation needed
+        _auto_create = True
 
         if not site_name:
-            site_name = match_site(msg, projects)
-
-        if not site_name:
-            site_name = msg.strip().title()
-            create_site(from_number, site_name)
+            # Exact match only when user is explicitly typing a site name
+            typed = msg.strip()
+            for p in projects:
+                if p["site_name"].lower() == typed.lower():
+                    site_name = p["site_name"]
+                    break
+            # If no exact match, create as new site (user typed it deliberately)
+            if not site_name:
+                site_name = typed.title()
+                create_site(from_number, site_name)
 
         del pending_selections[from_number]
 
@@ -1628,6 +1650,20 @@ def handle_log(from_number, incoming_msg):
         # ── Single item ───────────────────────────────────────────────────────
         if isinstance(parsed, dict):
             data                = parsed
+
+            # UNKNOWN type — don't log, give helpful nudge
+            if data.get("type") == "UNKNOWN":
+                return _reply("\n".join([
+                    "👷 Not sure what to do with that one.",
+                    "",
+                    "Try something like:",
+                    "  *'Variation at Kings Road — extra sockets, 2hrs £80'*",
+                    "  *'Boarded loft at The Oaklands, 3 hours'*",
+                    "  *'Need to order copper fittings from Screwfix'*",
+                    "",
+                    "Or reply *help* for the full guide 👷"
+                ]))
+
             insert_data         = build_insert(from_number, incoming_msg, data, projects)
             needs_clarification = data.get("needs_clarification", False)
             confirmation        = data.get("confirmation_message", "✅ Got it!")
