@@ -450,10 +450,19 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
     story.append(Spacer(1, 10*mm))
 
     # Signatures
+    # Use requested_by from first log if available
+    authorised_by = ""
+    for l in logs:
+        rb = l.get("requested_by") or l.get("worker_name") or ""
+        if rb and rb.strip():
+            authorised_by = rb.strip()
+            break
+
+    auth_line = authorised_by if authorised_by else "___________________________"
     sig_data = [
-        ["Authorised by:", "", "Client signature:", ""],
+        ["Authorised / instructed by:", auth_line, "Client signature:", ""],
         [" ", "", " ", ""],
-        ["_______________________", "", "_______________________", ""],
+        ["Approved by (client):", "___________________________", "Date:", ""],
         ["Name / Date", "", "Name / Date", ""],
     ]
     sig_tbl = Table(sig_data, colWidths=[60*mm, 10*mm, 60*mm, 45*mm])
