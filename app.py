@@ -192,9 +192,11 @@ CONSTRUCTION_VOCAB = (
     "Daywork: boarded loft, 8 hours, £280. Materials: lead flashing from Screwfix, £80. "
     "Re-bedded 5 loose ridge tiles, 1 hour labour, £20 materials. "
     "Extra radiator bedroom 3, two hours £80. Cleared gutters while scaffold up, 1.5 hours. "
+    "Generate variations for Kings Road. Generate dayworks for The Oaklands. "
+    "Approve Kings Road. Summary. Pending. How did I do this week. "
     "Sites: Kings Road, The Oaklands, 15 Mill Road, Danes Park, Brookfield Site. "
     "Suppliers: Screwfix, Toolstation, Travis Perkins, BSS, CEF, Jewson, Wickes. "
-    "Terms: variation, daywork, VO, PO, day rate, snagging, retention, first fix, second fix. "
+    "Terms: variation, daywork, VO, PO, day rate, snagging, first fix, second fix. "
     "Fifty pounds, eighty pounds, one twenty, two fifty. Half hour, one hour, two hours."
 )
 
@@ -1464,7 +1466,10 @@ def _do_generate_pdf(from_number, company, logs, log_type, doc_title, prefix, si
         pdf_url   = upload_pdf(pdf_bytes, filename)
 
         for log in logs:
-            db_patch(f"site_logs?id=eq.{log['id']}", {"status": "sent"})
+            # Only mark as sent if currently pending or chasing
+            if log.get("status") in ("pending", "chasing"):
+                new_status = "sent"
+                db_patch(f"site_logs?id=eq.{log['id']}", {"status": new_status})
 
         resp = MessagingResponse()
         m = resp.message(
