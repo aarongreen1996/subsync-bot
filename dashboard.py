@@ -482,6 +482,19 @@ def get_earnings():
     })
 
 
+@dashboard_bp.route("/api/log/status", methods=["PATCH"])
+def update_log_status():
+    if not check_auth(): return jsonify({"error":"Unauthorized"}), 401
+    data    = request.json or {}
+    log_id  = data.get("id")
+    status  = data.get("status","")
+    allowed = ["pending","approved","chasing","sent","cancelled"]
+    if not log_id or status not in allowed:
+        return jsonify({"error":"Invalid request"}), 400
+    db_patch(f"site_logs?id=eq.{log_id}", {"status": status})
+    return jsonify({"ok": True})
+
+
 @dashboard_bp.route("/api/log/manual", methods=["POST"])
 def add_manual_log():
     if not check_auth():
