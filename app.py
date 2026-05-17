@@ -509,6 +509,20 @@ REMINDER_KEYWORDS = [
     "don't let me forget", "alert me", "notify me before",
     "remember to pick up", "remind me to order", "remind me to get",
 ]
+COMPLETION_KEYWORDS = [
+    "done at", "finished at", "completed at", "wrapped up at", "all done at",
+    "done on", "finished on", "job done at", "job complete", "job finished",
+    "all finished at", "wrapped at", "knocked off at", "done for the day at",
+    "that's us done at", "thats us done at", "finished for the day at",
+    "done today at", "finished today at", "done with", "finished with",
+]
+COSTING_KEYWORDS = [
+    "how much did", "how much have i made on", "how much did i make on",
+    "what did i make on", "what have i made on", "total for",
+    "how much is", "earnings for", "how profitable", "job total",
+    "how much on", "what's the total for", "whats the total for",
+    "cost for", "value of", "how much from",
+]
 def is_financial_command(msg):
     m = msg.lower()
     return any(kw in m for kw in FINANCIAL_KEYWORDS)
@@ -527,6 +541,12 @@ def is_calendar_command(msg):
 def is_reminder_command(msg):
     m = msg.lower()
     return any(kw in m for kw in REMINDER_KEYWORDS)
+def is_completion_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in COMPLETION_KEYWORDS)
+def is_costing_command(msg):
+    m = msg.lower()
+    return any(kw in m for kw in COSTING_KEYWORDS)
 def is_correction(msg):        return any(kw in msg.lower() for kw in CORRECTION_KEYWORDS)
 def is_set_rate_command(msg):
     m = msg.lower()
@@ -1097,6 +1117,18 @@ def webhook():
     # Handle item selection response (numbers after generate prompt)
     if from_number in generate_sessions:
         return handle_generate_selection(from_number, incoming_msg)
+    if is_completion_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        try: return handle_job_completion(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"completion error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't process that. Try again.")
+    if is_costing_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        try: return handle_job_costing(from_number, incoming_msg)
+        except Exception as e:
+            import traceback; print(f"costing error: {traceback.format_exc()}")
+            return _reply("⚠️ Couldn't load that. Try again.")
     if is_financial_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         try: return handle_financial_summary(from_number, incoming_msg)
@@ -1141,7 +1173,9 @@ def webhook():
             is_financial_command(incoming_msg) or
             is_generate_command(incoming_msg) or
             is_date_query(incoming_msg) or
-            is_dashboard_command(incoming_msg)
+            is_dashboard_command(incoming_msg) or
+            is_completion_command(incoming_msg) or
+            is_costing_command(incoming_msg)
         )
         if not _escape_commands:
             return handle_pending(from_number, incoming_msg)
@@ -2083,6 +2117,196 @@ def handle_reminder(from_number, msg):
 
     time_str = send_at.strftime("%A %d %b at %I:%M %p").replace(" 0"," ")
     return _reply(f"✅ *Reminder set*\n\n🔔 {reminder_text}\n\n📅 I'll message you {time_str}")
+
+
+
+# ── JOB COMPLETION ────────────────────────────────────────────────────────────
+def handle_job_completion(from_number, msg):
+    """Mark a booking/site as complete and prompt for any outstanding logs."""
+    projects = get_projects(from_number)
+    site_name = match_site(msg, projects)
+    encoded   = encode_number(from_number)
+    now       = datetime.now(timezone.utc)
+
+    if not site_name:
+        # Try to extract site from completion phrase
+        # e.g. "done at Kings Road" — strip trigger words
+        import re as _re
+        stripped = _re.sub(
+            r"^(done at|finished at|completed at|wrapped up at|all done at|"
+            r"job done at|job complete at|all finished at|done today at|"
+            r"finished today at|done for the day at|knocked off at|"
+            r"wrapped at|done with|finished with)\s*",
+            "", msg.strip(), flags=_re.IGNORECASE
+        ).strip().rstrip(".,!?")
+        if stripped:
+            site_name = match_site(stripped, projects) or stripped.title()
+
+    if not site_name:
+        return _reply("\n".join([
+            "Which site are you done at?",
+            "e.g. *Done at Kings Road*"
+        ]))
+
+    # Mark any booked jobs for today at this site as complete
+    wa_raw = from_number.replace("whatsapp:","").replace("+","")
+    SURL = os.environ.get("SUPABASE_URL","").rstrip("/")
+    SKEY = os.environ.get("SUPABASE_KEY","")
+    headers = {"apikey":SKEY,"Authorization":f"Bearer {SKEY}",
+               "Content-Type":"application/json","Prefer":"return=minimal"}
+    enc_wa = ("whatsapp:+" + wa_raw).replace("+","%2B")
+    today  = now.date().isoformat()
+
+    http_requests.patch(
+        f"{SURL}/rest/v1/bookings?whatsapp_number=eq.{enc_wa}"
+        f"&booking_date=eq.{today}&status=eq.booked"
+        f"&site_name=ilike.{encode_text(site_name)}",
+        json={"status":"completed"}, headers=headers
+    )
+
+    # Get today's logs for this site
+    today_logs = db_get(
+        f"site_logs?from_number=eq.{encoded}"
+        f"&site_name=ilike.{encode_text(site_name)}"
+        f"&created_at=gte.{today}T00:00:00"
+        f"&order=created_at.desc"
+    )
+    today_logs = [l for l in today_logs if isinstance(l, dict)] if isinstance(today_logs, list) else []
+
+    # Stats for today at this site
+    std_count = sum(1 for l in today_logs if l.get("type") in ("STANDARD_WORK","TIMESHEET","DAYWORK"))
+    var_count  = sum(1 for l in today_logs if l.get("type") == "VARIATION")
+    mat_count  = sum(1 for l in today_logs if l.get("type") == "MATERIAL_ORDER")
+    total_val  = sum(float(l.get("cost_estimate") or 0) for l in today_logs
+                     if l.get("type") in ("STANDARD_WORK","TIMESHEET","DAYWORK","VARIATION"))
+
+    # Pending variations not yet generated
+    pending_vars = db_get(
+        f"site_logs?from_number=eq.{encoded}"
+        f"&site_name=ilike.{encode_text(site_name)}"
+        f"&status=in.(pending,chasing)"
+        f"&type=in.(VARIATION,DAYWORK)"
+    )
+    pend_count = len(pending_vars) if isinstance(pending_vars, list) else 0
+    pend_val   = sum(float(l.get("cost_estimate") or 0) for l in pending_vars
+                     if isinstance(pending_vars, list) and isinstance(l, dict))
+
+    lines = [f"✅ *{site_name} — wrapped up for today*", ""]
+
+    if today_logs:
+        lines.append("*Today's summary:*")
+        if std_count: lines.append(f"  🔨 {std_count} job(s) logged")
+        if var_count: lines.append(f"  📋 {var_count} variation(s)")
+        if mat_count: lines.append(f"  📦 {mat_count} material order(s)")
+        if total_val: lines.append(f"  💰 £{total_val:.0f} earned today")
+        lines.append("")
+    else:
+        lines.append("Nothing logged today at this site yet.")
+        lines.append("")
+
+    if pend_count:
+        lines.append(f"⚠️ *{pend_count} pending item(s) · £{pend_val:.0f}* not yet sent")
+        lines.append(f"Reply *generate variations for {site_name}* to send a claim now.")
+    else:
+        lines.append("✅ All variations sent — nothing outstanding.")
+
+    lines += [
+        "",
+        "Anything else to log before you go?",
+        "Voice note it now or reply *done* to finish 👷"
+    ]
+
+    return _reply("\n".join(lines))
+
+
+# ── JOB COSTING ───────────────────────────────────────────────────────────────
+def handle_job_costing(from_number, msg):
+    """Show total earnings breakdown for a specific site."""
+    projects  = get_projects(from_number)
+    site_name = match_site(msg, projects)
+    encoded   = encode_number(from_number)
+
+    if not site_name:
+        # Try stripping costing phrases
+        import re as _re
+        stripped = _re.sub(
+            r"^(how much did i make on|how much have i made on|what did i make on|"
+            r"what have i made on|total for|how much is|earnings for|how much on|"
+            r"how much did|what's the total for|whats the total for|"
+            r"how profitable is|cost for|value of|how much from)\s*",
+            "", msg.strip(), flags=_re.IGNORECASE
+        ).strip().rstrip("?,.")
+        if stripped:
+            site_name = match_site(stripped, projects)
+
+    if not site_name:
+        return _reply("Which site? e.g. *How much did Kings Road make me?*")
+
+    # Get ALL logs for this site ever
+    logs = db_get(
+        f"site_logs?from_number=eq.{encoded}"
+        f"&site_name=ilike.{encode_text(site_name)}"
+        f"&order=created_at.asc"
+    )
+    if not isinstance(logs, list) or not logs:
+        return _reply(f"No logs found for *{site_name}* yet.")
+
+    def bucket(types, statuses=None):
+        items = [l for l in logs if l.get("type") in types]
+        if statuses:
+            items = [l for l in items if l.get("status") in statuses]
+        total = sum(float(l.get("cost_estimate") or 0) for l in items)
+        return len(items), total
+
+    std_ct,  std_val  = bucket(["STANDARD_WORK","TIMESHEET"])
+    var_ct,  var_val  = bucket(["VARIATION"])
+    day_ct,  day_val  = bucket(["DAYWORK"])
+    mat_ct,  mat_val  = bucket(["MATERIAL_ORDER"])
+    pend_ct, pend_val = bucket(["VARIATION","DAYWORK"], ["pending","chasing"])
+    appr_ct, appr_val = bucket(["VARIATION","DAYWORK"], ["approved","sent"])
+
+    total_earned = std_val + var_val + day_val
+    total_billed = var_val + day_val
+
+    # Date range
+    dates = [l.get("created_at","")[:10] for l in logs if l.get("created_at")]
+    date_from = min(dates) if dates else "—"
+    date_to   = max(dates) if dates else "—"
+    try:
+        from datetime import date as _d
+        df = _d.fromisoformat(date_from)
+        dt = _d.fromisoformat(date_to)
+        date_range = f"{df.strftime('%d %b')} – {dt.strftime('%d %b %Y')}"
+    except Exception:
+        date_range = f"{date_from} – {date_to}"
+
+    lines = [
+        f"📊 *{site_name} — Job Total*",
+        f"_{date_range}_",
+        "",
+    ]
+
+    if std_val: lines.append(f"🔨 Standard work:  *£{std_val:.0f}* ({std_ct} job{'s' if std_ct!=1 else ''})")
+    if day_val: lines.append(f"📝 Dayworks:       *£{day_val:.0f}* ({day_ct} item{'s' if day_ct!=1 else ''})")
+    if var_val: lines.append(f"📋 Variations:     *£{var_val:.0f}* ({var_ct} claim{'s' if var_ct!=1 else ''})")
+    if mat_val: lines.append(f"📦 Materials ord:  *£{mat_val:.0f}* ({mat_ct} order{'s' if mat_ct!=1 else ''})")
+
+    lines.append("─────────────────────")
+    lines.append(f"💰 *Total earned:   £{total_earned:.0f}*")
+
+    if appr_val:
+        lines.append(f"✅ Approved:        £{appr_val:.0f}")
+    if pend_val:
+        lines.append(f"⚠️  Still pending:   £{pend_val:.0f} not yet approved")
+        lines.append(f"   → *generate variations for {site_name}* to chase")
+
+    days_on_site = len(set(dates))
+    if days_on_site:
+        lines.append(f"\n📅 Days on site: {days_on_site}")
+        if total_earned and days_on_site:
+            lines.append(f"📈 Avg per day:  £{total_earned/days_on_site:.0f}")
+
+    return _reply("\n".join(lines))
 
 
 def handle_financial_summary(from_number, msg):
