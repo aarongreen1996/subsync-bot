@@ -74,7 +74,7 @@ h1 .accent{color:var(--amber);}
 /* ── MARQUEE ── */
 .marquee-wrap{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px 0;overflow:hidden;background:var(--bg2);}
 .marquee-track{display:flex;animation:marquee 35s linear infinite;width:max-content;}
-.marquee-item{display:flex;align-items:center;gap:10px;padding:0 28px;font-size:10px;font-weight:700;color:rgba(240,237,232,0.25);white-space:nowrap;border-right:1px solid var(--border);letter-spacing:2.5px;text-transform:uppercase;}
+.marquee-item{display:flex;align-items:center;gap:10px;padding:0 28px;font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;border-right:1px solid var(--border);letter-spacing:2.5px;text-transform:uppercase;}
 .marquee-dot{width:4px;height:4px;background:var(--amber);border-radius:50%;flex-shrink:0;}
 @keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
 
@@ -200,7 +200,6 @@ footer{background:#0c0d10;border-top:1px solid rgba(255,255,255,0.07);padding:32
   </a>
   <div class="nav-right">
     <a href="#how-it-works" class="nav-link">How it works</a>
-    <a href="#how-it-works" class="nav-link">How it works</a>
     <a href="#faq" class="nav-link">FAQ</a>
     <a href="#pricing" class="nav-link">Pricing</a>
     <button onclick="toggleTheme()" id="theme-toggle" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .2s;" title="Toggle theme">☀️</button>
@@ -234,33 +233,126 @@ footer{background:#0c0d10;border-top:1px solid rgba(255,255,255,0.07);padding:32
 
   <!-- Chat mockup -->
   <div class="hero-visual">
-    <div class="chat-mockup">
-      <div class="chat-header">
-        <div class="chat-av">N2</div>
-        <div>
-          <div class="chat-name">Note2Quote</div>
-          <div class="chat-status">● Online</div>
+    <div class="chat-mockup" style="padding:0;overflow:hidden;border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+
+      <!-- Status bar -->
+      <div style="background:#1a1a1a;padding:6px 14px 4px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:10px;font-weight:600;color:#fff;font-family:Manrope,sans-serif;">3:16</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <svg width="12" height="10" viewBox="0 0 24 18" fill="white" opacity="0.8"><path d="M1 1l22 16M5.5 4.5C3 6.3 1.5 8.5 1.5 11c0 1.5.5 3 1.5 4.2M18.5 4.5C21 6.3 22.5 8.5 22.5 11c0 1.5-.5 3-1.5 4.2M9 8C7.7 9 7 10.4 7 12c0 1 .4 2 1 2.7M15 8c1.3 1 2 2.4 2 4 0 1-.4 2-1 2.7M12 16a1 1 0 100-2 1 1 0 000 2z"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="white" opacity="0.8"><rect x="2" y="7" width="4" height="10" rx="1"/><rect x="8" y="4" width="4" height="13" rx="1"/><rect x="14" y="1" width="4" height="16" rx="1"/><rect x="20" y="5" width="4" height="12" rx="1"/></svg>
+          <svg width="22" height="11" viewBox="0 0 48 22" fill="none"><rect x="1" y="1" width="42" height="20" rx="4" stroke="white" stroke-opacity="0.6" stroke-width="2"/><rect x="44" y="7" width="4" height="8" rx="2" fill="white" opacity="0.6"/><rect x="3" y="3" width="32" height="16" rx="2" fill="white" opacity="0.8"/></svg>
         </div>
       </div>
-      <div class="msgs">
-        <div class="msg-out">
-          <div class="bubble bubble-out">🎤 Site manager asked me to move the boiler flue at Brookfield Site, 2 hours, £120</div>
-          <div class="bubble-time">2:34 PM ✓✓</div>
+
+      <!-- WhatsApp header — dark, matches real app -->
+      <div style="background:#202c33;padding:8px 12px;display:flex;align-items:center;gap:10px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#aebac1"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        <!-- Real Note2Quote avatar — amber waveform logo -->
+        <div style="width:38px;height:38px;border-radius:50%;background:#0c0d10;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="14" width="3" height="8" rx="1.5" fill="#f59e0b"/>
+            <rect x="7" y="10" width="3" height="14" rx="1.5" fill="#f59e0b"/>
+            <rect x="12" y="7" width="3" height="18" rx="1.5" fill="#f59e0b"/>
+            <rect x="17" y="11" width="3" height="12" rx="1.5" fill="#f59e0b"/>
+            <rect x="22" y="15" width="3" height="6" rx="1.5" fill="#f59e0b"/>
+          </svg>
         </div>
-        <div class="msg-in">
-          <div class="bubble bubble-in">✅ <strong>Variation logged</strong> — Relocate boiler flue · 2h · £120<br>📍 <strong>Brookfield Site</strong></div>
-          <div class="bubble-time">2:34 PM</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px;color:#e9edef;font-family:Manrope,sans-serif;">note2quote</div>
+          <div style="font-size:11px;color:#8696a0;font-family:Manrope,sans-serif;">+44 7307 283037</div>
         </div>
-        <div class="msg-out">
-          <div class="bubble bubble-out">Generate variations for Brookfield Site</div>
-          <div class="bubble-time">2:41 PM ✓✓</div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#aebac1"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#aebac1" style="margin-left:16px;"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+      </div>
+
+      <!-- Chat area — WhatsApp dark wallpaper -->
+      <div style="background:#0b141a;padding:12px 10px;min-height:280px;position:relative;">
+        <!-- Subtle wallpaper pattern -->
+        <div style="position:absolute;inset:0;opacity:0.03;background-image:repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%);background-size:8px 8px;"></div>
+
+        <!-- Kings Rd site label (like in your screenshot) -->
+        <div style="display:flex;justify-content:flex-start;margin-bottom:6px;position:relative;">
+          <div style="background:#1f2c34;border-radius:8px;padding:5px 10px;font-size:11px;color:#00a884;font-family:Manrope,sans-serif;display:flex;align-items:center;gap:5px;">
+            <svg width="10" height="12" viewBox="0 0 24 24" fill="#00a884"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.3 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5S13.4 11.5 12 11.5z"/></svg>
+            Kings Rd
+          </div>
         </div>
-        <div class="msg-in">
-          <div class="bubble bubble-in">📄 <strong>VO-003</strong> — Variation Order<br>Site: Brookfield Site · 4 item(s)<br>Review and forward to your client ✅<br><span style="color:var(--amber);font-size:11px">📎 VO-003_Brookfield_07May2026.pdf</span></div>
-          <div class="bubble-time">2:41 PM</div>
+
+        <!-- Voice note — outgoing (green bubble) -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+          <div style="max-width:78%;">
+            <div style="background:#005c4b;border-radius:12px 12px 0 12px;padding:8px 10px;display:flex;align-items:center;gap:8px;min-width:180px;">
+              <div style="width:34px;height:34px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid rgba(255,255,255,0.15);">
+                <!-- User avatar placeholder -->
+                <div style="width:100%;height:100%;background:#556;display:flex;align-items:center;justify-content:center;font-size:12px;">👤</div>
+              </div>
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:2px;margin-bottom:4px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#00a884"><path d="M8 5v14l11-7z"/></svg>
+                  <div style="flex:1;height:2px;background:rgba(255,255,255,0.15);border-radius:2px;position:relative;margin:0 4px;">
+                    <div style="position:absolute;left:0;top:0;height:100%;width:30%;background:#00a884;border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div style="font-size:10px;color:#8696a0;font-family:Manrope,sans-serif;">0:04</div>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#00a884"><path d="M12 15c1.7 0 3-1.3 3-3V6c0-1.7-1.3-3-3-3S9 4.3 9 6v6c0 1.7 1.3 3 3 3zm5-3c0 2.8-2.2 5-5 5s-5-2.2-5-5H5c0 3.5 2.7 6.4 6 6.9V21h2v-2.1c3.3-.5 6-3.4 6-6.9h-2z"/></svg>
+            </div>
+            <div style="text-align:right;font-size:10px;color:#8696a0;margin-top:2px;font-family:Manrope,sans-serif;">3:12 PM ✓</div>
+          </div>
+        </div>
+
+        <!-- Bot reply — incoming (dark bubble) -->
+        <div style="display:flex;justify-content:flex-start;margin-bottom:4px;">
+          <div style="max-width:82%;">
+            <div style="background:#1f2c34;border-radius:0 12px 12px 12px;padding:9px 12px;font-size:12px;color:#e9edef;font-family:Manrope,sans-serif;line-height:1.5;">
+              ✅ <strong style="color:#fff;">Variation logged</strong> — Extra sockets in kitchen · 2h · £80<br>
+              <span style="color:#00a884">📍 <strong>Kings Road</strong></span>
+            </div>
+            <div style="font-size:10px;color:#8696a0;margin-top:2px;font-family:Manrope,sans-serif;">3:12 PM</div>
+          </div>
+        </div>
+
+        <!-- Generate command — outgoing -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+          <div style="max-width:82%;">
+            <div style="background:#005c4b;border-radius:12px 12px 0 12px;padding:8px 12px;font-size:12px;color:#e9edef;font-family:Manrope,sans-serif;">
+              Generate variations for Kings Road
+            </div>
+            <div style="text-align:right;font-size:10px;color:#8696a0;margin-top:2px;font-family:Manrope,sans-serif;">3:16 PM ✓✓</div>
+          </div>
+        </div>
+
+        <!-- PDF reply — incoming -->
+        <div style="display:flex;justify-content:flex-start;margin-bottom:4px;">
+          <div style="max-width:85%;">
+            <div style="background:#1f2c34;border-radius:0 12px 12px 12px;padding:9px 12px;font-size:12px;color:#e9edef;font-family:Manrope,sans-serif;line-height:1.5;">
+              📄 <strong style="color:#fff;">VO-003</strong> — Variation Order<br>
+              Site: Kings Road · 3 item(s)<br>
+              Review and forward to your client ✅
+              <div style="margin-top:8px;background:#2a3942;border-radius:8px;padding:7px 10px;display:flex;align-items:center;gap:8px;">
+                <div style="width:30px;height:36px;background:#e53935;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+                </div>
+                <div>
+                  <div style="font-size:10px;font-weight:700;color:#e9edef;">VO-003_KingsRoad_16May2026.pdf</div>
+                  <div style="font-size:9px;color:#8696a0;">52 KB · PDF</div>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:10px;color:#8696a0;margin-top:2px;font-family:Manrope,sans-serif;">3:16 PM</div>
+          </div>
         </div>
       </div>
-    </div>
+
+      <!-- Input bar — matches real WhatsApp dark -->
+      <div style="background:#1f2c34;padding:8px 10px;display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;background:#2a3942;border-radius:20px;padding:8px 14px;font-size:12px;color:#8696a0;font-family:Manrope,sans-serif;">Message</div>
+        <div style="width:38px;height:38px;background:#00a884;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 15c1.7 0 3-1.3 3-3V6c0-1.7-1.3-3-3-3S9 4.3 9 6v6c0 1.7 1.3 3 3 3zm5-3c0 2.8-2.2 5-5 5s-5-2.2-5-5H5c0 3.5 2.7 6.4 6 6.9V21h2v-2.1c3.3-.5 6-3.4 6-6.9h-2z"/></svg>
+        </div>
+      </div>
+    </div></div>
   </div>
 </section>
 
