@@ -459,20 +459,59 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
             break
 
     auth_line = authorised_by if authorised_by else "___________________________"
-    sig_data = [
-        ["Authorised / instructed by:", auth_line, "Client signature:", ""],
-        [" ", "", " ", ""],
-        ["Approved by (client):", "___________________________", "Date:", ""],
-        ["Name / Date", "", "Name / Date", ""],
-    ]
-    sig_tbl = Table(sig_data, colWidths=[60*mm, 10*mm, 60*mm, 45*mm])
-    sig_tbl.setStyle(TableStyle([
-        ("FONTSIZE",      (0,0), (-1,-1), 8),
-        ("TEXTCOLOR",     (0,0), (-1,-1), dark),
-        ("TOPPADDING",    (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+
+    # ── Signature section — two clean boxes ───────────────────────────────
+    _sig_head  = sty("SigHead",  fontSize=8, textColor=dark,
+                     fontName="Helvetica-Bold", leading=12)
+    _sig_lbl   = sty("SigLbl",   fontSize=7, textColor=mid,  leading=10)
+    _sig_val   = sty("SigVal",   fontSize=8, textColor=dark, leading=12)
+    _sig_nd    = sty("SigND",    fontSize=7, textColor=mid,  leading=10)
+
+    def make_sig_box(heading, label, value):
+        data = [
+            [Paragraph(heading, _sig_head)],
+            [Paragraph(label,   _sig_lbl)],
+            [Paragraph(value,   _sig_val)],
+            [Spacer(1, 10*mm)],
+            [HRFlowable(width="100%", thickness=0.5, color=mid)],
+            [Paragraph("Name &amp; Date", _sig_nd)],
+        ]
+        t = Table(data, colWidths=[79*mm])
+        t.setStyle(TableStyle([
+            ("TOPPADDING",    (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+            ("LEFTPADDING",   (0,0), (-1,-1), 0),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+        ]))
+        return t
+
+    left_box  = make_sig_box("Subcontractor",
+                              "Authorised / instructed by:", auth_line)
+    right_box = make_sig_box("Client approval",
+                              "Approved by (client):", "___________________________")
+
+    sig_row = Table(
+        [[left_box, Spacer(12*mm, 1), right_box]],
+        colWidths=[79*mm, 12*mm, 79*mm]
+    )
+    sig_row.setStyle(TableStyle([
+        ("VALIGN",       (0,0), (-1,-1), "TOP"),
+        ("TOPPADDING",   (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 0),
+        ("LEFTPADDING",  (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+        ("BOX", (0,0), (0,0), 0.5, mid),
+        ("BOX", (2,0), (2,0), 0.5, mid),
+        ("LEFTPADDING",  (0,0), (0,0), 8),
+        ("RIGHTPADDING", (0,0), (0,0), 8),
+        ("TOPPADDING",   (0,0), (0,0), 8),
+        ("BOTTOMPADDING",(0,0), (0,0), 8),
+        ("LEFTPADDING",  (2,0), (2,0), 8),
+        ("RIGHTPADDING", (2,0), (2,0), 8),
+        ("TOPPADDING",   (2,0), (2,0), 8),
+        ("BOTTOMPADDING",(2,0), (2,0), 8),
     ]))
-    story.append(sig_tbl)
+    story.append(sig_row)
     story.append(Spacer(1, 8*mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=mid))
     story.append(Spacer(1, 2*mm))
