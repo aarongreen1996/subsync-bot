@@ -518,6 +518,11 @@ def is_help_command(msg):
              "what do i say", "confused", "stuck", "how do i use this", "how do i start"]
     return m in exact or any(m == kw for kw in HELP_KEYWORDS)
 def is_dashboard_command(msg): return any(kw in msg.lower() for kw in DASHBOARD_KEYWORDS)
+def is_account_command(msg):
+    m = msg.lower().strip()
+    return m in ["account","branding","my account","my branding","my logo"] or \
+           any(kw in m for kw in ["add my logo","add logo","company address","my profile",
+                                   "set up branding","update my details","company details"])
 def is_summary_command(msg):   return any(kw in msg.lower() for kw in SUMMARY_KEYWORDS)
 def is_pending_command(msg):   return any(kw in msg.lower() for kw in PENDING_KEYWORDS)
 def is_status_command(msg):    return any(kw in msg.lower() for kw in APPROVE_KEYWORDS + CHASE_KEYWORDS + CANCEL_KEYWORDS)
