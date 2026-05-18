@@ -73,6 +73,31 @@ def run_onboarding_drip():
                 continue
 
             days = (now - created_at).days
+            hours_since = (now - created_at).total_seconds() / 3600
+
+            # ── Day 1 — Branding nudge (2+ hours after signup) ───────────────
+            if hours_since >= 2 and not has_sent(company_id, "day1_branding"):
+                has_logo = company.get("logo_url")
+                has_addr = company.get("address")
+                if not has_logo or not has_addr:
+                    APP_URL = os.environ.get("APP_URL","https://www.note2quote.co.uk")
+                    missing = []
+                    if not has_logo: missing.append("logo")
+                    if not has_addr: missing.append("company address")
+                    msg = "\n".join([
+                        f"👋 Hey {name} — one quick thing...",
+                        "",
+                        f"Your PDFs are currently missing your {' and '.join(missing)}.",
+                        "",
+                        "Adding these takes 2 minutes and makes a massive difference —",
+                        "clients judge the professionalism of your paperwork.",
+                        "",
+                        f"👉 {APP_URL}/account",
+                        "",
+                        "Or reply *account* for instructions 🎨"
+                    ])
+                    if send_whatsapp(whatsapp, msg):
+                        mark_sent(company_id, "day1_branding")
 
             # ── Day 3 — Check in ─────────────────────────────────────────────
             if days >= 3 and not has_sent(company_id, "day3_checkin"):
