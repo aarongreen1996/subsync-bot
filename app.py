@@ -267,36 +267,80 @@ SUPPLIER_CORRECTIONS = {
 }
 
 LINGO_CORRECTIONS = {
+    # Trade terminology mishearings
     "very asian order": "variation order", "variation odour": "variation order",
     "very asian": "variation", "vary asian": "variation", "variegation": "variation",
+    "berry asian": "variation", "barry asian": "variation",
     "day work": "daywork", "day works": "dayworks",
     "making goods": "making good", "purchase odour": "purchase order",
     "purchase all that": "purchase order",
-    "pounds": "£", "quid": "£",
+    # Currency words
+    "pounds": "£", "pound": "£", "quid": "£",
     "a grand": "£1000", "two grand": "£2000", "half a grand": "£500",
-    # Number words → digits (prevent "eighty" being heard as "8")
+    "three grand": "£3000", "four grand": "£4000", "five grand": "£5000",
+    # Common Whisper phonetic confusions for prices
+    # "nine twenty" → "120" (one twenty mishearing)
+    "nine twenty": "£120", "nine 20": "£120",
+    "nine thirty": "£130", "nine forty": "£140", "nine fifty": "£150",
+    "nine sixty": "£160", "nine seventy": "£170", "nine eighty": "£180",
+    # "nine" before round numbers often means it heard "nine" for a preceding digit
+    "£ nine hundred": "£900", "nine hundred": "900",
+    # Teens mishearing
+    "fourteen": "14", "fifteen": "15", "sixteen": "16",
+    "seventeen": "17", "eighteen": "18", "nineteen": "19",
+    # Tens
     "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50",
     "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
-    "hundred": "100", "one hundred": "100", "one fifty": "150",
-    "two fifty": "250", "two hundred": "200", "three hundred": "300",
-    "four hundred": "400", "five hundred": "500",
-    "one twenty": "120", "one thirty": "130", "one forty": "140",
-    "one sixty": "160", "one seventy": "170", "one eighty": "180", "one ninety": "190",
-    "two twenty": "220", "two thirty": "230", "two forty": "240",
-    "two sixty": "260", "two seventy": "270", "two eighty": "280", "two ninety": "290",
-    # Also handle "£ eighty" → "£80"
+    # Hundreds
+    "one hundred": "100", "two hundred": "200", "three hundred": "300",
+    "four hundred": "400", "five hundred": "500", "six hundred": "600",
+    "seven hundred": "700", "eight hundred": "800", "nine hundred": "900",
+    "hundred": "100",
+    # Compound numbers — most common construction prices
+    "one ten": "110", "one twenty": "120", "one thirty": "130",
+    "one forty": "140", "one fifty": "150", "one sixty": "160",
+    "one seventy": "170", "one eighty": "180", "one ninety": "190",
+    "two ten": "210", "two twenty": "220", "two thirty": "230",
+    "two forty": "240", "two fifty": "250", "two sixty": "260",
+    "two seventy": "270", "two eighty": "280", "two ninety": "290",
+    "three ten": "310", "three twenty": "320", "three thirty": "330",
+    "three forty": "340", "three fifty": "350",
+    "four fifty": "450", "four hundred fifty": "450",
+    "five fifty": "550", "six fifty": "650", "seven fifty": "750",
+    # With £ prefix
     "£ twenty": "£20", "£ thirty": "£30", "£ forty": "£40", "£ fifty": "£50",
     "£ sixty": "£60", "£ seventy": "£70", "£ eighty": "£80", "£ ninety": "£90",
-    "£ hundred": "£100", "£ one hundred": "£100",
+    "£ hundred": "£100", "£ one hundred": "£100", "£ one twenty": "£120",
+    "£ one fifty": "£150", "£ two hundred": "£200", "£ two fifty": "£250",
+    "£ three hundred": "£300", "£ five hundred": "£500",
 }
 
 def preprocess_transcription(text):
     if not text: return text
     result = text.lower()
-    for wrong, right in LINGO_CORRECTIONS.items():
+
+    # Apply lingo corrections (longest first to avoid partial matches)
+    for wrong, right in sorted(LINGO_CORRECTIONS.items(), key=lambda x: -len(x[0])):
         result = result.replace(wrong.lower(), right)
     for wrong, right in SUPPLIER_CORRECTIONS.items():
         result = result.replace(wrong.lower(), right)
+
+    # Post-process: fix common Whisper number errors using regex
+    import re as _re
+    # Fix "9XX" patterns that are likely mishearings of "1XX"
+    # e.g. £920 when user said £120 — "nine" heard instead of "one"
+    # Only fix in context of prices (preceded by £ or followed by common price patterns)
+    def fix_price(m):
+        val = int(m.group(1))
+        # 920→120, 930→130 etc are suspicious (starts with 9, middle range)
+        if 910 <= val <= 990 and val % 10 == 0:
+            # Suggest corrected value — prepend for Claude to see both
+            corrected = val - 800  # 920→120, 950→150 etc
+            return f"£{corrected}"
+        return m.group(0)
+    # Only auto-correct clean round numbers that match the pattern
+    result = _re.sub(r"£(9[1-9]0)", fix_price, result)
+
     if result:
         result = result[0].upper() + result[1:]
     return result
@@ -1020,19 +1064,26 @@ def _provision_account(from_number, session):
         return _reply("\n".join([
             f"🎉 *Welcome to Note2Quote, {name}!*",
             "",
-            "Your free 14-day trial is now active.",
+            "Your free 14-day trial is now active. 🚀",
             "",
-            "📊 *Your dashboard (tap to open):*",
+            "📊 *Dashboard (tap to open):*",
             login_url,
             "",
-            "🔑 *Manual login:*",
-            f"Username: {username}",
-            f"Password: {unique_password}",
+            f"👤 Username: {username}",
+            f"🔑 Password: {unique_password}",
             "",
-            "Now try it — just tell me something that happened on site today:",
-            "🎤 *'Extra rad in bedroom 3, 2 hours, £80'*",
-            "🎤 *'Site manager wants extra sockets in kitchen, £120'*",
+            "─────────────────────",
+            "🎨 *Step 1 — Set up your branding (2 mins):*",
+            "Your PDFs will look far more professional with your logo and address.",
+            "Reply *account* now to set this up — clients notice the difference.",
             "",
+            "─────────────────────",
+            "📋 *Step 2 — Log your first item:*",
+            "Just send a voice note or text from site:",
+            "🎤 *'Variation at Kings Road — extra sockets, 2hrs £80'*",
+            "🎤 *'Ordered copper fittings from Screwfix, £45'*",
+            "",
+            "─────────────────────",
             "Send *help* anytime for the full guide 👷"
         ]))
 
@@ -1096,6 +1147,9 @@ def webhook():
         return handle_signup_flow(from_number, incoming_msg)
 
     # Always check commands first even if pending state — prevents accidental logging
+    if is_account_command(incoming_msg):
+        if from_number in pending_selections: del pending_selections[from_number]
+        return handle_account_setup(from_number)
     if is_dashboard_command(incoming_msg):
         if from_number in pending_selections: del pending_selections[from_number]
         return handle_dashboard_command(from_number)
@@ -1346,6 +1400,57 @@ def handle_pending(from_number, msg):
 
 
 # ── Dashboard command ─────────────────────────────────────────────────────────
+def handle_account_setup(from_number):
+    """Send branding setup instructions with direct account link."""
+    companies = db_get(f"companies?whatsapp_number=eq.{encode_number(from_number)}&limit=1")
+    if not isinstance(companies, list) or not companies:
+        return _reply("Can't find your account. Try sending *login* to get a dashboard link.")
+
+    company  = companies[0]
+    name     = company.get("company_name", "")
+    username = company.get("username", "")
+    has_logo = bool(company.get("logo_url"))
+    has_addr = bool(company.get("address"))
+
+    APP_URL = os.environ.get("APP_URL","https://www.note2quote.co.uk")
+    account_url = f"{APP_URL}/account"
+
+    lines = ["🎨 *Set up your branding*", ""]
+
+    if has_logo and has_addr:
+        lines += [
+            "✅ Your profile looks complete!",
+            "",
+            f"Company: *{name}*",
+            "Logo: ✅ Uploaded",
+            "Address: ✅ Set",
+            "",
+            "Your PDFs are using your full company details.",
+            f"To update anything: {account_url}",
+        ]
+    else:
+        missing = []
+        if not has_logo: missing.append("Company logo")
+        if not has_addr: missing.append("Company address")
+        lines += [
+            f"Your PDFs currently show *{name}* but are missing:",
+        ]
+        for m in missing:
+            lines.append(f"  ❌ {m}")
+        lines += [
+            "",
+            "Adding these takes 2 minutes and makes your PDFs look completely professional — clients notice.",
+            "",
+            f"👉 *{account_url}*",
+            "",
+            "Log in with:",
+            f"  Username: {username}",
+            "  Or tap: *login* for a magic link",
+        ]
+
+    return _reply("\n".join(lines))
+
+
 def handle_dashboard_command(from_number):
     import secrets
     from datetime import datetime, timezone, timedelta
