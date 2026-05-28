@@ -21,6 +21,7 @@ from admin import admin_bp
 from scheduler import start_scheduler
 from account import account_bp
 from auth import auth_bp, create_magic_token
+from perfect_delivery import pd_bp
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
@@ -29,6 +30,7 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(account_bp)
 app.register_blueprint(auth_bp)
 start_scheduler()
+app.register_blueprint(pd_bp)
 
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
