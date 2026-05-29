@@ -539,37 +539,26 @@ STAGES = {
         "group": "2nd Fix & Finishes",
         "applies_to": "Ceramic Tilers",
         "items": [
-            # Studwork
-            {"id": "27_01", "text": "STUDWORK — Uprights at maximum 200mm centres", "type": "check", "photo": True},
-            {"id": "27_02", "text": "STUDWORK — Uprights fixed to head and sole plates", "type": "check", "photo": True},
-            {"id": "27_03", "text": "STUDWORK — Studwork insulated for thermal and sound protection", "type": "check", "photo": True},
-            # Shower tray
-            {"id": "27_04", "text": "SHOWER TRAY — Plywood supporting base fixed to floor at 100mm centres", "type": "check", "photo": True},
-            {"id": "27_05", "text": "SHOWER TRAY — Approved cementitious adhesive back-buttered to tray, 20mm screed covering full tray area", "type": "check", "photo": True},
-            {"id": "27_06", "text": "SHOWER TRAY — Bearers and 18mm ply base built for raised tray situations (if applicable)", "type": "check", "photo": True},
-            # Plasterboard
-            {"id": "27_07", "text": "PLASTERBOARD — Layer 1 fixed at correct centres / 200mm intervals", "type": "check", "photo": True},
-            {"id": "27_08", "text": "PLASTERBOARD — Layer 2 fixed at 200mm centres with staggered joints to Layer 1", "type": "check", "photo": True},
-            # Tanking
-            {"id": "27_09", "text": "SHOWER — Tanking to shower enclosure: tanking membrane applied minimum 50mm past the shower tray line on all sides. Photo must show the 50mm overhang beyond tray edge clearly marked or measured", "type": "check", "photo": True},
-            {"id": "27_09b", "text": "SHOWER — Tanking tape applied to shower tray perimeter: tape lipped onto tray lip and up onto wall board with correct lapping. Photo must show tape lipped over tray edge with no lifting or gaps", "type": "check", "photo": True},
-            {"id": "27_09c", "text": "SHOWER — Tanking applied to surround all water feed penetrations: tanking membrane covers minimum 50mm around each pipe entry point. Photo must show each water feed penetration fully tanked", "type": "check", "photo": True},
-            {"id": "27_10", "text": "SHOWER — Two coats of tanking paint applied switching horizontal then vertical application to ensure full coverage of all surfaces. Photo must show completed second coat with no missed areas", "type": "check", "photo": True},
+            # Tanking — shower areas
+            {"id": "27_01", "text": "SHOWER — Tanking to shower enclosure: tanking membrane applied minimum 50mm past the shower tray line on all sides. Photo must show the 50mm overhang beyond tray edge clearly marked or measured", "type": "check", "photo": True},
+            {"id": "27_02", "text": "SHOWER — Tanking tape applied to shower tray perimeter: tape lipped onto tray lip and up onto wall board with correct lapping. Photo must show tape lipped over tray edge with no lifting or gaps", "type": "check", "photo": True},
+            {"id": "27_03", "text": "SHOWER — Tanking applied to surround all water feed penetrations: tanking membrane covers minimum 50mm around each pipe entry point. Photo must show each water feed penetration fully tanked", "type": "check", "photo": True},
+            {"id": "27_04", "text": "SHOWER — Two coats of tanking paint applied switching horizontal then vertical application to ensure full coverage. Photo must show completed second coat with no missed areas", "type": "check", "photo": True},
             # Ceramic tiles
-            {"id": "27_11", "text": "TILES — Adhesive applied to walls and back-buttered to tiles (buttered method)", "type": "check", "photo": True},
-            {"id": "27_12", "text": "TILES — Tiles completed and left minimum 24 hours before grouting", "type": "check", "photo": True},
-            {"id": "27_13", "text": "TILES — Grouting applied and left minimum 24 hours before silicone", "type": "check", "photo": True},
-            {"id": "27_14", "text": "TILES — Floor grout colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Mapei Keracolor S Grey", "photo": True},
-            {"id": "27_15", "text": "TILES — Wall grout colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Mapei Keracolor S White", "photo": True},
-            {"id": "27_16", "text": "TILES — Trim colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Chrome / Matt Black / White", "photo": True},
-            {"id": "27_17", "text": "TILES — Joints straight and aligned, consistent spacing 3–5mm", "type": "check", "photo": True},
-            {"id": "27_18", "text": "TILES — No visible cut edges to trims, full length trims used", "type": "check", "photo": True},
-            {"id": "27_19", "text": "TILES — Anti-crack matting installed under floor tiles", "type": "check", "photo": True},
-            # Completion
-            {"id": "27_20", "text": "COMPLETION — Full silicone seal applied to tray / wall tile intersection before screen installation", "type": "check", "photo": True},
-            {"id": "27_21", "text": "COMPLETION — Screen installed with correct sealants per manufacturer's requirements", "type": "check", "photo": True},
-            {"id": "27_22", "text": "COMPLETION — Completed shower enclosure photographed in full", "type": "check", "photo": True},
-            {"id": "27_23", "text": "COMPLETION — Spare tiles left for customer repairs", "type": "check", "photo": True},
+            {"id": "27_05", "text": "Adhesive applied to walls and back-buttered to tiles (buttered method)", "type": "check", "photo": True},
+            {"id": "27_06", "text": "Tiles completed and left minimum 24 hours before grouting", "type": "check", "photo": True},
+            {"id": "27_07", "text": "Grouting applied and left minimum 24 hours before silicone", "type": "check", "photo": True},
+            {"id": "27_08", "text": "Floor grout colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Mapei Keracolor S Grey", "photo": True},
+            {"id": "27_09", "text": "Wall grout colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Mapei Keracolor S White", "photo": True},
+            {"id": "27_10", "text": "Trim colour as specified — confirm colour", "type": "text_with_check", "placeholder": "e.g. Chrome / Matt Black / White", "photo": True},
+            {"id": "27_11", "text": "Tile joints straight and aligned, consistent spacing 3–5mm", "type": "check", "photo": True},
+            {"id": "27_12", "text": "No visible cut edges to trims, full length trims used", "type": "check", "photo": True},
+            {"id": "27_13", "text": "Anti-crack matting installed under all floor tiles", "type": "check", "photo": True},
+            {"id": "27_14", "text": "Floor tiles at correct locations per drawings", "type": "check", "photo": True},
+            {"id": "27_15", "text": "Wall tiling to correct locations and heights", "type": "check", "photo": True},
+            {"id": "27_16", "text": "Tile colour consistent — one batch used throughout", "type": "check", "photo": True},
+            {"id": "27_17", "text": "Spare tiles left for customer repairs", "type": "check", "photo": True},
+            {"id": "27_18", "text": "Completed shower enclosure photographed in full", "type": "check", "photo": True},
         ]
     },
     28: {
