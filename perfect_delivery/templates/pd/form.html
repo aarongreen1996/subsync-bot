@@ -7,194 +7,106 @@
 <title>Perfect Delivery — Plot {{ plot.plot_number }}</title>
 <style>
   :root {
-    --gold: #C5962A;
-    --gold-light: #f0c040;
-    --dark: #1a1a2e;
-    --dark2: #252540;
-    --white: #ffffff;
-    --bg: #f0f2f5;
-    --card: #ffffff;
-    --border: #e0e0e0;
-    --text: #1a1a2e;
-    --muted: #6b7280;
-    --yes: #16a34a;
-    --yes-bg: #dcfce7;
-    --no: #dc2626;
-    --no-bg: #fee2e2;
-    --na: #4b5563;
-    --na-bg: #f3f4f6;
-    --radius: 12px;
-    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --gold: #C5962A; --gold-light: #f0c040; --dark: #1a1a2e; --dark2: #252540;
+    --white: #ffffff; --bg: #f0f2f5; --card: #ffffff; --border: #e0e0e0;
+    --text: #1a1a2e; --muted: #6b7280;
+    --yes: #16a34a; --yes-bg: #dcfce7; --no: #dc2626; --no-bg: #fee2e2;
+    --na: #4b5563; --na-bg: #f3f4f6; --radius: 12px; --shadow: 0 2px 12px rgba(0,0,0,0.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
-
-  /* ── Header ── */
   .header { background: var(--dark); padding: 16px 20px; position: sticky; top: 0; z-index: 100; }
   .header-top { display: flex; align-items: center; justify-content: space-between; }
-  .header-title { color: var(--gold); font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-title { color: var(--gold); font-size: 17px; font-weight: 700; }
   .header-sub { color: #9ca3af; font-size: 12px; margin-top: 2px; }
   .plot-badge { background: var(--gold); color: var(--dark); font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
-
-  /* ── Progress ── */
-  .progress-bar { height: 3px; background: rgba(255,255,255,0.15); }
+  .progress-bar { height: 3px; background: rgba(255,255,255,0.15); margin-top: 10px; }
   .progress-fill { height: 100%; background: var(--gold); transition: width 0.3s ease; width: 0%; }
-
-  /* ── Step container ── */
   .step { display: none; padding: 20px 16px 100px; min-height: 100vh; }
   .step.active { display: block; }
-
-  /* ── Cards ── */
   .card { background: var(--card); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
-  .card-title { font-size: 15px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
-  .card-sub { font-size: 13px; color: var(--muted); }
-
-  /* ── Form fields ── */
+  .section-title { font-size: 17px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
+  .section-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
   label { display: block; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-  input[type=text], input[type=email], textarea, select {
-    width: 100%; padding: 13px 16px; border: 1.5px solid var(--border);
-    border-radius: 10px; font-size: 15px; color: var(--text); background: #fff;
-    transition: border-color 0.2s; -webkit-appearance: none; appearance: none;
-  }
-  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--gold); }
+  input[type=text], input[type=email], textarea { width: 100%; padding: 13px 16px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; color: var(--text); background: #fff; -webkit-appearance: none; }
+  input:focus, textarea:focus { outline: none; border-color: var(--gold); }
   .field { margin-bottom: 16px; }
   .required { color: var(--no); }
 
-  /* ── Stage selector ── */
-  .stage-list { display: flex; flex-direction: column; gap: 10px; }
-  .stage-btn {
-    background: var(--card); border: 2px solid var(--border); border-radius: var(--radius);
-    padding: 14px 16px; text-align: left; cursor: pointer; transition: all 0.15s; width: 100%;
-    display: flex; align-items: center; gap: 12px;
-  }
+  /* Group + stage selector */
+  .group-section { margin-bottom: 20px; }
+  .group-header { background: var(--dark); color: var(--gold); font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 8px; margin-bottom: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .stage-list { display: flex; flex-direction: column; gap: 8px; }
+  .stage-btn { background: var(--card); border: 2px solid var(--border); border-radius: var(--radius); padding: 12px 16px; text-align: left; cursor: pointer; transition: all 0.15s; width: 100%; display: flex; align-items: center; gap: 12px; }
   .stage-btn:active { transform: scale(0.98); }
   .stage-btn.selected { border-color: var(--gold); background: #fdf8ec; }
-  .stage-num { background: var(--dark); color: var(--gold); font-size: 12px; font-weight: 700;
-    min-width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .stage-num { background: var(--dark); color: var(--gold); font-size: 11px; font-weight: 700; min-width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .stage-info { flex: 1; }
   .stage-name { font-size: 14px; font-weight: 600; color: var(--text); }
   .stage-trade { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .stage-btn.selected .stage-num { background: var(--gold); color: var(--dark); }
 
-  /* ── Checklist items ── */
-  .checklist-item {
-    background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
-    box-shadow: var(--shadow); border-left: 3px solid transparent;
-  }
+  /* Checklist items */
+  .checklist-item { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); border-left: 3px solid transparent; }
   .checklist-item.answered-yes { border-left-color: var(--yes); }
   .checklist-item.answered-no { border-left-color: var(--no); }
   .checklist-item.answered-na { border-left-color: var(--na); }
   .item-num { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
   .item-text { font-size: 14px; line-height: 1.5; color: var(--text); margin-bottom: 12px; }
-  .item-text.photo-required::after { content: " 📷"; font-size: 13px; }
-
   .yn-group { display: flex; gap: 8px; }
-  .yn-btn {
-    flex: 1; padding: 11px 8px; border: 2px solid var(--border); border-radius: 10px;
-    font-size: 14px; font-weight: 700; background: #fff; cursor: pointer;
-    transition: all 0.15s; letter-spacing: 0.3px;
-  }
-  .yn-btn.yes { color: var(--yes); }
-  .yn-btn.no  { color: var(--no); }
-  .yn-btn.na  { color: var(--na); }
+  .yn-btn { flex: 1; padding: 11px 8px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; font-weight: 700; background: #fff; cursor: pointer; transition: all 0.15s; }
+  .yn-btn.yes { color: var(--yes); } .yn-btn.no { color: var(--no); } .yn-btn.na { color: var(--na); }
   .yn-btn.yes.active { background: var(--yes-bg); border-color: var(--yes); }
-  .yn-btn.no.active  { background: var(--no-bg); border-color: var(--no); }
-  .yn-btn.na.active  { background: var(--na-bg); border-color: var(--na); }
+  .yn-btn.no.active { background: var(--no-bg); border-color: var(--no); }
+  .yn-btn.na.active { background: var(--na-bg); border-color: var(--na); }
   .yn-btn:active { transform: scale(0.96); }
-
-  /* ── Text confirmation ── */
   .text-confirm { margin-top: 10px; }
   .text-confirm input { font-size: 14px; }
 
-  /* ── Photo upload ── */
-  .photo-zone { margin-top: 12px; }
-  .photo-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
-  .photo-trigger {
-    border: 2px dashed #cbd5e1; border-radius: 10px; padding: 14px;
-    text-align: center; cursor: pointer; background: #f8fafc; transition: all 0.15s;
-  }
+  /* Photo capture — every item */
+  .photo-zone { margin-top: 12px; border-top: 1px solid #f0f2f5; padding-top: 12px; }
+  .photo-trigger { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; background: #f8fafc; transition: all 0.15s; }
   .photo-trigger:active { background: #f0f2f5; }
-  .photo-trigger-text { font-size: 13px; color: var(--muted); }
+  .photo-trigger-inner { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .photo-trigger-text { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .photo-required-badge { background: #fee2e2; color: #dc2626; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
   .photo-preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .photo-preview-item { position: relative; }
-  .photo-preview-item img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 2px solid #e2e8f0; }
-  .photo-remove { position: absolute; top: -6px; right: -6px; background: var(--no); color: white; border: none;
-    border-radius: 50%; width: 20px; height: 20px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .photo-preview-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #e2e8f0; }
+  .photo-stamp { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.65); color: white; font-size: 8px; padding: 2px 3px; border-radius: 0 0 6px 6px; line-height: 1.3; }
+  .photo-remove { position: absolute; top: -6px; right: -6px; background: var(--no); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .geo-status { font-size: 11px; margin-top: 6px; padding: 4px 8px; border-radius: 6px; }
+  .geo-ok { background: #dcfce7; color: #166534; }
+  .geo-fail { background: #fee2e2; color: #991b1b; }
+  .geo-pending { background: #fef3c7; color: #92400e; }
 
-  /* ── Room selector ── */
-  .room-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-  .room-tab {
-    padding: 8px 14px; border: 2px solid var(--border); border-radius: 20px;
-    font-size: 13px; font-weight: 600; cursor: pointer; background: white; color: var(--muted);
-    transition: all 0.15s;
-  }
-  .room-tab.active { border-color: var(--gold); background: #fdf8ec; color: var(--dark); }
-  .room-tab.complete { background: var(--yes-bg); border-color: var(--yes); color: var(--yes); }
-  .room-content { display: none; }
-  .room-content.active { display: block; }
-
-  /* ── Measurements ── */
-  .measurements-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-  /* ── Sections ── */
-  .section-title { font-size: 17px; font-weight: 700; color: var(--dark); margin-bottom: 4px; }
-  .section-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
-
-  /* ── Floating action button ── */
-  .fab {
-    position: fixed; bottom: 24px; left: 16px; right: 16px; z-index: 200;
-    background: var(--gold); color: var(--dark); border: none; border-radius: 14px;
-    padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer;
-    box-shadow: 0 4px 20px rgba(197,150,42,0.4); transition: all 0.15s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .fab:active { transform: scale(0.98); opacity: 0.9; }
+  /* FABs */
+  .fab { position: fixed; bottom: 24px; left: 16px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .fab:disabled { background: #ccc; color: #888; box-shadow: none; cursor: not-allowed; }
-  .fab-back {
-    position: fixed; bottom: 24px; left: 16px; z-index: 200;
-    background: var(--dark2); color: white; border: none; border-radius: 14px;
-    padding: 16px 20px; font-size: 15px; font-weight: 600; cursor: pointer;
-    box-shadow: var(--shadow);
-  }
-  .fab-next {
-    position: fixed; bottom: 24px; right: 16px; z-index: 200;
-    background: var(--gold); color: var(--dark); border: none; border-radius: 14px;
-    padding: 16px 20px; font-size: 15px; font-weight: 700; cursor: pointer;
-    box-shadow: 0 4px 20px rgba(197,150,42,0.4);
-  }
+  .fab-back { position: fixed; bottom: 24px; left: 16px; z-index: 200; background: var(--dark2); color: white; border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .fab-next { position: fixed; bottom: 24px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); }
 
-  /* ── Counter ── */
-  .item-counter { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 16px; }
-  .counter-nums { font-weight: 700; color: var(--text); }
-
-  /* ── Dividers / info ── */
-  .info-note { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin-bottom: 16px; }
-
-  /* ── Loading overlay ── */
-  #loading { position: fixed; inset: 0; background: rgba(26,26,46,0.85); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
-  #loading.show { display: flex; }
-  .spinner { width: 48px; height: 48px; border: 4px solid rgba(197,150,42,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  #loading p { color: white; font-size: 15px; }
-
-  /* ── Summary table ── */
+  /* Summary */
   .summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .summary-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .summary-table td:first-child { font-weight: 600; color: var(--muted); width: 40%; }
   .ans-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
   .ans-yes { background: var(--yes-bg); color: var(--yes); }
-  .ans-no  { background: var(--no-bg); color: var(--no); }
-  .ans-na  { background: var(--na-bg); color: var(--na); }
-
+  .ans-no { background: var(--no-bg); color: var(--no); }
+  .ans-na { background: var(--na-bg); color: var(--na); }
+  .info-note { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin-bottom: 16px; }
   textarea { resize: vertical; min-height: 80px; }
-  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; }
+
+  /* Loading */
+  #loading { position: fixed; inset: 0; background: rgba(26,26,46,0.85); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
+  #loading.show { display: flex; }
+  .spinner { width: 48px; height: 48px; border: 4px solid rgba(197,150,42,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: white; font-size: 15px; }
 </style>
 </head>
 <body>
 
-<!-- ── Header ────────────────────────────────────────────── -->
 <div class="header">
   <div class="header-top">
     <div>
@@ -203,16 +115,14 @@
     </div>
     <div class="plot-badge">Plot {{ plot.plot_number }}</div>
   </div>
-  <div class="progress-bar" style="margin-top:10px">
-    <div class="progress-fill" id="progressFill"></div>
-  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 </div>
 
-<!-- ── Step 1 — Your Details ─────────────────────────────── -->
+<!-- Step 1 — Details + Stage -->
 <div class="step active" id="step1">
   <div style="padding-top:4px">
     <p class="section-title">Your Details</p>
-    <p class="section-sub">Enter your details before completing the checklist.</p>
+    <p class="section-sub">Enter your details and select the build stage to sign off.</p>
   </div>
   <div class="card">
     <div class="field">
@@ -226,147 +136,132 @@
     <div class="field">
       <label>Email Address <span class="required">*</span></label>
       <input type="email" id="inputEmail" placeholder="you@company.com" autocomplete="email">
-      <p style="font-size:12px;color:var(--muted);margin-top:6px">You'll receive the site manager's decision here.</p>
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">Decision will be emailed here.</p>
     </div>
   </div>
 
-  <div style="padding: 4px 0 8px">
+  <div id="geoStatus" class="geo-status geo-pending">📍 Getting your location for photo geotagging…</div>
+
+  <div style="padding: 16px 0 8px">
     <p class="section-title">Select Build Stage</p>
     <p class="section-sub">Choose the stage you are signing off.</p>
   </div>
-  <div class="stage-list" id="stageList">
-    {% for s in stages_summary %}
-    <button class="stage-btn" onclick="selectStage({{ s.number }})" id="stageBtnWrapper{{ s.number }}">
-      <div class="stage-num">{{ '%02d'|format(s.number) }}</div>
-      <div class="stage-info">
-        <div class="stage-name">{{ s.short_name }}</div>
-        <div class="stage-trade">{{ s.applies_to }}</div>
-      </div>
-      <span style="color:#ccc;font-size:18px">›</span>
-    </button>
-    {% endfor %}
+
+  {% for group_name, stages in stages_by_group.items() %}
+  <div class="group-section">
+    <div class="group-header">{{ group_name }}</div>
+    <div class="stage-list">
+      {% for s in stages %}
+      <button class="stage-btn" onclick="selectStage({{ s.number }})" id="stageBtnWrapper{{ s.number }}">
+        <div class="stage-num">{{ '%02d'|format(s.number) }}</div>
+        <div class="stage-info">
+          <div class="stage-name">{{ s.short_name }}</div>
+          <div class="stage-trade">{{ s.applies_to }}</div>
+        </div>
+        <span style="color:#ccc;font-size:18px">›</span>
+      </button>
+      {% endfor %}
+    </div>
   </div>
+  {% endfor %}
 
   <button class="fab" id="fabStep1" onclick="goStep2()" disabled>Continue →</button>
 </div>
 
-<!-- ── Step 2 — Checklist ─────────────────────────────────── -->
+<!-- Step 2 — Checklist -->
 <div class="step" id="step2">
   <div style="padding-top:4px;margin-bottom:16px">
     <p class="section-title" id="checklistTitle">Checklist</p>
     <p class="section-sub" id="checklistSub"></p>
   </div>
-
-  <div id="measurementsSection" style="display:none" class="card">
-    <div class="card-title">Record Dimensions</div>
-    <div class="card-sub" style="margin-bottom:14px">Note actual measurements on site.</div>
-    <div class="measurements-grid" id="measurementsGrid"></div>
-  </div>
-
-  <div id="roomTabsSection" style="display:none">
-    <div class="info-note">This checklist must be completed for each room. Tap a room to fill it in.</div>
-    <div class="room-tabs" id="roomTabs"></div>
-  </div>
-
+  <div class="info-note">📷 A photo is required for every item. Photos are automatically geotagged and timestamped.</div>
   <div id="itemsContainer"></div>
-
   <div class="card" style="margin-top:8px">
     <label style="margin-bottom:8px">Additional Notes</label>
     <textarea id="additionalNotes" placeholder="Any issues, variations or additional comments…"></textarea>
   </div>
-
   <button class="fab-back" onclick="goStep1()">← Back</button>
   <button class="fab-next" onclick="goStep3()">Review →</button>
 </div>
 
-<!-- ── Step 3 — Review & Submit ───────────────────────────── -->
+<!-- Step 3 — Review & Submit -->
 <div class="step" id="step3">
   <div style="padding-top:4px;margin-bottom:16px">
     <p class="section-title">Review & Submit</p>
-    <p class="section-sub">Check everything looks correct, then submit for approval.</p>
+    <p class="section-sub">Check everything looks correct, then submit.</p>
   </div>
-
   <div class="card">
-    <div class="card-title" style="margin-bottom:12px">Submission Summary</div>
+    <div class="card-title" style="font-size:15px;font-weight:700;margin-bottom:12px">Submission Summary</div>
     <table class="summary-table" id="summaryTable"></table>
   </div>
-
   <div class="card" id="incompletWarning" style="display:none;border-left:3px solid var(--no)">
-    <p style="color:var(--no);font-weight:700;margin-bottom:4px">⚠ Unanswered Items</p>
+    <p style="color:var(--no);font-weight:700;margin-bottom:4px">⚠ Incomplete Items</p>
     <p style="font-size:13px;color:#555" id="incompleteMsg"></p>
   </div>
-
-  <div class="info-note">
-    By submitting, you confirm the works comply with contract drawings, warranty provider requirements and current Building Regulations.
-  </div>
-
+  <div class="info-note">By submitting you confirm the works comply with contract drawings, warranty provider requirements and current Building Regulations.</div>
   <button class="fab-back" onclick="goStep2()">← Edit</button>
   <button class="fab-next" id="fabSubmit" onclick="submitForm()" style="background:var(--yes);color:white;box-shadow:0 4px 20px rgba(22,163,74,0.3)">Submit ✓</button>
 </div>
 
-<!-- ── Loading ─────────────────────────────────────────────── -->
-<div id="loading">
-  <div class="spinner"></div>
-  <p>Submitting… please wait</p>
-</div>
-
-<!-- ── Hidden file inputs pool ─────────────────────────────── -->
+<div id="loading"><div class="spinner"></div><p>Submitting… please wait</p></div>
 <div id="fileInputPool" style="display:none"></div>
 
 <script>
-// ── Data ────────────────────────────────────────────────────────────────────
 const STAGES = {{ stages_json | safe }};
 const PLOT_TOKEN = "{{ plot.token }}";
 
 let selectedStage = null;
-let answers = {};        // { item_id: { value: 'yes'|'no'|'n/a', text?: '' } }
-let measurements = {};   // { meas_id: value }
-let roomAnswers = {};    // { room: { item_id: { value, text? } } }
-let photoFiles = {};     // { item_id: [File, ...] }
-let currentRoom = null;
+let answers = {};
+let photoFiles = {};
+let geoLocation = null;
+const captureTime = {};
 
-// ── Step navigation ──────────────────────────────────────────────────────────
-function setProgress(pct) {
-  document.getElementById('progressFill').style.width = pct + '%';
+// ── Geolocation ──────────────────────────────────────────────────────────────
+function initGeo() {
+  const el = document.getElementById('geoStatus');
+  if (!navigator.geolocation) {
+    el.className = 'geo-status geo-fail';
+    el.textContent = '⚠ Location not available on this device';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      geoLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) };
+      el.className = 'geo-status geo-ok';
+      el.textContent = `📍 Location confirmed — ${geoLocation.lat.toFixed(5)}, ${geoLocation.lng.toFixed(5)} (±${geoLocation.accuracy}m)`;
+    },
+    err => {
+      el.className = 'geo-status geo-fail';
+      el.textContent = '⚠ Location permission denied — please enable location and reload';
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
 }
+initGeo();
 
+// ── Navigation ───────────────────────────────────────────────────────────────
+function setProgress(pct) { document.getElementById('progressFill').style.width = pct + '%'; }
 function showStep(n) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step' + n).classList.add('active');
   window.scrollTo(0, 0);
   setProgress(n === 1 ? 15 : n === 2 ? 55 : 90);
 }
-
 function goStep1() { showStep(1); }
-
 function goStep2() {
   if (!validateStep1()) return;
   buildChecklist();
   showStep(2);
 }
+function goStep3() { buildSummary(); showStep(3); }
 
-function goStep3() {
-  buildSummary();
-  showStep(3);
-}
-
-// ── Step 1 validation ────────────────────────────────────────────────────────
 function validateStep1() {
   const name = document.getElementById('inputName').value.trim();
   const company = document.getElementById('inputCompany').value.trim();
   const email = document.getElementById('inputEmail').value.trim();
-  if (!name || !company || !email) {
-    alert('Please fill in your name, company and email address.');
-    return false;
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    alert('Please enter a valid email address.');
-    return false;
-  }
-  if (!selectedStage) {
-    alert('Please select a build stage.');
-    return false;
-  }
+  if (!name || !company || !email) { alert('Please fill in your name, company and email.'); return false; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Please enter a valid email address.'); return false; }
+  if (!selectedStage) { alert('Please select a build stage.'); return false; }
   return true;
 }
 
@@ -376,8 +271,6 @@ function selectStage(num) {
   document.getElementById('stageBtnWrapper' + num).classList.add('selected');
   selectedStage = num;
   answers = {};
-  measurements = {};
-  roomAnswers = {};
   photoFiles = {};
   document.getElementById('fabStep1').disabled = false;
 }
@@ -386,159 +279,77 @@ function selectStage(num) {
 function buildChecklist() {
   const stage = STAGES[selectedStage];
   document.getElementById('checklistTitle').textContent = stage.name;
-  document.getElementById('checklistSub').textContent =
-    'Stage ' + String(selectedStage).padStart(2,'0') + ' · ' + stage.applies_to;
-
+  document.getElementById('checklistSub').textContent = 'Stage ' + String(selectedStage).padStart(2,'0') + ' · ' + stage.applies_to;
   const container = document.getElementById('itemsContainer');
   container.innerHTML = '';
-
-  // Measurements
-  const measSection = document.getElementById('measurementsSection');
-  const measGrid = document.getElementById('measurementsGrid');
-  measGrid.innerHTML = '';
-  if (stage.measurements && stage.measurements.length) {
-    stage.measurements.forEach(m => {
-      const div = document.createElement('div');
-      div.className = 'field';
-      div.innerHTML = `<label>${m.label}</label>
-        <input type="text" id="meas_${m.id}" placeholder="${m.placeholder}"
-          oninput="measurements['${m.id}'] = this.value">`;
-      measGrid.appendChild(div);
-      if (measurements[m.id]) div.querySelector('input').value = measurements[m.id];
-    });
-    measSection.style.display = 'block';
-  } else {
-    measSection.style.display = 'none';
-  }
-
-  // Room-based vs flat
-  if (stage.room_based) {
-    buildRoomChecklist(stage, container);
-  } else {
-    stage.items.forEach((item, idx) => {
-      container.appendChild(buildItem(item, idx + 1, answers, answers));
-    });
-    document.getElementById('roomTabsSection').style.display = 'none';
-  }
-}
-
-function buildRoomChecklist(stage, container) {
-  const tabsSection = document.getElementById('roomTabsSection');
-  const tabsEl = document.getElementById('roomTabs');
-  tabsEl.innerHTML = '';
-  tabsSection.style.display = 'block';
-
-  stage.rooms.forEach((room, ri) => {
-    if (!roomAnswers[room]) roomAnswers[room] = {};
-    const tab = document.createElement('button');
-    tab.className = 'room-tab' + (ri === 0 ? ' active' : '');
-    tab.textContent = room;
-    tab.onclick = () => switchRoom(room);
-    tab.id = 'roomTab_' + room.replace(/\s/g,'_');
-    tabsEl.appendChild(tab);
-
-    const rc = document.createElement('div');
-    rc.className = 'room-content' + (ri === 0 ? ' active' : '');
-    rc.id = 'roomContent_' + room.replace(/\s/g,'_');
-    stage.items.forEach((item, idx) => {
-      rc.appendChild(buildItem(item, idx + 1, roomAnswers[room], roomAnswers[room], room));
-    });
-    container.appendChild(rc);
+  stage.items.forEach((item, idx) => {
+    container.appendChild(buildItem(item, idx + 1));
   });
-
-  currentRoom = stage.rooms[0];
 }
 
-function switchRoom(room) {
-  currentRoom = room;
-  document.querySelectorAll('.room-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.room-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('roomTab_' + room.replace(/\s/g,'_')).classList.add('active');
-  document.getElementById('roomContent_' + room.replace(/\s/g,'_')).classList.add('active');
-}
-
-function buildItem(item, num, answerStore, storeRef, room) {
+function buildItem(item, num) {
   const itemEl = document.createElement('div');
   itemEl.className = 'checklist-item';
-  itemEl.id = 'item_' + item.id + (room ? '_' + room.replace(/\s/g,'_') : '');
+  itemEl.id = 'item_' + item.id;
 
-  const photoAttr = item.photo ? ' photo-required' : '';
   let html = `
     <div class="item-num">Item ${String(num).padStart(2,'0')}</div>
-    <div class="item-text${photoAttr}">${item.text}</div>
+    <div class="item-text">${item.text}</div>
     <div class="yn-group">
-      <button class="yn-btn yes" onclick="setAnswer('${item.id}','yes',this,'${room||''}')">✓ Yes</button>
-      <button class="yn-btn no"  onclick="setAnswer('${item.id}','no',this,'${room||''}')">✗ No</button>
-      <button class="yn-btn na"  onclick="setAnswer('${item.id}','n/a',this,'${room||''}')">— N/A</button>
+      <button class="yn-btn yes" onclick="setAnswer('${item.id}','yes',this)">✓ Yes</button>
+      <button class="yn-btn no" onclick="setAnswer('${item.id}','no',this)">✗ No</button>
+      <button class="yn-btn na" onclick="setAnswer('${item.id}','n/a',this)">— N/A</button>
     </div>`;
 
   if (item.type === 'text_with_check') {
     html += `<div class="text-confirm">
-      <input type="text" placeholder="${item.placeholder || 'Enter details…'}"
-        id="textval_${item.id}${room ? '_' + room.replace(/\s/g,'_') : ''}"
-        oninput="setTextAnswer('${item.id}', this.value, '${room||''}')">
+      <input type="text" placeholder="${item.placeholder || 'Enter details…'}" id="textval_${item.id}"
+        oninput="setTextAnswer('${item.id}', this.value)">
     </div>`;
   }
 
-  if (item.photo) {
-    const photoId = 'photo_' + item.id + (room ? '_' + room.replace(/\s/g,'_') : '');
-    html += `<div class="photo-zone">
-      <div class="photo-label">📷 ${item.photo_label}</div>
-      <div class="photo-trigger" onclick="triggerPhoto('${photoId}', '${item.id}')">
-        <div class="photo-trigger-text">Tap to take photo or choose from gallery</div>
+  // Photo zone — every item
+  const photoId = 'photo_' + item.id;
+  html += `<div class="photo-zone">
+    <div class="photo-trigger" onclick="triggerPhoto('${photoId}','${item.id}')">
+      <div class="photo-trigger-inner">
+        <span style="font-size:20px">📷</span>
+        <span class="photo-trigger-text">Take photo</span>
+        <span class="photo-required-badge">REQUIRED</span>
       </div>
-      <div class="photo-preview-grid" id="preview_${photoId}"></div>
-    </div>`;
-  }
+    </div>
+    <div class="photo-preview-grid" id="preview_${photoId}"></div>
+  </div>`;
 
   itemEl.innerHTML = html;
 
   // Restore previous answers
-  const existing = answerStore[item.id];
+  const existing = answers[item.id];
   if (existing) {
     itemEl.querySelectorAll('.yn-btn').forEach(btn => {
-      if (btn.classList.contains(existing.value === 'n/a' ? 'na' : existing.value)) {
-        btn.classList.add('active');
-        itemEl.className = 'checklist-item answered-' + existing.value.replace('/','');
-      }
+      const cls = existing.value === 'n/a' ? 'na' : existing.value;
+      if (btn.classList.contains(cls)) btn.classList.add('active');
     });
+    itemEl.className = 'checklist-item answered-' + existing.value.replace('/','');
   }
-
   return itemEl;
 }
 
-// ── Answer recording ─────────────────────────────────────────────────────────
-function setAnswer(itemId, value, btnEl, room) {
-  const store = room ? (roomAnswers[room] = roomAnswers[room] || {}) : answers;
-  if (!store[itemId]) store[itemId] = {};
-  store[itemId].value = value;
-
+// ── Answers ──────────────────────────────────────────────────────────────────
+function setAnswer(itemId, value, btnEl) {
+  if (!answers[itemId]) answers[itemId] = {};
+  answers[itemId].value = value;
   const itemEl = btnEl.closest('.checklist-item');
   itemEl.querySelectorAll('.yn-btn').forEach(b => b.classList.remove('active'));
   btnEl.classList.add('active');
   itemEl.className = 'checklist-item answered-' + value.replace('/','');
-
-  // Update room tab completion indicator
-  if (room) updateRoomTabStatus(room);
+}
+function setTextAnswer(itemId, text) {
+  if (!answers[itemId]) answers[itemId] = {};
+  answers[itemId].text = text;
 }
 
-function setTextAnswer(itemId, text, room) {
-  const store = room ? (roomAnswers[room] = roomAnswers[room] || {}) : answers;
-  if (!store[itemId]) store[itemId] = {};
-  store[itemId].text = text;
-}
-
-function updateRoomTabStatus(room) {
-  const stage = STAGES[selectedStage];
-  const ra = roomAnswers[room] || {};
-  const allAnswered = stage.items.every(item => ra[item.id] && ra[item.id].value);
-  const tab = document.getElementById('roomTab_' + room.replace(/\s/g,'_'));
-  if (tab) {
-    tab.classList.toggle('complete', allAnswered);
-  }
-}
-
-// ── Photo handling ───────────────────────────────────────────────────────────
+// ── Photo capture with geotag + timestamp ────────────────────────────────────
 function triggerPhoto(photoId, itemId) {
   let input = document.getElementById('fileinput_' + photoId);
   if (!input) {
@@ -546,7 +357,7 @@ function triggerPhoto(photoId, itemId) {
     input.type = 'file';
     input.accept = 'image/*';
     input.capture = 'environment';
-    input.multiple = true;
+    input.multiple = false;
     input.id = 'fileinput_' + photoId;
     input.style.display = 'none';
     document.getElementById('fileInputPool').appendChild(input);
@@ -557,50 +368,63 @@ function triggerPhoto(photoId, itemId) {
 
 function handlePhotoSelected(input, photoId, itemId) {
   if (!photoFiles[itemId]) photoFiles[itemId] = [];
-  const previewGrid = document.getElementById('preview_' + photoId);
-  Array.from(input.files).forEach(file => {
-    photoFiles[itemId].push(file);
-    // Compress and preview
-    compressImage(file, 1280, 0.82, (blob, dataUrl) => {
-      // Replace original with compressed
-      const idx = photoFiles[itemId].indexOf(file);
-      if (idx !== -1) photoFiles[itemId][idx] = new File([blob], file.name, {type: 'image/jpeg'});
-      const wrap = document.createElement('div');
-      wrap.className = 'photo-preview-item';
-      const img = document.createElement('img');
-      img.src = dataUrl;
-      const rem = document.createElement('button');
-      rem.className = 'photo-remove';
-      rem.textContent = '×';
-      rem.onclick = () => {
-        const fileIdx = photoFiles[itemId].indexOf(photoFiles[itemId].find(f => f === photoFiles[itemId][idx]));
-        if (fileIdx > -1) photoFiles[itemId].splice(fileIdx, 1);
-        wrap.remove();
-      };
-      wrap.appendChild(img);
-      wrap.appendChild(rem);
-      previewGrid.appendChild(wrap);
-    });
+  const file = input.files[0];
+  if (!file) return;
+
+  const ts = new Date();
+  const tsStr = ts.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  captureTime[itemId] = tsStr;
+
+  const geo = geoLocation ? `${geoLocation.lat.toFixed(5)},${geoLocation.lng.toFixed(5)}` : 'Location unavailable';
+
+  compressAndStampImage(file, tsStr, geo, 1280, 0.85, (blob, dataUrl) => {
+    photoFiles[itemId].push(new File([blob], file.name, {type: 'image/jpeg'}));
+    const previewGrid = document.getElementById('preview_' + photoId);
+    const wrap = document.createElement('div');
+    wrap.className = 'photo-preview-item';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    const stamp = document.createElement('div');
+    stamp.className = 'photo-stamp';
+    stamp.textContent = tsStr;
+    const rem = document.createElement('button');
+    rem.className = 'photo-remove';
+    rem.textContent = '×';
+    rem.onclick = () => { photoFiles[itemId] = []; wrap.remove(); };
+    wrap.appendChild(img);
+    wrap.appendChild(stamp);
+    wrap.appendChild(rem);
+    previewGrid.innerHTML = '';
+    previewGrid.appendChild(wrap);
   });
   input.value = '';
 }
 
-function compressImage(file, maxDim, quality, callback) {
+function compressAndStampImage(file, tsStr, geo, maxDim, quality, callback) {
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
     img.onload = () => {
-      const canvas = document.createElement('canvas');
       let w = img.width, h = img.height;
       if (w > maxDim || h > maxDim) {
         if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
         else { w = Math.round(w * maxDim / h); h = maxDim; }
       }
+      const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
-        callback(blob, canvas.toDataURL('image/jpeg', quality));
-      }, 'image/jpeg', quality);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Stamp overlay
+      const barH = Math.max(28, Math.round(h * 0.04));
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, h - barH, w, barH);
+      ctx.fillStyle = '#ffffff';
+      const fontSize = Math.max(10, Math.round(barH * 0.55));
+      ctx.font = `bold ${fontSize}px Arial`;
+      ctx.fillText(tsStr + '  ' + geo, 6, h - Math.round(barH * 0.25));
+
+      canvas.toBlob(blob => callback(blob, canvas.toDataURL('image/jpeg', quality)), 'image/jpeg', quality);
     };
     img.src = e.target.result;
   };
@@ -612,13 +436,11 @@ function buildSummary() {
   const stage = STAGES[selectedStage];
   const table = document.getElementById('summaryTable');
   table.innerHTML = '';
-
   const addRow = (label, value) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${label}</td><td>${value}</td>`;
     table.appendChild(tr);
   };
-
   addRow('Name', document.getElementById('inputName').value);
   addRow('Company', document.getElementById('inputCompany').value);
   addRow('Email', document.getElementById('inputEmail').value);
@@ -626,43 +448,28 @@ function buildSummary() {
   addRow('Plot', '{{ plot.plot_number }}');
   addRow('Stage', stage.name);
 
-  // Count answers
-  let yes = 0, no = 0, na = 0, unanswered = 0;
-  if (stage.room_based) {
-    stage.rooms.forEach(room => {
-      stage.items.forEach(item => {
-        const a = (roomAnswers[room] || {})[item.id];
-        if (!a || !a.value) unanswered++;
-        else if (a.value === 'yes') yes++;
-        else if (a.value === 'no') no++;
-        else na++;
-      });
-    });
-  } else {
-    stage.items.forEach(item => {
-      const a = answers[item.id];
-      if (!a || !a.value) unanswered++;
-      else if (a.value === 'yes') yes++;
-      else if (a.value === 'no') no++;
-      else na++;
-    });
-  }
+  let yes = 0, no = 0, na = 0, unanswered = 0, photosMissing = 0;
+  stage.items.forEach(item => {
+    const a = answers[item.id];
+    if (!a || !a.value) unanswered++;
+    else if (a.value === 'yes') yes++;
+    else if (a.value === 'no') no++;
+    else na++;
+    if (!photoFiles[item.id] || !photoFiles[item.id].length) photosMissing++;
+  });
 
-  addRow('Answers', `
-    <span class="ans-badge ans-yes">✓ ${yes} Yes</span>
-    <span class="ans-badge ans-no" style="margin:0 4px">✗ ${no} No</span>
-    <span class="ans-badge ans-na">— ${na} N/A</span>`);
+  addRow('Answers', `<span class="ans-badge ans-yes">✓ ${yes}</span> <span class="ans-badge ans-no" style="margin:0 4px">✗ ${no}</span> <span class="ans-badge ans-na">— ${na}</span>`);
+  addRow('Photos', (stage.items.length - photosMissing) + ' of ' + stage.items.length + ' captured');
+  addRow('Location', geoLocation ? `${geoLocation.lat.toFixed(5)}, ${geoLocation.lng.toFixed(5)}` : '⚠ Not captured');
 
-  const totalPhotos = Object.values(photoFiles).reduce((acc, arr) => acc + arr.length, 0);
-  addRow('Photos attached', totalPhotos + ' photo' + (totalPhotos !== 1 ? 's' : ''));
-
-  // Incomplete warning
   const warnEl = document.getElementById('incompletWarning');
   const msgEl = document.getElementById('incompleteMsg');
-  if (unanswered > 0) {
+  const issues = [];
+  if (unanswered > 0) issues.push(unanswered + ' item(s) not answered');
+  if (photosMissing > 0) issues.push(photosMissing + ' photo(s) missing');
+  if (issues.length) {
     warnEl.style.display = 'block';
-    msgEl.textContent = unanswered + ' item' + (unanswered > 1 ? 's have' : ' has') +
-      ' not been answered. You can still submit — the site manager will see which items were skipped.';
+    msgEl.textContent = issues.join(' · ') + '. You can still submit but the site manager will see what is incomplete.';
   } else {
     warnEl.style.display = 'none';
   }
@@ -673,42 +480,24 @@ async function submitForm() {
   const stage = STAGES[selectedStage];
   document.getElementById('loading').classList.add('show');
 
-  // Consolidate answers
-  let finalAnswers;
-  if (stage.room_based) {
-    finalAnswers = { rooms: {} };
-    stage.rooms.forEach(room => {
-      finalAnswers.rooms[room] = roomAnswers[room] || {};
-    });
-  } else {
-    finalAnswers = answers;
-  }
-
   const payload = {
     stage_number: selectedStage,
     submitted_by_name: document.getElementById('inputName').value.trim(),
     submitted_by_company: document.getElementById('inputCompany').value.trim(),
     submitted_by_email: document.getElementById('inputEmail').value.trim(),
-    answers: finalAnswers,
-    measurements: measurements,
+    answers: answers,
+    geolocation: geoLocation,
     additional_notes: document.getElementById('additionalNotes').value.trim(),
   };
 
   const formData = new FormData();
   formData.append('data', JSON.stringify(payload));
-
-  // Attach photos
   Object.entries(photoFiles).forEach(([itemId, files]) => {
-    files.forEach(file => {
-      formData.append('photo_' + itemId, file, file.name);
-    });
+    files.forEach(file => formData.append('photo_' + itemId, file, file.name));
   });
 
   try {
-    const res = await fetch('/pd/' + PLOT_TOKEN + '/submit', {
-      method: 'POST',
-      body: formData,
-    });
+    const res = await fetch('/pd/' + PLOT_TOKEN + '/submit', { method: 'POST', body: formData });
     const json = await res.json();
     document.getElementById('loading').classList.remove('show');
     if (json.ok) {
