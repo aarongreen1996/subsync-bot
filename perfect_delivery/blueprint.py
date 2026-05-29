@@ -292,6 +292,49 @@ def admin_submissions():
     return jsonify(query.execute().data or [])
 
 
+
+
+# ── Plot Progress & Photo Album ───────────────────────────────────────────────
+
+@pd_bp.route("/admin/plot/<plot_id>/progress")
+def plot_progress(plot_id: str):
+    _require_admin()
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    site = plot["pd_sites"]
+
+    from .checklist_data import STAGES, STAGE_GROUPS
+    stages_json = json.dumps({
+        str(k): {"name": v["name"], "applies_to": v["applies_to"]}
+        for k, v in STAGES.items()
+    })
+    groups_json = json.dumps([
+        {"name": group_name, "stages": stage_nums}
+        for group_name, stage_nums in STAGE_GROUPS.items()
+    ])
+
+    return render_template(
+        "pd/plot_progress.html",
+        plot=plot,
+        site=site,
+        stages_json=stages_json,
+        groups_json=groups_json,
+        admin_key=ADMIN_KEY,
+    )
+
+
+@pd_bp.route("/admin/photos")
+def admin_photos():
+    _require_admin()
+    submission_id = request.args.get("submission_id")
+    if not submission_id:
+        return jsonify([])
+    res = supabase.table("pd_photos").select("*").eq("submission_id", submission_id).execute()
+    return jsonify(res.data or [])
+
+
 # ── PDF generation ────────────────────────────────────────────────────────────
 
 @pd_bp.route("/review/<review_token>/pdf")
