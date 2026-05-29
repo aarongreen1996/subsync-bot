@@ -31,6 +31,7 @@ app.register_blueprint(account_bp)
 app.register_blueprint(auth_bp)
 start_scheduler()
 app.register_blueprint(pd_bp)
+app.register_blueprint(portal_bp)
 
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
