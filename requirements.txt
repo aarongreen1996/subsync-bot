@@ -10,6 +10,3 @@ stripe==8.9.0
 groq==0.9.0
 qrcode[pil]
 Pillow
-supabase
-reportlab
-
