@@ -192,6 +192,28 @@
   <!-- ── Settings panel ── -->
   <div class="panel" id="panel-settings">
     <div class="card">
+      <div class="card-title">Portal Access</div>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:16px">Create the first admin user for the client portal at <strong>/pd/portal</strong></p>
+      <div class="form-grid">
+        <div class="field"><label>Full Name</label><input type="text" id="puName" placeholder="e.g. Matt Hayworth"></div>
+        <div class="field"><label>Email</label><input type="email" id="puEmail" placeholder="matt@pennyfarthing.co.uk"></div>
+        <div class="field"><label>Password</label><input type="password" id="puPassword" placeholder="Min 8 characters"></div>
+        <div class="field">
+          <label>Role</label>
+          <select id="puRole" style="padding:11px 14px;border:1.5px solid #e5e7eb;border-radius:10px;width:100%;font-size:14px">
+            <option value="tenant_admin">Admin (full access)</option>
+            <option value="site_manager">Site Manager</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
+        <button class="btn btn-primary" onclick="createPortalUser()">+ Create User</button>
+        <a href="/pd/portal" target="_blank" class="btn" style="background:#eff6ff;color:#1e40af">Open Portal →</a>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Company Branding</div>
       <form id="settingsForm" enctype="multipart/form-data">
         <div class="form-grid">
@@ -492,6 +514,30 @@ async function saveSettings() {
 }
 
 loadSettings();
+
+async function createPortalUser() {
+  const payload = {
+    name:     document.getElementById('puName').value.trim(),
+    email:    document.getElementById('puEmail').value.trim(),
+    password: document.getElementById('puPassword').value,
+    role:     document.getElementById('puRole').value,
+  };
+  if (!payload.name || !payload.email || !payload.password) {
+    showToast('Name, email and password are required', 'error'); return;
+  }
+  const res = await fetch('/pd/admin/create-user?key=' + ADMIN_KEY, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    showToast('Portal user created! They can now log in at /pd/portal');
+    document.getElementById('puName').value = '';
+    document.getElementById('puEmail').value = '';
+    document.getElementById('puPassword').value = '';
+  } else {
+    showToast('Error: ' + json.error, 'error');
+  }
+}
 </script>
 </body>
 </html>
