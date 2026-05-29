@@ -2,17 +2,16 @@
 import os
 import json
 import uuid
-import traceback
 from datetime import datetime, timezone
 
 from flask import (
     Blueprint, request, render_template, jsonify,
-    redirect, url_for, send_file, abort, g
+    redirect, url_for, send_file, abort
 )
 from supabase import create_client, Client
 import io
 
-from .checklist_data import STAGES, get_all_stages_summary, get_stage
+from .checklist_data import STAGES, get_all_stages_summary, get_stage, get_stages_by_group
 from .email_utils import send_manager_notification, send_decision_to_subcontractor
 from .qr_utils import generate_qr_png
 
@@ -20,15 +19,11 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "pd-photos")
 ADMIN_KEY = os.environ.get("PD_ADMIN_KEY", "change-me-in-env")
+BASE_URL = os.environ.get("PD_BASE_URL", "http://localhost:5000")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-pd_bp = Blueprint(
-    "pd",
-    __name__,
-    template_folder="templates",
-    url_prefix="/pd",
-)
+pd_bp = Blueprint("pd", __name__, template_folder="templates", url_prefix="/pd")
 
 
 def _require_admin():
@@ -38,9 +33,7 @@ def _require_admin():
 
 
 def _get_plot(token: str):
-    res = supabase.table("pd_plots").select(
-        "*, pd_sites(*)"
-    ).eq("access_token", token).single().execute()
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("access_token", token).single().execute()
     if not res.data:
         abort(404)
     return res.data
@@ -55,9 +48,9 @@ def _get_submission_by_review_token(token: str):
     return res.data
 
 
-def _upload_photo(file_obj, submission_id: str, item_id: str) -> tuple[str, str]:
+def _upload_photo(file_obj, submission_id: str, item_id: str) -> tuple:
     ext = "jpg"
-    if hasattr(file_obj, "filename") and "." in file_obj.filename:
+    if hasattr(file_obj, "filename") and "." in (file_obj.filename or ""):
         ext = file_obj.filename.rsplit(".", 1)[-1].lower()
         if ext not in ("jpg", "jpeg", "png", "webp", "heic"):
             ext = "jpg"
@@ -70,25 +63,20 @@ def _upload_photo(file_obj, submission_id: str, item_id: str) -> tuple[str, str]
     return path, public_url
 
 
+# ── Subcontractor Form ────────────────────────────────────────────────────────
+
 @pd_bp.route("/<token>", methods=["GET"])
 def form(token: str):
     plot_row = _get_plot(token)
-    plot = {
-        "id": plot_row["id"],
-        "plot_number": plot_row["plot_number"],
-        "token": token,
-    }
-    site = {
-        "name": plot_row["pd_sites"]["name"],
-        "address": plot_row["pd_sites"].get("address", ""),
-    }
-    stages_summary = get_all_stages_summary()
+    plot = {"id": plot_row["id"], "plot_number": plot_row["plot_number"], "token": token}
+    site = {"name": plot_row["pd_sites"]["name"], "address": plot_row["pd_sites"].get("address", "")}
     stages_json = json.dumps(STAGES, ensure_ascii=False)
+    stages_by_group = get_stages_by_group()
     return render_template(
         "pd/form.html",
         plot=plot,
         site=site,
-        stages_summary=stages_summary,
+        stages_by_group=stages_by_group,
         stages_json=stages_json,
     )
 
@@ -97,8 +85,7 @@ def form(token: str):
 def submit(token: str):
     plot_row = _get_plot(token)
     try:
-        data_raw = request.form.get("data", "{}")
-        data = json.loads(data_raw)
+        data = json.loads(request.form.get("data", "{}"))
     except Exception:
         return jsonify({"ok": False, "error": "Invalid form data"}), 400
 
@@ -114,9 +101,6 @@ def submit(token: str):
     if not all([sub_name, sub_company, sub_email]):
         return jsonify({"ok": False, "error": "Name, company and email are required"}), 400
 
-    answers = data.get("answers", {})
-    additional_notes = data.get("additional_notes", "")
-
     submission_id = str(uuid.uuid4())
     review_token = uuid.uuid4().hex + uuid.uuid4().hex[:8]
 
@@ -128,20 +112,21 @@ def submit(token: str):
         "submitted_by_name": sub_name,
         "submitted_by_company": sub_company,
         "submitted_by_email": sub_email,
-        "answers": answers,
-        "additional_notes": additional_notes,
+        "answers": data.get("answers", {}),
+        "additional_notes": data.get("additional_notes", ""),
         "status": "pending",
         "review_token": review_token,
     }
     supabase.table("pd_submissions").insert(sub_record).execute()
 
+    # Upload photos
     photo_records = []
     for key, file_obj in request.files.items():
-        if not key.startswith("photo_") or not file_obj.filename:
+        if not key.startswith("photo_") or not getattr(file_obj, "filename", None):
             continue
         item_id = key[len("photo_"):]
         item_label = next(
-            (i["photo_label"] for i in stage.get("items", []) if i["id"] == item_id),
+            (i.get("text", item_id)[:60] for i in stage.get("items", []) if i["id"] == item_id),
             item_id,
         )
         try:
@@ -154,13 +139,14 @@ def submit(token: str):
                 "public_url": public_url,
             })
         except Exception as e:
-            print(f"Photo upload error for {item_id}: {e}")
+            print(f"Photo upload error {item_id}: {e}")
 
     if photo_records:
         supabase.table("pd_photos").insert(photo_records).execute()
 
+    # Email site manager
     site = plot_row["pd_sites"]
-    review_url = f"{os.environ.get('PD_BASE_URL', 'http://localhost:5000')}/pd/review/{review_token}"
+    review_url = f"{BASE_URL}/pd/review/{review_token}"
     try:
         send_manager_notification(sub_record, plot_row, site, review_url)
     except Exception as e:
@@ -176,9 +162,10 @@ def submitted(submission_id: str):
     ).eq("id", submission_id).single().execute()
     if not res.data:
         abort(404)
-    sub = res.data
-    return render_template("pd/submitted.html", sub=sub)
+    return render_template("pd/submitted.html", sub=res.data)
 
+
+# ── Site Manager Review ───────────────────────────────────────────────────────
 
 @pd_bp.route("/review/<review_token>", methods=["GET"])
 def review(review_token: str):
@@ -186,23 +173,15 @@ def review(review_token: str):
     plot = sub["pd_plots"]
     site = plot["pd_sites"]
 
-    photos_res = supabase.table("pd_photos").select("*").eq(
-        "submission_id", sub["id"]
-    ).execute()
-    photos = photos_res.data or []
+    photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
     photos_by_item = {}
-    for p in photos:
+    for p in (photos_res.data or []):
         photos_by_item.setdefault(p["item_id"], []).append(p["public_url"])
 
     stage = get_stage(sub["stage_number"])
-
     return render_template(
         "pd/review.html",
-        sub=sub,
-        plot=plot,
-        site=site,
-        stage=stage,
-        photos_by_item=photos_by_item,
+        sub=sub, plot=plot, site=site, stage=stage, photos_by_item=photos_by_item,
     )
 
 
@@ -210,7 +189,7 @@ def review(review_token: str):
 def decide(review_token: str):
     sub = _get_submission_by_review_token(review_token)
     if sub["status"] != "pending":
-        return jsonify({"ok": False, "error": "Already reviewed"}), 400
+        return redirect(url_for("pd.review_done", review_token=review_token))
 
     decision = request.form.get("decision")
     manager_notes = request.form.get("manager_notes", "").strip()
@@ -239,26 +218,17 @@ def decide(review_token: str):
 @pd_bp.route("/review/<review_token>/done")
 def review_done(review_token: str):
     sub = _get_submission_by_review_token(review_token)
-    plot = sub["pd_plots"]
-    site = plot["pd_sites"]
-    return render_template("pd/review_done.html", sub=sub, plot=plot, site=site)
+    return render_template("pd/review_done.html", sub=sub, plot=sub["pd_plots"], site=sub["pd_plots"]["pd_sites"])
 
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
 
 @pd_bp.route("/admin")
 def admin():
     _require_admin()
-    sites_res = supabase.table("pd_sites").select("*").order("name").execute()
-    sites = sites_res.data or []
-    plots_res = supabase.table("pd_plots").select(
-        "*, pd_sites(name)"
-    ).order("created_at", desc=True).execute()
-    plots = plots_res.data or []
-    return render_template(
-        "pd/admin.html",
-        sites=sites,
-        plots=plots,
-        admin_key=ADMIN_KEY,
-    )
+    sites = supabase.table("pd_sites").select("*").order("name").execute().data or []
+    plots = supabase.table("pd_plots").select("*, pd_sites(name)").order("created_at", desc=True).execute().data or []
+    return render_template("pd/admin.html", sites=sites, plots=plots, admin_key=ADMIN_KEY)
 
 
 @pd_bp.route("/admin/sites", methods=["POST"])
@@ -266,11 +236,11 @@ def admin_create_site():
     _require_admin()
     data = request.get_json() or request.form
     record = {
-        "name": data.get("name", "").strip(),
-        "address": data.get("address", "").strip(),
-        "manager_name": data.get("manager_name", "").strip(),
-        "manager_email": data.get("manager_email", "").strip(),
-        "manager_phone": data.get("manager_phone", "").strip(),
+        "name": (data.get("name") or "").strip(),
+        "address": (data.get("address") or "").strip(),
+        "manager_name": (data.get("manager_name") or "").strip(),
+        "manager_email": (data.get("manager_email") or "").strip(),
+        "manager_phone": (data.get("manager_phone") or "").strip(),
     }
     if not record["name"] or not record["manager_email"]:
         return jsonify({"ok": False, "error": "Site name and manager email are required"}), 400
@@ -283,8 +253,8 @@ def admin_create_plot():
     _require_admin()
     data = request.get_json() or request.form
     record = {
-        "site_id": data.get("site_id", "").strip(),
-        "plot_number": data.get("plot_number", "").strip(),
+        "site_id": (data.get("site_id") or "").strip(),
+        "plot_number": (data.get("plot_number") or "").strip(),
     }
     if not record["site_id"] or not record["plot_number"]:
         return jsonify({"ok": False, "error": "Site and plot number are required"}), 400
@@ -295,22 +265,14 @@ def admin_create_plot():
 @pd_bp.route("/admin/qr/<plot_id>")
 def admin_qr(plot_id: str):
     _require_admin()
-    res = supabase.table("pd_plots").select(
-        "*, pd_sites(name)"
-    ).eq("id", plot_id).single().execute()
+    res = supabase.table("pd_plots").select("*, pd_sites(name)").eq("id", plot_id).single().execute()
     if not res.data:
         abort(404)
     plot = res.data
-    png_bytes = generate_qr_png(
-        plot["access_token"],
-        plot["plot_number"],
-        plot["pd_sites"]["name"],
-    )
+    png_bytes = generate_qr_png(plot["access_token"], plot["plot_number"], plot["pd_sites"]["name"])
     return send_file(
-        io.BytesIO(png_bytes),
-        mimetype="image/png",
-        as_attachment=True,
-        download_name=f"QR_Plot_{plot['plot_number']}.png",
+        io.BytesIO(png_bytes), mimetype="image/png",
+        as_attachment=True, download_name=f"QR_Plot_{plot['plot_number']}.png",
     )
 
 
@@ -323,5 +285,4 @@ def admin_submissions():
     ).order("submitted_at", desc=True)
     if plot_id:
         query = query.eq("plot_id", plot_id)
-    res = query.execute()
-    return jsonify(res.data or [])
+    return jsonify(query.execute().data or [])
