@@ -26,7 +26,7 @@ def generate_qr_png(plot_token: str, plot_number: str, site_name: str) -> bytes:
     qr_width, qr_height = qr_img.size
     label_height = 80
     final_img = Image.new("RGB", (qr_width, qr_height + label_height), "white")
-    final_img.paste(qr_img, (0, 0))
+    final_img.paste(qr_img.convert("RGB"), (0, 0))
 
     draw = ImageDraw.Draw(final_img)
     try:
