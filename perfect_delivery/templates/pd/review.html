@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review — {{ sub.stage_name }} | Plot {{ plot.plot_number }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f2f5; color: #1a1a2e; }
+  .header { background: #1a1a2e; padding: 20px 24px; }
+  .header h1 { color: #C5962A; font-size: 18px; font-weight: 700; }
+  .header p { color: #9ca3af; font-size: 13px; margin-top: 3px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-top: 8px; }
+  .badge-pending  { background: #fef3c7; color: #92400e; }
+  .badge-approved { background: #dcfce7; color: #166534; }
+  .badge-rejected { background: #fee2e2; color: #991b1b; }
+
+  .container { max-width: 760px; margin: 0 auto; padding: 20px 16px 80px; }
+  .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  .card-title { font-size: 15px; font-weight: 700; color: #1a1a2e; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 2px solid #f0f2f5; }
+
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .meta-item label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .meta-item p { font-size: 15px; font-weight: 600; color: #1a1a2e; margin-top: 3px; }
+
+  .stats-row { display: flex; gap: 10px; margin-bottom: 16px; }
+  .stat { flex: 1; text-align: center; padding: 12px 8px; border-radius: 10px; }
+  .stat-yes { background: #dcfce7; }
+  .stat-no  { background: #fee2e2; }
+  .stat-na  { background: #f3f4f6; }
+  .stat .n { font-size: 24px; font-weight: 800; }
+  .stat .l { font-size: 12px; color: #555; margin-top: 2px; }
+  .stat-yes .n { color: #16a34a; }
+  .stat-no  .n { color: #dc2626; }
+  .stat-na  .n  { color: #6b7280; }
+
+  /* Checklist display */
+  .item-list { display: flex; flex-direction: column; gap: 10px; }
+  .ci { border-left: 3px solid #e5e7eb; padding: 12px 14px; border-radius: 0 8px 8px 0;
+    background: #fafafa; font-size: 14px; }
+  .ci.yes { border-left-color: #16a34a; background: #f0fdf4; }
+  .ci.no  { border-left-color: #dc2626; background: #fff5f5; }
+  .ci.na  { border-left-color: #9ca3af; background: #f9fafb; }
+  .ci-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .ci-text { flex: 1; line-height: 1.5; color: #374151; }
+  .ci-badge { flex-shrink: 0; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+  .ci-badge.yes { background: #dcfce7; color: #166534; }
+  .ci-badge.no  { background: #fee2e2; color: #991b1b; }
+  .ci-badge.na  { background: #f3f4f6; color: #6b7280; }
+  .ci-badge.none { background: #fef3c7; color: #92400e; }
+  .ci-extra { margin-top: 8px; font-size: 13px; color: #6b7280; }
+  .ci-extra span { font-weight: 600; color: #374151; }
+
+  /* Room tabs */
+  .room-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .room-tab { padding: 7px 14px; border: 1.5px solid #e5e7eb; border-radius: 20px;
+    font-size: 13px; font-weight: 600; cursor: pointer; background: white; color: #6b7280; transition: all 0.15s; }
+  .room-tab.active { border-color: #C5962A; background: #fdf8ec; color: #1a1a2e; }
+  .room-content { display: none; }
+  .room-content.active { display: block; }
+
+  /* Photos */
+  .photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .photo-grid a { display: block; }
+  .photo-grid img { width: 88px; height: 88px; object-fit: cover; border-radius: 8px;
+    border: 2px solid #e5e7eb; transition: transform 0.1s; cursor: pointer; }
+  .photo-grid img:hover { transform: scale(1.05); }
+
+  /* Decide form */
+  .decide-card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07); border-top: 3px solid #C5962A; }
+  .decide-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+  .decide-btns { display: flex; gap: 12px; margin-bottom: 20px; }
+  .decide-btn {
+    flex: 1; padding: 14px; border-radius: 10px; border: 2px solid #e5e7eb;
+    font-size: 15px; font-weight: 700; cursor: pointer; background: white; transition: all 0.15s;
+  }
+  .decide-btn.approve-btn { color: #16a34a; }
+  .decide-btn.reject-btn  { color: #dc2626; }
+  .decide-btn.approve-btn.selected { background: #dcfce7; border-color: #16a34a; }
+  .decide-btn.reject-btn.selected  { background: #fee2e2; border-color: #dc2626; }
+  label.field-lbl { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  textarea.notes-input { width: 100%; padding: 12px; border: 1.5px solid #e5e7eb; border-radius: 10px;
+    font-size: 14px; resize: vertical; min-height: 90px; margin-bottom: 16px; color: #1a1a2e; }
+  textarea.notes-input:focus { outline: none; border-color: #C5962A; }
+  input.name-input { width: 100%; padding: 12px; border: 1.5px solid #e5e7eb; border-radius: 10px;
+    font-size: 14px; margin-bottom: 16px; color: #1a1a2e; }
+  input.name-input:focus { outline: none; border-color: #C5962A; }
+  .submit-btn { width: 100%; padding: 16px; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+  .submit-btn:disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; }
+  .submit-btn.approve { background: #16a34a; color: white; }
+  .submit-btn.reject  { background: #dc2626; color: white; }
+
+  /* Already reviewed */
+  .reviewed-banner { padding: 20px; border-radius: 12px; margin-bottom: 16px; text-align: center; }
+  .reviewed-banner h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+  .reviewed-banner p { font-size: 14px; }
+  .reviewed-banner.approved { background: #dcfce7; color: #166534; }
+  .reviewed-banner.rejected { background: #fee2e2; color: #991b1b; }
+
+  .notes-display { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px 16px;
+    border-radius: 0 8px 8px 0; font-size: 14px; color: #374151; white-space: pre-wrap; line-height: 1.6; }
+  .notes-display strong { display: block; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #92400e; margin-bottom: 6px; }
+
+  @media (min-width: 600px) {
+    .meta-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Perfect Delivery Review</h1>
+  <p>{{ site.name }} · Plot {{ plot.plot_number }}</p>
+  <span class="badge badge-{{ sub.status }}">
+    {% if sub.status == 'pending' %}⏳ Awaiting Decision
+    {% elif sub.status == 'approved' %}✓ Approved
+    {% else %}✗ Rejected{% endif %}
+  </span>
+</div>
+
+<div class="container">
+
+  <!-- Submission meta -->
+  <div class="card">
+    <div class="card-title">Submission Details</div>
+    <div class="meta-grid">
+      <div class="meta-item"><label>Stage</label><p>{{ sub.stage_name }}</p></div>
+      <div class="meta-item"><label>Plot</label><p>{{ plot.plot_number }}</p></div>
+      <div class="meta-item"><label>Site</label><p>{{ site.name }}</p></div>
+      <div class="meta-item"><label>Submitted by</label><p>{{ sub.submitted_by_name }}</p></div>
+      <div class="meta-item"><label>Company</label><p>{{ sub.submitted_by_company }}</p></div>
+      <div class="meta-item"><label>Email</label><p style="font-size:13px">{{ sub.submitted_by_email }}</p></div>
+    </div>
+    {% if sub.additional_notes %}
+    <div style="margin-top:14px">
+      <div class="notes-display"><strong>Subcontractor Notes</strong>{{ sub.additional_notes }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Answer stats -->
+  {% set answers = sub.answers %}
+  {% set all_items = [] %}
+  {% if stage.room_based %}
+    {% set rooms_data = answers.get('rooms', {}) %}
+    {% for room, room_ans in rooms_data.items() %}
+      {% for item in stage.items %}{% set _ = all_items.append(room_ans.get(item.id, {})) %}{% endfor %}
+    {% endfor %}
+  {% else %}
+    {% for item in stage.items %}{% set _ = all_items.append(answers.get(item.id, {})) %}{% endfor %}
+  {% endif %}
+  {% set yes_count = all_items | selectattr('value', 'equalto', 'yes') | list | length %}
+  {% set no_count  = all_items | selectattr('value', 'equalto', 'no')  | list | length %}
+  {% set na_count  = all_items | selectattr('value', 'equalto', 'n/a') | list | length %}
+  {% set un_count  = all_items | rejectattr('value', 'defined') | list | length %}
+
+  <div class="stats-row">
+    <div class="stat stat-yes"><div class="n">{{ yes_count }}</div><div class="l">Yes</div></div>
+    <div class="stat stat-no"><div class="n">{{ no_count }}</div><div class="l">No</div></div>
+    <div class="stat stat-na"><div class="n">{{ na_count }}</div><div class="l">N/A</div></div>
+    {% if un_count > 0 %}<div class="stat" style="background:#fef3c7"><div class="n" style="color:#d97706">{{ un_count }}</div><div class="l">Skipped</div></div>{% endif %}
+  </div>
+
+  <!-- Checklist answers -->
+  <div class="card">
+    <div class="card-title">Checklist Answers</div>
+
+    {% if stage.room_based %}
+      {% set rooms_data = answers.get('rooms', {}) %}
+      <div class="room-tabs">
+        {% for room in stage.rooms %}
+        <button class="room-tab {% if loop.first %}active{% endif %}"
+          onclick="switchRoom('{{ room | replace(' ', '_') }}', this)">{{ room }}</button>
+        {% endfor %}
+      </div>
+      {% for room in stage.rooms %}
+      <div class="room-content {% if loop.first %}active{% endif %}" id="room_{{ room | replace(' ', '_') }}">
+        <div class="item-list">
+          {% set room_ans = rooms_data.get(room, {}) %}
+          {% for item in stage.items %}
+            {% set a = room_ans.get(item.id, {}) %}
+            {% set val = a.get('value', '') %}
+            <div class="ci {{ val | replace('/','') }}">
+              <div class="ci-header">
+                <span class="ci-text">{{ item.text }}</span>
+                <span class="ci-badge {{ val | replace('/','') if val else 'none' }}">
+                  {% if val == 'yes' %}✓ Yes{% elif val == 'no' %}✗ No{% elif val == 'n/a' %}— N/A{% else %}Not answered{% endif %}
+                </span>
+              </div>
+              {% if a.get('text') %}<div class="ci-extra">Spec confirmed: <span>{{ a.text }}</span></div>{% endif %}
+              {% set item_photos = photos_by_item.get(item.id, []) %}
+              {% if item_photos %}
+              <div class="photo-grid">
+                {% for url in item_photos %}
+                <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Photo" loading="lazy"></a>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+
+    {% else %}
+      <div class="item-list">
+        {% for item in stage.items %}
+          {% set a = answers.get(item.id, {}) %}
+          {% set val = a.get('value', '') %}
+          <div class="ci {{ val | replace('/','') }}">
+            <div class="ci-header">
+              <span class="ci-text">{{ item.text }}</span>
+              <span class="ci-badge {{ val | replace('/','') if val else 'none' }}">
+                {% if val == 'yes' %}✓ Yes{% elif val == 'no' %}✗ No{% elif val == 'n/a' %}— N/A{% else %}Not answered{% endif %}
+              </span>
+            </div>
+            {% if a.get('text') %}<div class="ci-extra">Spec confirmed: <span>{{ a.text }}</span></div>{% endif %}
+            {% set item_photos = photos_by_item.get(item.id, []) %}
+            {% if item_photos %}
+            <div class="photo-grid">
+              {% for url in item_photos %}
+              <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="Photo" loading="lazy"></a>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Decision panel -->
+  {% if sub.status == 'pending' %}
+  <div class="decide-card">
+    <div class="decide-title">Your Decision</div>
+    <form method="POST" action="/pd/review/{{ sub.review_token }}/decide" id="decideForm">
+      <div class="decide-btns">
+        <button type="button" class="decide-btn approve-btn" onclick="selectDecision('approved', this)">✓ Approve</button>
+        <button type="button" class="decide-btn reject-btn"  onclick="selectDecision('rejected', this)">✗ Reject</button>
+      </div>
+      <input type="hidden" name="decision" id="decisionInput" value="">
+
+      <label class="field-lbl">Your Name <span style="color:#dc2626">*</span></label>
+      <input type="text" name="reviewed_by" class="name-input"
+        placeholder="Your full name" value="{{ site.manager_name }}">
+
+      <label class="field-lbl">Notes to Subcontractor</label>
+      <textarea name="manager_notes" class="notes-input"
+        placeholder="Required if rejecting. Optional if approving — use for any specific feedback."></textarea>
+
+      <button type="submit" class="submit-btn" id="submitDecisionBtn" disabled>
+        Select a decision above
+      </button>
+    </form>
+  </div>
+
+  {% else %}
+  <!-- Already reviewed -->
+  <div class="reviewed-banner {{ sub.status }}">
+    {% if sub.status == 'approved' %}
+    <h2>✓ Approved</h2>
+    <p>Reviewed by {{ sub.reviewed_by or 'Site Manager' }} · {{ sub.reviewed_at[:10] if sub.reviewed_at else '' }}</p>
+    {% else %}
+    <h2>✗ Rejected</h2>
+    <p>Reviewed by {{ sub.reviewed_by or 'Site Manager' }} · {{ sub.reviewed_at[:10] if sub.reviewed_at else '' }}</p>
+    {% endif %}
+  </div>
+  {% if sub.manager_notes %}
+  <div class="card">
+    <div class="notes-display"><strong>Site Manager Notes</strong>{{ sub.manager_notes }}</div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+</div>
+
+<script>
+let chosenDecision = '';
+function selectDecision(d, btn) {
+  chosenDecision = d;
+  document.getElementById('decisionInput').value = d;
+  document.querySelectorAll('.decide-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  const submitBtn = document.getElementById('submitDecisionBtn');
+  submitBtn.disabled = false;
+  submitBtn.textContent = d === 'approved' ? '✓ Confirm Approval' : '✗ Confirm Rejection';
+  submitBtn.className = 'submit-btn ' + (d === 'approved' ? 'approve' : 'reject');
+}
+
+function switchRoom(roomId, tab) {
+  document.querySelectorAll('.room-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.room-content').forEach(c => c.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('room_' + roomId).classList.add('active');
+}
+
+document.getElementById('decideForm')?.addEventListener('submit', function(e) {
+  if (!chosenDecision) { e.preventDefault(); alert('Please select Approve or Reject.'); return; }
+  if (chosenDecision === 'rejected') {
+    const notes = document.querySelector('[name=manager_notes]').value.trim();
+    if (!notes) { e.preventDefault(); alert('Please add notes explaining why this stage is being rejected.'); return; }
+  }
+});
+</script>
+</body>
+</html>
