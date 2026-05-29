@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plot {{ plot.plot_number }} — {{ site.name }} — Progress</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  .header { background: #1a1a2e; padding: 20px 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .header-left h1 { color: #C5962A; font-size: 20px; font-weight: 700; }
+  .header-left p { color: #9ca3af; font-size: 13px; margin-top: 3px; }
+  .header-right { display: flex; gap: 10px; align-items: center; }
+  .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; border: none; transition: all 0.15s; }
+  .btn-gold { background: #C5962A; color: #1a1a2e; }
+  .btn-outline { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  /* Stats bar */
+  .stats-bar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-card { flex: 1; min-width: 120px; background: white; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center; }
+  .stat-card .n { font-size: 28px; font-weight: 800; }
+  .stat-card .l { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .n-approved { color: #16a34a; }
+  .n-pending  { color: #d97706; }
+  .n-rejected { color: #dc2626; }
+  .n-empty    { color: #9ca3af; }
+  .n-total    { color: #1a1a2e; }
+
+  /* Progress bar */
+  .progress-section { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .progress-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .progress-track { height: 12px; background: #f0f2f5; border-radius: 10px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e); border-radius: 10px; transition: width 0.5s ease; }
+
+  /* Group sections */
+  .group-section { margin-bottom: 24px; }
+  .group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .group-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
+  .group-line { flex: 1; height: 1px; background: #e5e7eb; }
+  .group-count { font-size: 12px; color: #6b7280; }
+
+  /* Stage grid */
+  .stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+
+  .stage-card {
+    background: white; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #e5e7eb;
+    cursor: pointer; transition: all 0.15s; text-decoration: none; display: block;
+  }
+  .stage-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+  .stage-card.approved { border-left-color: #16a34a; }
+  .stage-card.pending  { border-left-color: #d97706; }
+  .stage-card.rejected { border-left-color: #dc2626; }
+  .stage-card.empty    { border-left-color: #e5e7eb; opacity: 0.7; cursor: default; }
+  .stage-card.empty:hover { transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  .stage-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .stage-num { background: #f0f2f5; color: #6b7280; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; flex-shrink: 0; }
+  .stage-name { font-size: 13px; font-weight: 600; color: #1a1a2e; line-height: 1.4; flex: 1; }
+
+  .stage-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .badge-approved { background: #dcfce7; color: #166534; }
+  .badge-pending  { background: #fef3c7; color: #92400e; }
+  .badge-rejected { background: #fee2e2; color: #991b1b; }
+  .badge-empty    { background: #f3f4f6; color: #9ca3af; }
+
+  .stage-meta { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+  .stage-trade { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+  /* Photo album section */
+  .album-section { background: white; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .album-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .album-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
+  .album-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-btn { padding: 5px 12px; border: 1.5px solid #e5e7eb; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #6b7280; transition: all 0.15s; }
+  .filter-btn.active { border-color: #C5962A; background: #fdf8ec; color: #1a1a2e; }
+
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .photo-item { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 1; cursor: pointer; }
+  .photo-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
+  .photo-item:hover img { transform: scale(1.05); }
+  .photo-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.75)); padding: 20px 6px 6px; }
+  .photo-stage { color: white; font-size: 10px; font-weight: 600; line-height: 1.3; }
+  .photo-date  { color: rgba(255,255,255,0.7); font-size: 9px; }
+  .photo-empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; grid-column: 1/-1; }
+
+  /* Lightbox */
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; }
+  .lightbox.show { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; }
+  .lightbox-info { color: white; text-align: center; margin-top: 12px; font-size: 13px; }
+  .lightbox-close { position: absolute; top: 20px; right: 24px; color: white; font-size: 28px; cursor: pointer; background: none; border: none; }
+  .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); color: white; font-size: 32px; cursor: pointer; background: rgba(255,255,255,0.1); border: none; border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
+  .lightbox-prev { left: 20px; }
+  .lightbox-next { right: 20px; }
+
+  @media(max-width:600px) {
+    .stage-grid { grid-template-columns: 1fr 1fr; }
+    .photo-grid { grid-template-columns: repeat(3, 1fr); }
+    .stats-bar { gap: 8px; }
+    .stat-card { min-width: 80px; padding: 10px 12px; }
+    .stat-card .n { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Plot {{ plot.plot_number }} — Progress Tracker</h1>
+    <p>{{ site.name }} · {{ site.address or '' }}</p>
+  </div>
+  <div class="header-right">
+    <a href="/pd/admin?key={{ admin_key }}" class="btn btn-outline">← Admin</a>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-card"><div class="n n-approved" id="statApproved">—</div><div class="l">Approved</div></div>
+    <div class="stat-card"><div class="n n-pending"  id="statPending">—</div><div class="l">Pending</div></div>
+    <div class="stat-card"><div class="n n-rejected" id="statRejected">—</div><div class="l">Rejected</div></div>
+    <div class="stat-card"><div class="n n-empty"    id="statEmpty">—</div><div class="l">Not Started</div></div>
+    <div class="stat-card"><div class="n n-total">37</div><div class="l">Total Stages</div></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-section">
+    <div class="progress-label">
+      <span>Overall Completion</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Stage groups rendered by JS -->
+  <div id="stageGroups"></div>
+
+  <!-- Photo album -->
+  <div class="album-section">
+    <div class="album-header">
+      <div class="album-title">📷 Plot Photo Album</div>
+      <div class="album-filters" id="albumFilters">
+        <button class="filter-btn active" onclick="filterPhotos('all', this)">All</button>
+      </div>
+    </div>
+    <div class="photo-grid" id="photoGrid">
+      <div class="photo-empty">Loading photos…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <button class="lightbox-nav lightbox-prev" onclick="event.stopPropagation();navPhoto(-1)">‹</button>
+  <img id="lightboxImg" src="" alt="">
+  <div class="lightbox-info" id="lightboxInfo"></div>
+  <button class="lightbox-nav lightbox-next" onclick="event.stopPropagation();navPhoto(1)">›</button>
+</div>
+
+<script>
+const PLOT_ID   = "{{ plot.id }}";
+const ADMIN_KEY = "{{ admin_key }}";
+const STAGES_DATA = {{ stages_json | safe }};
+const STAGE_GROUPS = {{ groups_json | safe }};
+
+let allPhotos = [];
+let filteredPhotos = [];
+let currentPhotoIdx = 0;
+let activeStageFilter = 'all';
+
+// ── Load submissions ─────────────────────────────────────────────────────────
+async function loadData() {
+  const res = await fetch(`/pd/admin/submissions?key=${ADMIN_KEY}&plot_id=${PLOT_ID}`);
+  const submissions = await res.json();
+
+  // Build stage status map — latest submission per stage
+  const stageMap = {};
+  submissions.forEach(sub => {
+    const n = sub.stage_number;
+    if (!stageMap[n] || new Date(sub.submitted_at) > new Date(stageMap[n].submitted_at)) {
+      stageMap[n] = sub;
+    }
+  });
+
+  renderStages(stageMap);
+  await loadPhotos(submissions);
+}
+
+// ── Render stage grid ────────────────────────────────────────────────────────
+function renderStages(stageMap) {
+  let approved = 0, pending = 0, rejected = 0, empty = 0;
+
+  const container = document.getElementById('stageGroups');
+  container.innerHTML = '';
+
+  STAGE_GROUPS.forEach(group => {
+    const section = document.createElement('div');
+    section.className = 'group-section';
+
+    const groupApproved = group.stages.filter(n => stageMap[n]?.status === 'approved').length;
+    section.innerHTML = `
+      <div class="group-header">
+        <span class="group-title">${group.name}</span>
+        <span class="group-line"></span>
+        <span class="group-count">${groupApproved}/${group.stages.length} approved</span>
+      </div>
+      <div class="stage-grid" id="grid_${group.name.replace(/\s/g,'_')}"></div>`;
+
+    const grid = section.querySelector('.stage-grid');
+
+    group.stages.forEach(stageNum => {
+      const stage   = STAGES_DATA[stageNum];
+      if (!stage) return;
+      const sub     = stageMap[stageNum];
+      const status  = sub ? sub.status : 'empty';
+      const date    = sub ? sub.submitted_at?.slice(0,10) : '';
+      const by      = sub ? sub.submitted_by_name : '';
+
+      if (status === 'approved') approved++;
+      else if (status === 'pending') pending++;
+      else if (status === 'rejected') rejected++;
+      else empty++;
+
+      const badgeMap = {
+        approved: ['badge-approved','✓ Approved'],
+        pending:  ['badge-pending', '⏳ Pending'],
+        rejected: ['badge-rejected','✗ Rejected'],
+        empty:    ['badge-empty',   '— Not started'],
+      };
+      const [badgeCls, badgeTxt] = badgeMap[status] || badgeMap.empty;
+
+      const card = document.createElement(sub ? 'a' : 'div');
+      card.className = `stage-card ${status}`;
+      if (sub) card.href = `/pd/review/${sub.review_token}`;
+      card.innerHTML = `
+        <div class="stage-card-top">
+          <span class="stage-num">${String(stageNum).padStart(2,'0')}</span>
+          <span class="stage-name">${stage.name}</span>
+        </div>
+        <span class="stage-badge ${badgeCls}">${badgeTxt}</span>
+        ${date ? `<div class="stage-meta">${date}${by ? ' · ' + by : ''}</div>` : ''}
+        <div class="stage-trade">${stage.applies_to}</div>`;
+
+      grid.appendChild(card);
+    });
+
+    container.appendChild(section);
+  });
+
+  // Update stats
+  document.getElementById('statApproved').textContent = approved;
+  document.getElementById('statPending').textContent  = pending;
+  document.getElementById('statRejected').textContent = rejected;
+  document.getElementById('statEmpty').textContent    = empty;
+
+  const pct = Math.round((approved / 37) * 100);
+  document.getElementById('progressPct').textContent  = pct + '%';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// ── Load photos ──────────────────────────────────────────────────────────────
+async function loadPhotos(submissions) {
+  allPhotos = [];
+  const filters = document.getElementById('albumFilters');
+
+  // Fetch photos for each submission
+  for (const sub of submissions) {
+    const res = await fetch(`/pd/admin/photos?submission_id=${sub.id}&key=${ADMIN_KEY}`);
+    if (!res.ok) continue;
+    const photos = await res.json();
+    photos.forEach(p => {
+      allPhotos.push({
+        url:       p.public_url,
+        label:     p.item_label,
+        stage:     sub.stage_name,
+        stageNum:  sub.stage_number,
+        date:      sub.submitted_at?.slice(0,10),
+        by:        sub.submitted_by_name,
+      });
+    });
+
+    // Add filter button for this stage if not already there
+    if (!document.getElementById('filter_' + sub.stage_number)) {
+      const btn = document.createElement('button');
+      btn.className = 'filter-btn';
+      btn.id = 'filter_' + sub.stage_number;
+      btn.textContent = sub.stage_name;
+      btn.onclick = () => filterPhotos(sub.stage_number, btn);
+      filters.appendChild(btn);
+    }
+  }
+
+  // Sort by stage number then date
+  allPhotos.sort((a,b) => a.stageNum - b.stageNum);
+  filteredPhotos = [...allPhotos];
+  renderPhotos();
+}
+
+function filterPhotos(stageNum, btn) {
+  activeStageFilter = stageNum;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filteredPhotos = stageNum === 'all'
+    ? [...allPhotos]
+    : allPhotos.filter(p => p.stageNum == stageNum);
+  renderPhotos();
+}
+
+function renderPhotos() {
+  const grid = document.getElementById('photoGrid');
+  if (!filteredPhotos.length) {
+    grid.innerHTML = '<div class="photo-empty">No photos for this stage yet.</div>';
+    return;
+  }
+  grid.innerHTML = filteredPhotos.map((p,i) => `
+    <div class="photo-item" onclick="openLightbox(${i})">
+      <img src="${p.url}" alt="${p.label}" loading="lazy">
+      <div class="photo-overlay">
+        <div class="photo-stage">${p.stage}</div>
+        <div class="photo-date">${p.date || ''}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Lightbox ─────────────────────────────────────────────────────────────────
+function openLightbox(idx) {
+  currentPhotoIdx = idx;
+  showPhoto();
+  document.getElementById('lightbox').classList.add('show');
+}
+
+function showPhoto() {
+  const p = filteredPhotos[currentPhotoIdx];
+  document.getElementById('lightboxImg').src = p.url;
+  document.getElementById('lightboxInfo').innerHTML =
+    `<strong>${p.stage}</strong> · ${p.label}<br><span style="color:#9ca3af">${p.date || ''} · ${p.by || ''}</span>`;
+}
+
+function navPhoto(dir) {
+  currentPhotoIdx = (currentPhotoIdx + dir + filteredPhotos.length) % filteredPhotos.length;
+  showPhoto();
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowRight') navPhoto(1);
+  if (e.key === 'ArrowLeft')  navPhoto(-1);
+});
+
+loadData();
+</script>
+</body>
+</html>
