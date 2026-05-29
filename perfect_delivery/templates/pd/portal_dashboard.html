@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perfect Delivery — Dashboard</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card: #ffffff;
+    --border: #e5e5ea;
+    --text: #1a1a2e;
+    --muted: #8e8e93;
+    --accent: #1a1a2e;
+    --gold: #C5962A;
+    --green: #34c759;
+    --red: #ff3b30;
+    --amber: #ff9500;
+    --blue: #007aff;
+    --radius: 14px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── Nav bar ── */
+  .navbar {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .navbar-brand { display: flex; align-items: center; gap: 10px; }
+  .brand-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .brand-icon span { color: var(--gold); font-size: 13px; font-weight: 800; }
+  .brand-name { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .navbar-right { display: flex; align-items: center; gap: 16px; }
+  .user-pill { display: flex; align-items: center; gap: 8px; }
+  .user-avatar { width: 30px; height: 30px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--gold); font-size: 12px; font-weight: 700; }
+  .user-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .user-role { font-size: 11px; color: var(--muted); }
+  .btn-signout { font-size: 13px; color: var(--red); font-weight: 600; cursor: pointer; background: none; border: none; padding: 6px 12px; border-radius: 8px; }
+  .btn-signout:hover { background: #fff2f2; }
+
+  /* ── Layout ── */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 56px; bottom: 0;
+    width: 220px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+    overflow-y: auto;
+  }
+  .main { margin-left: 220px; padding: 24px; min-height: calc(100vh - 56px); }
+
+  /* ── Sidebar nav ── */
+  .nav-section { margin-bottom: 24px; }
+  .nav-section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 0 8px; margin-bottom: 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 10px;
+    font-size: 14px; font-weight: 500; color: var(--text);
+    cursor: pointer; transition: all 0.12s;
+    text-decoration: none; margin-bottom: 2px;
+  }
+  .nav-item:hover { background: #f2f2f7; }
+  .nav-item.active { background: var(--accent); color: white; }
+  .nav-item.active .nav-icon { color: var(--gold); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  /* ── Cards ── */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; margin-bottom: 4px; }
+  .page-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; overflow: hidden; }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .card-body { padding: 20px; }
+
+  /* ── Stat cards ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: var(--card); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+  .stat-card .n { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
+  .stat-card .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .n-green { color: var(--green); }
+  .n-amber { color: var(--amber); }
+  .n-red   { color: var(--red); }
+  .n-blue  { color: var(--blue); }
+  .n-dark  { color: var(--text); }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; border-bottom: 1px solid #f2f2f7; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9f9fb; }
+
+  /* ── Badges ── */
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .badge-green  { background: #e8faf0; color: #1a7a3c; }
+  .badge-amber  { background: #fff4e6; color: #b35900; }
+  .badge-red    { background: #fff0f0; color: #c0392b; }
+  .badge-grey   { background: #f2f2f7; color: #8e8e93; }
+  .badge-blue   { background: #e8f1ff; color: #0051a8; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.12s; text-decoration: none; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #252540; }
+  .btn-ghost { background: #f2f2f7; color: var(--text); }
+  .btn-ghost:hover { background: #e5e5ea; }
+  .btn-blue { background: var(--blue); color: white; }
+  .btn-red { background: var(--red); color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* ── Form ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-full { grid-column: 1/-1; }
+  .field { }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #3a3a3c; margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%; padding: 11px 14px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    font-size: 14px; color: var(--text); background: #f9f9fb;
+    -webkit-appearance: none; transition: border-color 0.15s, background 0.15s;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); background: white; }
+  .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238e8e93' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+  /* ── Site list ── */
+  .site-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #f2f2f7; }
+  .site-row:last-child { border-bottom: none; }
+  .site-info h3 { font-size: 15px; font-weight: 600; }
+  .site-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Plot progress mini ── */
+  .plot-progress-bar { height: 4px; background: #e5e5ea; border-radius: 4px; margin-top: 6px; }
+  .plot-progress-fill { height: 100%; background: var(--green); border-radius: 4px; }
+
+  /* ── Toast ── */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--accent); color: white; padding: 12px 18px; border-radius: 12px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.15); transform: translateY(80px); opacity: 0; transition: all 0.3s; z-index: 999; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.error { background: var(--red); }
+
+  /* ── Modal ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 500; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 20px; padding: 28px; width: 100%; max-width: 460px; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
+  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  @media(max-width:768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navbar ── -->
+<div class="navbar">
+  <div class="navbar-brand">
+    {% if tenant and tenant.logo_url %}
+    <img src="{{ tenant.logo_url }}" style="height:32px;border-radius:6px">
+    {% else %}
+    <div class="brand-icon"><span>PD</span></div>
+    {% endif %}
+    <span class="brand-name">Perfect Delivery</span>
+  </div>
+  <div class="navbar-right">
+    <div class="user-pill">
+      <div class="user-avatar">{{ user.name[0].upper() }}</div>
+      <div>
+        <div class="user-name">{{ user.name }}</div>
+        <div class="user-role">{{ user.role.replace('_',' ').title() }}</div>
+      </div>
+    </div>
+    <button class="btn-signout" onclick="signOut()">Sign out</button>
+  </div>
+</div>
+
+<!-- ── Sidebar ── -->
+<div class="sidebar">
+  <div class="nav-section">
+    <div class="nav-section-title">Overview</div>
+    <a class="nav-item active" onclick="showPage('overview', this)">
+      <span class="nav-icon">⊞</span> Dashboard
+    </a>
+    <a class="nav-item" onclick="showPage('sites', this)">
+      <span class="nav-icon">📍</span> Sites & Plots
+    </a>
+    <a class="nav-item" onclick="showPage('submissions', this)">
+      <span class="nav-icon">📋</span> Submissions
+    </a>
+    <a class="nav-item" onclick="showPage('photos', this)">
+      <span class="nav-icon">📷</span> Photo Library
+    </a>
+  </div>
+  {% if user.role == 'tenant_admin' %}
+  <div class="nav-section">
+    <div class="nav-section-title">Admin</div>
+    <a class="nav-item" onclick="showPage('users', this)">
+      <span class="nav-icon">👥</span> Users
+    </a>
+    <a class="nav-item" onclick="showPage('settings', this)">
+      <span class="nav-icon">⚙️</span> Settings
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- Overview -->
+  <div class="page active" id="page-overview">
+    <div class="page-title">Dashboard</div>
+    <div class="page-sub">Welcome back, {{ user.name.split()[0] }}</div>
+    <div class="stat-grid" id="overviewStats">
+      <div class="stat-card"><div class="n n-dark" id="statSites">—</div><div class="l">Sites</div></div>
+      <div class="stat-card"><div class="n n-blue" id="statPlots">—</div><div class="l">Plots</div></div>
+      <div class="stat-card"><div class="n n-green" id="statApproved">—</div><div class="l">Approved</div></div>
+      <div class="stat-card"><div class="n n-amber" id="statPending">—</div><div class="l">Pending Review</div></div>
+      <div class="stat-card"><div class="n n-red" id="statRejected">—</div><div class="l">Rejected</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Recent Submissions</span>
+        <a class="btn btn-ghost btn-sm" onclick="showPage('submissions', document.querySelector('.nav-item:nth-child(3)'))">View all</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Site / Plot</th><th>Stage</th><th>Submitted by</th><th>Status</th><th></th></tr></thead>
+          <tbody id="recentSubmissions"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sites & Plots -->
+  <div class="page" id="page-sites">
+    <div class="page-title">Sites & Plots</div>
+    <div class="page-sub">All sites and their plot progress</div>
+    <div id="sitesList"></div>
+  </div>
+
+  <!-- Submissions -->
+  <div class="page" id="page-submissions">
+    <div class="page-title">Submissions</div>
+    <div class="page-sub">All stage sign-offs across all plots</div>
+    <div class="card">
+      <div class="card-header">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="filterStatus" onchange="loadSubmissions()" style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Site / Plot</th><th>Stage</th><th>Submitted by</th><th>Date</th><th>Status</th><th></th></tr></thead>
+          <tbody id="submissionsTable"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Library -->
+  <div class="page" id="page-photos">
+    <div class="page-title">Photo Library</div>
+    <div class="page-sub">All photos across all plots — sorted by stage from groundworks to handover</div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Filter Photos</span>
+      </div>
+      <div class="card-body" style="padding-bottom:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="photoFilterSite" onchange="loadPhotos()" style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb">
+            <option value="">All sites</option>
+          </select>
+          <select id="photoFilterStage" onchange="loadPhotos()" style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb">
+            <option value="">All stages</option>
+          </select>
+          <input type="text" id="photoSearch" placeholder="Search by keyword…" oninput="filterPhotosByKeyword()"
+            style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:180px">
+        </div>
+      </div>
+    </div>
+    <div id="photoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
+  </div>
+
+  <!-- Users (tenant_admin only) -->
+  {% if user.role == 'tenant_admin' %}
+  <div class="page" id="page-users">
+    <div class="page-title">Users</div>
+    <div class="page-sub">Manage who can access this portal</div>
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="showUserModal()">+ Add User</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Sites</th><th></th></tr></thead>
+          <tbody id="usersTable"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="page" id="page-settings">
+    <div class="page-title">Settings</div>
+    <div class="page-sub">Company branding and portal configuration</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Company Details</span></div>
+      <div class="card-body">
+        <form id="settingsForm" enctype="multipart/form-data">
+          <div class="form-grid">
+            <div class="field form-full">
+              <label>Company Name</label>
+              <input type="text" name="name" id="sName" value="{{ tenant.name if tenant else '' }}">
+            </div>
+            <div class="field form-full">
+              <label>Address</label>
+              <input type="text" name="address" id="sAddress" value="{{ tenant.address if tenant else '' }}">
+            </div>
+            <div class="field">
+              <label>Phone</label>
+              <input type="text" name="phone" id="sPhone" value="{{ tenant.phone if tenant else '' }}">
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input type="text" name="email" id="sEmail" value="{{ tenant.email if tenant else '' }}">
+            </div>
+            <div class="field">
+              <label>Primary Colour</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="color" name="primary_color" id="sPrimary" value="{{ tenant.primary_color if tenant else '#1a1a2e' }}" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1.5px solid #e5e5ea">
+                <input type="text" id="sPrimaryHex" value="{{ tenant.primary_color if tenant else '#1a1a2e' }}" oninput="document.getElementById('sPrimary').value=this.value" style="flex:1">
+              </div>
+            </div>
+            <div class="field">
+              <label>Secondary Colour</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="color" name="secondary_color" id="sSecondary" value="{{ tenant.secondary_color if tenant else '#C5962A' }}" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1.5px solid #e5e5ea">
+                <input type="text" id="sSecondaryHex" value="{{ tenant.secondary_color if tenant else '#C5962A' }}" oninput="document.getElementById('sSecondary').value=this.value" style="flex:1">
+              </div>
+            </div>
+            <div class="field form-full">
+              <label>Company Logo</label>
+              <input type="file" name="logo" accept="image/*" id="logoInput">
+              {% if tenant and tenant.logo_url %}
+              <img src="{{ tenant.logo_url }}" style="margin-top:10px;max-height:50px;border-radius:8px">
+              {% endif %}
+            </div>
+          </div>
+          <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
+            <button type="button" class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+            <span id="settingsSaved" style="color:var(--green);font-size:13px;font-weight:600;display:none">✓ Saved</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ── Add User Modal ── -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <div class="modal-title" id="userModalTitle">Add User</div>
+    <input type="hidden" id="editUserId">
+    <div class="form-grid">
+      <div class="field form-full">
+        <label>Full Name</label>
+        <input type="text" id="uName" placeholder="e.g. Matt Hayworth">
+      </div>
+      <div class="field form-full">
+        <label>Email Address</label>
+        <input type="email" id="uEmail" placeholder="matt@pennyfarthing.co.uk">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="uPassword" placeholder="Min 8 characters">
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="uRole">
+          <option value="site_manager">Site Manager</option>
+          <option value="viewer">Viewer</option>
+          <option value="tenant_admin">Admin</option>
+        </select>
+      </div>
+      <div class="field form-full">
+        <label>Assigned Sites</label>
+        <select id="uSites" multiple style="height:90px">
+          {% for site in sites %}
+          <option value="{{ site.id }}">{{ site.name }}</option>
+          {% endfor %}
+        </select>
+        <p style="font-size:12px;color:#8e8e93;margin-top:4px">Hold Ctrl/Cmd to select multiple. Admins see all sites regardless.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lightbox ── -->
+<div id="lightbox" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:998;display:none;align-items:center;justify-content:center;flex-direction:column" onclick="closeLightbox()">
+  <button style="position:absolute;top:20px;right:24px;color:white;font-size:28px;background:none;border:none;cursor:pointer" onclick="closeLightbox()">×</button>
+  <button style="position:absolute;left:20px;top:50%;transform:translateY(-50%);color:white;font-size:32px;background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:48px;height:48px;cursor:pointer" onclick="event.stopPropagation();navPhoto(-1)">‹</button>
+  <img id="lbImg" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px">
+  <div id="lbInfo" style="color:white;text-align:center;margin-top:12px;font-size:13px"></div>
+  <button style="position:absolute;right:20px;top:50%;transform:translateY(-50%);color:white;font-size:32px;background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:48px;height:48px;cursor:pointer" onclick="event.stopPropagation();navPhoto(1)">›</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const USER_ROLE = "{{ user.role }}";
+const SITES_DATA = {{ sites_json | safe }};
+let allPhotos = [], filteredPhotos = [], currentPhotoIdx = 0;
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  if (name === 'overview')    loadOverview();
+  if (name === 'sites')       loadSites();
+  if (name === 'submissions') loadSubmissions();
+  if (name === 'photos')      loadPhotos();
+  if (name === 'users')       loadUsers();
+}
+
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+async function signOut() {
+  await fetch('/pd/portal/signout', { method: 'POST' });
+  window.location.href = '/pd/portal';
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  const [sitesRes, subsRes] = await Promise.all([
+    fetch('/pd/portal/api/sites'),
+    fetch('/pd/portal/api/submissions?limit=8'),
+  ]);
+  const sites = await sitesRes.json();
+  const subs  = await subsRes.json();
+
+  document.getElementById('statSites').textContent    = sites.length;
+  const plots = sites.reduce((a,s) => a + (s.plot_count||0), 0);
+  document.getElementById('statPlots').textContent    = plots;
+  document.getElementById('statApproved').textContent = subs.filter(s=>s.status==='approved').length;
+  document.getElementById('statPending').textContent  = subs.filter(s=>s.status==='pending').length;
+  document.getElementById('statRejected').textContent = subs.filter(s=>s.status==='rejected').length;
+
+  const tbody = document.getElementById('recentSubmissions');
+  if (!subs.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div>No submissions yet</div></td></tr>'; return; }
+  tbody.innerHTML = subs.slice(0,8).map(s => `
+    <tr>
+      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
+      <td style="font-size:13px">${s.stage_name}</td>
+      <td style="font-size:13px">${s.submitted_by_name}</td>
+      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
+    </tr>`).join('');
+}
+
+// ── Sites ────────────────────────────────────────────────────────────────────
+async function loadSites() {
+  const res   = await fetch('/pd/portal/api/sites');
+  const sites = await res.json();
+  const el    = document.getElementById('sitesList');
+  if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
+
+  el.innerHTML = '';
+  for (const site of sites) {
+    const plotsRes = await fetch('/pd/portal/api/plots?site_id=' + site.id);
+    const plots    = await plotsRes.json();
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div class="card-title">${site.name}</div>
+          <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''}</div>
+        </div>
+        <span class="badge badge-blue">${plots.length} plots</span>
+      </div>
+      <div>${plots.map(p => `
+        <div class="site-row">
+          <div class="site-info">
+            <h3>Plot ${p.plot_number}</h3>
+            <div class="plot-progress-bar"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
+            <p>${p.approved_count||0} of 37 stages approved</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
+          </div>
+        </div>`).join('')}
+      </div>`;
+    el.appendChild(card);
+  }
+}
+
+// ── Submissions ───────────────────────────────────────────────────────────────
+async function loadSubmissions() {
+  const status = document.getElementById('filterStatus').value;
+  let url = '/pd/portal/api/submissions?limit=100';
+  if (status) url += '&status=' + status;
+  const res  = await fetch(url);
+  const subs = await res.json();
+  const tbody = document.getElementById('submissionsTable');
+  if (!subs.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>'; return; }
+  tbody.innerHTML = subs.map(s => `
+    <tr>
+      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
+      <td style="font-size:13px">${s.stage_name}</td>
+      <td style="font-size:13px">${s.submitted_by_name}<br><span style="font-size:11px;color:#8e8e93">${s.submitted_by_company}</span></td>
+      <td style="font-size:12px;color:#8e8e93">${(s.submitted_at||'').slice(0,10)}</td>
+      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td style="display:flex;gap:6px">
+        <a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review</a>
+        <a href="/pd/review/${s.review_token}/pdf" target="_blank" class="btn btn-ghost btn-sm">PDF</a>
+      </td>
+    </tr>`).join('');
+}
+
+// ── Photos ───────────────────────────────────────────────────────────────────
+async function loadPhotos() {
+  const siteId  = document.getElementById('photoFilterSite').value;
+  const stageId = document.getElementById('photoFilterStage').value;
+
+  let url = '/pd/portal/api/photos?limit=200';
+  if (siteId)  url += '&site_id=' + siteId;
+  if (stageId) url += '&stage_number=' + stageId;
+
+  const res = await fetch(url);
+  allPhotos = await res.json();
+  filteredPhotos = [...allPhotos];
+  renderPhotos();
+}
+
+function filterPhotosByKeyword() {
+  const q = document.getElementById('photoSearch').value.toLowerCase();
+  filteredPhotos = q ? allPhotos.filter(p =>
+    (p.item_label||'').toLowerCase().includes(q) ||
+    (p.stage_name||'').toLowerCase().includes(q) ||
+    (p.plot_number||'').toLowerCase().includes(q)
+  ) : [...allPhotos];
+  renderPhotos();
+}
+
+function renderPhotos() {
+  const grid = document.getElementById('photoGrid');
+  if (!filteredPhotos.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#8e8e93">No photos found</div>';
+    return;
+  }
+  grid.innerHTML = filteredPhotos.map((p,i) => `
+    <div onclick="openLightbox(${i})" style="border-radius:12px;overflow:hidden;aspect-ratio:1;cursor:pointer;position:relative;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+      <img src="${p.public_url}" style="width:100%;height:100%;object-fit:cover" loading="lazy">
+      <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.7));padding:20px 8px 8px">
+        <div style="color:white;font-size:10px;font-weight:600">${p.stage_name||''}</div>
+        <div style="color:rgba(255,255,255,0.7);font-size:9px">${(p.submitted_at||'').slice(0,10)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function openLightbox(idx) {
+  currentPhotoIdx = idx;
+  showLbPhoto();
+  document.getElementById('lightbox').style.display = 'flex';
+}
+function showLbPhoto() {
+  const p = filteredPhotos[currentPhotoIdx];
+  document.getElementById('lbImg').src = p.public_url;
+  document.getElementById('lbInfo').innerHTML =
+    `<strong>${p.stage_name||''}</strong> · ${p.item_label||''}<br><span style="color:rgba(255,255,255,0.6)">${(p.submitted_at||'').slice(0,10)} · Plot ${p.plot_number||''} · ${p.site_name||''}</span>`;
+}
+function navPhoto(d) { currentPhotoIdx = (currentPhotoIdx+d+filteredPhotos.length)%filteredPhotos.length; showLbPhoto(); }
+function closeLightbox() { document.getElementById('lightbox').style.display='none'; }
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') closeLightbox();
+  if (e.key==='ArrowRight') navPhoto(1);
+  if (e.key==='ArrowLeft')  navPhoto(-1);
+});
+
+// ── Users ────────────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const res   = await fetch('/pd/portal/api/users');
+  const users = await res.json();
+  const tbody = document.getElementById('usersTable');
+  if (!users.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty">No users yet</div></td></tr>'; return; }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.name}</strong></td>
+      <td style="font-size:13px;color:#8e8e93">${u.email}</td>
+      <td><span class="badge badge-blue">${u.role.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}</span></td>
+      <td style="font-size:12px;color:#8e8e93">${u.role==='tenant_admin'?'All sites':(u.site_ids||[]).length+' site(s)'}</td>
+      <td style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick='editUser(${JSON.stringify(u)})'>Edit</button>
+        <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteUser('${u.id}','${u.name}')">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+
+function showUserModal(u) {
+  document.getElementById('userModalTitle').textContent = u ? 'Edit User' : 'Add User';
+  document.getElementById('editUserId').value  = u?.id || '';
+  document.getElementById('uName').value       = u?.name || '';
+  document.getElementById('uEmail').value      = u?.email || '';
+  document.getElementById('uPassword').value   = '';
+  document.getElementById('uRole').value       = u?.role || 'site_manager';
+  // Reset site selections
+  Array.from(document.getElementById('uSites').options).forEach(o => {
+    o.selected = (u?.site_ids||[]).includes(o.value);
+  });
+  document.getElementById('userModal').classList.add('show');
+}
+function editUser(u) { showUserModal(u); }
+function closeUserModal() { document.getElementById('userModal').classList.remove('show'); }
+
+async function saveUser() {
+  const id       = document.getElementById('editUserId').value;
+  const siteOpts = Array.from(document.getElementById('uSites').selectedOptions).map(o=>o.value);
+  const payload  = {
+    name:     document.getElementById('uName').value.trim(),
+    email:    document.getElementById('uEmail').value.trim(),
+    password: document.getElementById('uPassword').value,
+    role:     document.getElementById('uRole').value,
+    site_ids: siteOpts,
+  };
+  if (!payload.name || !payload.email) { toast('Name and email are required','error'); return; }
+  if (!id && !payload.password) { toast('Password is required for new users','error'); return; }
+
+  const url = id ? `/pd/portal/api/users/${id}` : '/pd/portal/api/users';
+  const res = await fetch(url, {
+    method: id ? 'PUT' : 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (json.ok) { closeUserModal(); loadUsers(); toast(id?'User updated':'User created'); }
+  else toast(json.error||'Error saving user','error');
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+  const res = await fetch(`/pd/portal/api/users/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) { loadUsers(); toast('User deleted'); }
+  else toast('Error deleting user','error');
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+async function saveSettings() {
+  const fd = new FormData(document.getElementById('settingsForm'));
+  const res = await fetch('/pd/admin/settings?key=' + '{{ admin_key }}', { method: 'POST', body: fd });
+  const json = await res.json();
+  if (json.ok) {
+    const s = document.getElementById('settingsSaved');
+    s.style.display = 'inline';
+    setTimeout(() => s.style.display='none', 3000);
+    toast('Settings saved');
+  } else toast('Error saving','error');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function statusBadge(s) {
+  return {approved:'badge-green',pending:'badge-amber',rejected:'badge-red'}[s]||'badge-grey';
+}
+function statusLabel(s) {
+  return {approved:'✓ Approved',pending:'⏳ Pending',rejected:'✗ Rejected'}[s]||s;
+}
+
+// ── Populate photo filters ────────────────────────────────────────────────────
+function initPhotoFilters() {
+  const siteSelect = document.getElementById('photoFilterSite');
+  SITES_DATA.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.name;
+    siteSelect.appendChild(o);
+  });
+  const stageSelect = document.getElementById('photoFilterStage');
+  for (let i=1; i<=37; i++) {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = String(i).padStart(2,'0') + ' — Stage ' + i;
+    stageSelect.appendChild(o);
+  }
+}
+
+initPhotoFilters();
+loadOverview();
+</script>
+</body>
+</html>
