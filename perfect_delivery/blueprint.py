@@ -290,3 +290,99 @@ def admin_submissions():
     if plot_id:
         query = query.eq("plot_id", plot_id)
     return jsonify(query.execute().data or [])
+
+
+# ── PDF generation ────────────────────────────────────────────────────────────
+
+@pd_bp.route("/review/<review_token>/pdf")
+def submission_pdf(review_token: str):
+    """Generate and serve PDF for a submission."""
+    sub = _get_submission_by_review_token(review_token)
+    plot = sub["pd_plots"]
+    site = plot["pd_sites"]
+
+    photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+    photos_by_item = {}
+    for p in (photos_res.data or []):
+        photos_by_item.setdefault(p["item_id"], []).append(p["public_url"])
+
+    stage = get_stage(sub["stage_number"])
+    stage_items = stage.get("items", []) if stage else []
+
+    # Get tenant branding
+    tenant = _get_tenant()
+
+    from .pdf_generator import generate_submission_pdf
+    pdf_bytes = generate_submission_pdf(sub, plot, site, stage_items, photos_by_item, tenant)
+
+    filename = f"PD_{site.get('name','').replace(' ','_')}_Plot{plot.get('plot_number','')}_Stage{sub.get('stage_number','')}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=filename,
+    )
+
+
+def _get_tenant() -> dict:
+    """Get first tenant record for branding."""
+    try:
+        res = supabase.table("pd_tenants").select("*").limit(1).execute()
+        return res.data[0] if res.data else {}
+    except Exception:
+        return {}
+
+
+def _upload_logo(file_obj) -> str:
+    """Upload logo to Supabase storage, return public URL."""
+    ext = "png"
+    if hasattr(file_obj, "filename") and "." in (file_obj.filename or ""):
+        ext = file_obj.filename.rsplit(".", 1)[-1].lower()
+    path = f"logos/tenant_logo_{uuid.uuid4().hex[:8]}.{ext}"
+    file_bytes = file_obj.read()
+    supabase.storage.from_(STORAGE_BUCKET).upload(
+        path, file_bytes, {"content-type": f"image/{ext}"}
+    )
+    return supabase.storage.from_(STORAGE_BUCKET).get_public_url(path)
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+@pd_bp.route("/admin/settings", methods=["GET"])
+def admin_settings():
+    _require_admin()
+    tenant = _get_tenant()
+    return jsonify({"ok": True, "tenant": tenant})
+
+
+@pd_bp.route("/admin/settings", methods=["POST"])
+def admin_settings_save():
+    _require_admin()
+    tenant = _get_tenant()
+
+    # Handle logo upload
+    logo_url = tenant.get("logo_url", "")
+    if "logo" in request.files and request.files["logo"].filename:
+        try:
+            logo_url = _upload_logo(request.files["logo"])
+        except Exception as e:
+            print(f"Logo upload error: {e}")
+
+    data = request.form
+    updates = {
+        "name":            (data.get("name") or "").strip() or tenant.get("name", ""),
+        "address":         (data.get("address") or "").strip(),
+        "phone":           (data.get("phone") or "").strip(),
+        "email":           (data.get("email") or "").strip(),
+        "website":         (data.get("website") or "").strip(),
+        "primary_color":   (data.get("primary_color") or "#1a1a2e").strip(),
+        "secondary_color": (data.get("secondary_color") or "#C5962A").strip(),
+        "logo_url":        logo_url,
+    }
+
+    if tenant.get("id"):
+        supabase.table("pd_tenants").update(updates).eq("id", tenant["id"]).execute()
+    else:
+        supabase.table("pd_tenants").insert(updates).execute()
+
+    return jsonify({"ok": True})
