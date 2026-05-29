@@ -131,13 +131,13 @@ def generate_submission_pdf(
     status   = (submission.get("status") or "pending").upper()
 
     meta = [
-        [Paragraph('<b>Site</b>', s_bold),     Paragraph(site.get("name",""), s_body),
-         Paragraph('<b>Plot</b>', s_bold),      Paragraph(plot.get("plot_number",""), s_body)],
-        [Paragraph('<b>Stage</b>', s_bold),     Paragraph(submission.get("stage_name",""), s_body),
+        [Paragraph('<b>Site</b>', s_bold),     Paragraph(str(site.get("name") or ""), s_body),
+         Paragraph('<b>Plot</b>', s_bold),      Paragraph(str(plot.get("plot_number") or ""), s_body)],
+        [Paragraph('<b>Stage</b>', s_bold),     Paragraph(str(submission.get("stage_name") or ""), s_body),
          Paragraph('<b>Submitted</b>', s_bold), Paragraph(sub_date, s_body)],
-        [Paragraph('<b>Subcontractor</b>', s_bold), Paragraph(submission.get("submitted_by_name",""), s_body),
-         Paragraph('<b>Company</b>', s_bold),   Paragraph(submission.get("submitted_by_company",""), s_body)],
-        [Paragraph('<b>Reviewed by</b>', s_bold), Paragraph(submission.get("reviewed_by","—"), s_body),
+        [Paragraph('<b>Subcontractor</b>', s_bold), Paragraph(str(submission.get("submitted_by_name") or ""), s_body),
+         Paragraph('<b>Company</b>', s_bold),   Paragraph(str(submission.get("submitted_by_company") or ""), s_body)],
+        [Paragraph('<b>Reviewed by</b>', s_bold), Paragraph(str(submission.get("reviewed_by") or "—"), s_body),
          Paragraph('<b>Review date</b>', s_bold), Paragraph(rev_date, s_body)],
     ]
     mt = Table(meta, colWidths=[W*0.18, W*0.32, W*0.18, W*0.32])
@@ -244,7 +244,7 @@ def generate_submission_pdf(
     # Items
     for idx, item in enumerate(stage_items, 1):
         item_id  = item.get("id","")
-        item_txt = item.get("text","")
+        item_txt = str(item.get("text") or "")
         ad       = answers.get(item_id) or {}
         val      = ad.get("value","") if isinstance(ad,dict) else ""
         conf     = ad.get("text","")  if isinstance(ad,dict) else ""
