@@ -335,6 +335,44 @@ def admin_photos():
     return jsonify(res.data or [])
 
 
+
+
+# ── Create first portal user (from super admin) ───────────────────────────────
+
+@pd_bp.route("/admin/create-user", methods=["POST"])
+def admin_create_user():
+    _require_admin()
+    import hashlib, json as _json
+    data     = request.get_json() or {}
+    name     = (data.get("name") or "").strip()
+    email    = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    role     = data.get("role") or "tenant_admin"
+
+    if not name or not email or not password:
+        return jsonify({"ok": False, "error": "Name, email and password required"}), 400
+
+    # Get or create tenant
+    tenant_res = supabase.table("pd_tenants").select("id").limit(1).execute()
+    if not tenant_res.data:
+        return jsonify({"ok": False, "error": "No tenant found — run schema_update.sql first"}), 400
+    tenant_id = tenant_res.data[0]["id"]
+
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    try:
+        res = supabase.table("pd_users").insert({
+            "tenant_id":     tenant_id,
+            "name":          name,
+            "email":         email,
+            "password_hash": pw_hash,
+            "role":          role,
+            "site_ids":      _json.dumps([]),
+        }).execute()
+        return jsonify({"ok": True, "user": res.data[0]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
 # ── PDF generation ────────────────────────────────────────────────────────────
 
 @pd_bp.route("/review/<review_token>/pdf")
