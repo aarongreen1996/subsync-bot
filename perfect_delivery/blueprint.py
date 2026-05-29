@@ -179,9 +179,13 @@ def review(review_token: str):
         photos_by_item.setdefault(p["item_id"], []).append(p["public_url"])
 
     stage = get_stage(sub["stage_number"])
+    stage_items = stage.get("items", []) if stage else []
+    stage_items_json = json.dumps([{"id": i["id"], "text": i["text"]} for i in stage_items])
     return render_template(
         "pd/review.html",
-        sub=sub, plot=plot, site=site, stage=stage, photos_by_item=photos_by_item,
+        sub=sub, plot=plot, site=site, stage=stage,
+        stage_items_json=stage_items_json,
+        photos_by_item=photos_by_item,
     )
 
 
