@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD Admin — Pennyfarthing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f2f5; color: #1a1a2e; }
+  .header { background: #1a1a2e; padding: 20px 28px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { color: #C5962A; font-size: 18px; font-weight: 700; }
+  .header p { color: #9ca3af; font-size: 13px; }
+  .header-right { color: #9ca3af; font-size: 12px; text-align: right; }
+
+  .main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: white; padding: 6px;
+    border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  .tab { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; background: transparent; color: #6b7280; transition: all 0.15s; }
+  .tab.active { background: #1a1a2e; color: #C5962A; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  .card-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; color: #1a1a2e; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-full { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #6b7280; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .field input, .field select {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #e5e7eb; border-radius: 10px;
+    font-size: 14px; color: #1a1a2e; background: white; -webkit-appearance: none; appearance: none;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: #C5962A; }
+  .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; }
+  .btn { padding: 11px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: #C5962A; color: #1a1a2e; }
+  .btn-primary:hover { background: #d4a830; }
+  .btn-danger { background: #fee2e2; color: #dc2626; }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn-qr { background: #1a1a2e; color: white; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 12px 14px; font-size: 12px; font-weight: 700; color: #6b7280;
+    text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #f0f2f5; }
+  td { padding: 12px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafafa; }
+  .empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; }
+
+  /* Status badge */
+  .status { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+  .status-pending  { background: #fef3c7; color: #92400e; }
+  .status-approved { background: #dcfce7; color: #166534; }
+  .status-rejected { background: #fee2e2; color: #991b1b; }
+  .status-active   { background: #dbeafe; color: #1e40af; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #1a1a2e; color: white;
+    padding: 14px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2); transform: translateY(80px); opacity: 0;
+    transition: all 0.3s; z-index: 999; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-left: 3px solid #16a34a; }
+  .toast.error { border-left: 3px solid #dc2626; }
+
+  #loadingIndicator { display: none; text-align: center; padding: 12px; color: #6b7280; font-size: 13px; }
+  @media(max-width:600px) { .form-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Perfect Delivery Admin</h1>
+    <p>Pennyfarthing Homes · Site Management</p>
+  </div>
+  <div class="header-right">
+    <p>Admin Panel</p>
+    <p style="margin-top:3px;color:#6b7280">key: {{ admin_key[:4] }}…</p>
+  </div>
+</div>
+
+<div class="main">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('sites', this)">🏗 Sites</button>
+    <button class="tab" onclick="switchTab('plots', this)">📋 Plots & QRs</button>
+    <button class="tab" onclick="switchTab('submissions', this)">📥 Submissions</button>
+  </div>
+
+  <!-- ── Sites panel ── -->
+  <div class="panel active" id="panel-sites">
+    <div class="card">
+      <div class="card-title">Add New Site</div>
+      <div class="form-grid">
+        <div class="field form-full"><label>Site Name *</label><input type="text" id="siteName" placeholder="e.g. Paddock View, Bishops Waltham"></div>
+        <div class="field form-full"><label>Address</label><input type="text" id="siteAddress" placeholder="e.g. Church Lane, Bishops Waltham, SO32"></div>
+        <div class="field"><label>Site Manager Name *</label><input type="text" id="managerName" placeholder="Full name"></div>
+        <div class="field"><label>Manager Email *</label><input type="email" id="managerEmail" placeholder="manager@pennyfarthing.co.uk"></div>
+        <div class="field"><label>Manager Phone</label><input type="text" id="managerPhone" placeholder="+44 7700 000000"></div>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="createSite()">+ Add Site</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">All Sites</div>
+      <div class="table-wrap">
+        <table id="sitesTable">
+          <thead>
+            <tr><th>Site Name</th><th>Address</th><th>Manager</th><th>Email</th></tr>
+          </thead>
+          <tbody>
+            {% if sites %}
+              {% for s in sites %}
+              <tr>
+                <td><strong>{{ s.name }}</strong></td>
+                <td style="color:#6b7280">{{ s.address or '—' }}</td>
+                <td>{{ s.manager_name }}</td>
+                <td style="font-size:13px">{{ s.manager_email }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="4" class="empty">No sites yet. Add your first site above.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Plots panel ── -->
+  <div class="panel" id="panel-plots">
+    <div class="card">
+      <div class="card-title">Add New Plot</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Site *</label>
+          <select id="plotSiteId">
+            <option value="">— Select site —</option>
+            {% for s in sites %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field"><label>Plot Number *</label><input type="text" id="plotNumber" placeholder="e.g. 14 or B-07"></div>
+      </div>
+      <div style="margin-top:16px"><button class="btn btn-primary" onclick="createPlot()">+ Add Plot</button></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">All Plots</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Plot</th><th>Site</th><th>Status</th><th>QR Code</th><th>Form Link</th></tr>
+          </thead>
+          <tbody id="plotsTableBody">
+            {% if plots %}
+              {% for p in plots %}
+              <tr id="plotrow_{{ p.id }}">
+                <td><strong>{{ p.plot_number }}</strong></td>
+                <td>{{ p.pd_sites.name }}</td>
+                <td><span class="status status-{{ p.status }}">{{ p.status | capitalize }}</span></td>
+                <td>
+                  <a href="/pd/admin/qr/{{ p.id }}?key={{ admin_key }}" class="btn btn-qr btn-sm" download>⬇ QR PNG</a>
+                </td>
+                <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  /pd/{{ p.access_token[:12] }}…
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="5" class="empty">No plots yet. Add your first plot above.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Submissions panel ── -->
+  <div class="panel" id="panel-submissions">
+    <div class="card" style="padding:16px 20px">
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="field" style="flex:1;margin:0">
+          <select id="filterPlot" onchange="loadSubmissions()" style="padding:10px 14px;width:100%">
+            <option value="">— All plots —</option>
+            {% for p in plots %}
+            <option value="{{ p.id }}">Plot {{ p.plot_number }} · {{ p.pd_sites.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="loadSubmissions()">Refresh</button>
+      </div>
+    </div>
+
+    <div id="loadingIndicator">Loading submissions…</div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Submitted</th><th>Site / Plot</th><th>Stage</th><th>By</th><th>Status</th><th>Review</th></tr>
+          </thead>
+          <tbody id="submissionsTableBody">
+            <tr><td colspan="6" class="empty">Select a filter or click Refresh to load submissions.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ADMIN_KEY = '{{ admin_key }}';
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function showToast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type + ' show';
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Create Site ──────────────────────────────────────────────
+async function createSite() {
+  const payload = {
+    name: document.getElementById('siteName').value.trim(),
+    address: document.getElementById('siteAddress').value.trim(),
+    manager_name: document.getElementById('managerName').value.trim(),
+    manager_email: document.getElementById('managerEmail').value.trim(),
+    manager_phone: document.getElementById('managerPhone').value.trim(),
+  };
+  if (!payload.name || !payload.manager_name || !payload.manager_email) {
+    showToast('Site name, manager name and email are required', 'error'); return;
+  }
+  const res = await fetch('/pd/admin/sites?key=' + ADMIN_KEY, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    showToast('Site created! Refresh to see it in the table.');
+    ['siteName','siteAddress','managerName','managerEmail','managerPhone'].forEach(id => document.getElementById(id).value = '');
+    // Add to selects
+    const opt = new Option(payload.name, json.site.id);
+    document.getElementById('plotSiteId').appendChild(opt);
+  } else {
+    showToast('Error: ' + json.error, 'error');
+  }
+}
+
+// ── Create Plot ──────────────────────────────────────────────
+async function createPlot() {
+  const payload = {
+    site_id: document.getElementById('plotSiteId').value,
+    plot_number: document.getElementById('plotNumber').value.trim(),
+  };
+  if (!payload.site_id || !payload.plot_number) {
+    showToast('Site and plot number are required', 'error'); return;
+  }
+  const res = await fetch('/pd/admin/plots?key=' + ADMIN_KEY, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    showToast('Plot ' + payload.plot_number + ' created!');
+    document.getElementById('plotNumber').value = '';
+    const tbody = document.getElementById('plotsTableBody');
+    const p = json.plot;
+    const siteName = document.getElementById('plotSiteId').options[document.getElementById('plotSiteId').selectedIndex].text;
+    const tr = document.createElement('tr');
+    tr.id = 'plotrow_' + p.id;
+    tr.innerHTML = `
+      <td><strong>${p.plot_number}</strong></td>
+      <td>${siteName}</td>
+      <td><span class="status status-active">Active</span></td>
+      <td><a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>⬇ QR PNG</a></td>
+      <td style="font-size:12px;color:#6b7280">/pd/${p.access_token.slice(0,12)}…</td>`;
+    const emptyRow = tbody.querySelector('td[colspan]');
+    if (emptyRow) emptyRow.parentElement.remove();
+    tbody.insertBefore(tr, tbody.firstChild);
+    // Add to filter
+    const opt = new Option(`Plot ${p.plot_number} · ${siteName}`, p.id);
+    document.getElementById('filterPlot').appendChild(opt);
+  } else {
+    showToast('Error: ' + json.error, 'error');
+  }
+}
+
+// ── Load Submissions ─────────────────────────────────────────
+async function loadSubmissions() {
+  const plotId = document.getElementById('filterPlot').value;
+  document.getElementById('loadingIndicator').style.display = 'block';
+  let url = '/pd/admin/submissions?key=' + ADMIN_KEY;
+  if (plotId) url += '&plot_id=' + plotId;
+  const res = await fetch(url);
+  const subs = await res.json();
+  document.getElementById('loadingIndicator').style.display = 'none';
+  const tbody = document.getElementById('submissionsTableBody');
+  if (!subs.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No submissions found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = subs.map(s => {
+    const date = s.submitted_at ? s.submitted_at.slice(0,10) : '—';
+    const statusCls = 'status-' + s.status;
+    const statusTxt = s.status === 'pending' ? '⏳ Pending' : s.status === 'approved' ? '✓ Approved' : '✗ Rejected';
+    const plotNum = s.pd_plots?.plot_number || '—';
+    const siteName = s.pd_plots?.pd_sites?.name || '—';
+    return `<tr>
+      <td style="font-size:13px;color:#6b7280">${date}</td>
+      <td>${siteName}<br><span style="font-size:12px;color:#6b7280">Plot ${plotNum}</span></td>
+      <td style="font-size:13px">${s.stage_name}</td>
+      <td style="font-size:13px">${s.submitted_by_name}<br><span style="color:#9ca3af">${s.submitted_by_company}</span></td>
+      <td><span class="status ${statusCls}">${statusTxt}</span></td>
+      <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">Open →</a></td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
