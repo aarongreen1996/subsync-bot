@@ -171,8 +171,9 @@
                 <td><strong>{{ p.plot_number }}</strong></td>
                 <td>{{ p.pd_sites.name }}</td>
                 <td><span class="status status-{{ p.status }}">{{ p.status | capitalize }}</span></td>
-                <td>
-                  <a href="/pd/admin/qr/{{ p.id }}?key={{ admin_key }}" class="btn btn-qr btn-sm" download>⬇ QR PNG</a>
+                <td style="display:flex;gap:6px;flex-wrap:wrap">
+                  <a href="/pd/admin/qr/{{ p.id }}?key={{ admin_key }}" class="btn btn-qr btn-sm" download>⬇ QR</a>
+                  <a href="/pd/admin/plot/{{ p.id }}/progress?key={{ admin_key }}" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">📊 Progress</a>
                 </td>
                 <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                   /pd/{{ p.access_token[:12] }}…
@@ -365,7 +366,10 @@ async function createPlot() {
       <td><strong>${p.plot_number}</strong></td>
       <td>${siteName}</td>
       <td><span class="status status-active">Active</span></td>
-      <td><a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>⬇ QR PNG</a></td>
+      <td style="display:flex;gap:6px">
+        <a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>⬇ QR</a>
+        <a href="/pd/admin/plot/${p.id}/progress?key=${ADMIN_KEY}" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">📊 Progress</a>
+      </td>
       <td style="font-size:12px;color:#6b7280">/pd/${p.access_token.slice(0,12)}…</td>`;
     const emptyRow = tbody.querySelector('td[colspan]');
     if (emptyRow) emptyRow.parentElement.remove();
