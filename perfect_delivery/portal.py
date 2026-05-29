@@ -184,12 +184,19 @@ def dashboard(user):
     sites = sites_res.data or []
     sites_json = json.dumps(sites)
 
+    from .checklist_data import STAGES
+    stages_json = json.dumps({
+        str(k): {"name": v["name"]}
+        for k, v in STAGES.items()
+    })
+
     return render_template(
         "pd/portal_dashboard.html",
         user=user,
         tenant=tenant,
         sites=sites,
         sites_json=sites_json,
+        stages_json=stages_json,
         admin_key=ADMIN_KEY,
     )
 
