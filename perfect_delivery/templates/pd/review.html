@@ -61,6 +61,11 @@
   .notes-display { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px 16px; border-radius: 0 8px 8px 0; font-size: 14px; color: #374151; white-space: pre-wrap; }
   .notes-display strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #92400e; margin-bottom: 6px; }
   @media(min-width:600px) { .meta-grid { grid-template-columns: repeat(3,1fr); } }
+  @media print {
+    .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .decide-card { display: none; }
+    .container { padding-bottom: 20px; }
+  }
 </style>
 </head>
 <body>
@@ -72,6 +77,16 @@
     {% elif sub.status == 'approved' %}✓ Approved
     {% else %}✗ Rejected{% endif %}
   </span>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <a href="/pd/review/{{ sub.review_token }}/pdf" target="_blank"
+       style="background:#C5962A;color:#1a1a2e;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">
+      ⬇ Download PDF
+    </a>
+    <button onclick="window.print()"
+       style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+      🖨 Print
+    </button>
+  </div>
 </div>
 
 <div class="container">
