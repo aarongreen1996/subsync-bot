@@ -17,7 +17,7 @@ from .email_utils import send_manager_notification, send_decision_to_subcontract
 from .qr_utils import generate_qr_png
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "pd-photos")
 ADMIN_KEY = os.environ.get("PD_ADMIN_KEY", "change-me-in-env")
 
