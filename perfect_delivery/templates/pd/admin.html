@@ -93,6 +93,7 @@
     <button class="tab active" onclick="switchTab('sites', this)">🏗 Sites</button>
     <button class="tab" onclick="switchTab('plots', this)">📋 Plots & QRs</button>
     <button class="tab" onclick="switchTab('submissions', this)">📥 Submissions</button>
+    <button class="tab" onclick="switchTab('settings', this)">⚙️ Settings</button>
   </div>
 
   <!-- ── Sites panel ── -->
@@ -183,6 +184,79 @@
             {% endif %}
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings panel ── -->
+  <div class="panel" id="panel-settings">
+    <div class="card">
+      <div class="card-title">Company Branding</div>
+      <form id="settingsForm" enctype="multipart/form-data">
+        <div class="form-grid">
+          <div class="field form-full">
+            <label>Company Name *</label>
+            <input type="text" id="sCompanyName" name="name" placeholder="e.g. Pennyfarthing Homes">
+          </div>
+          <div class="field form-full">
+            <label>Address</label>
+            <input type="text" id="sAddress" name="address" placeholder="e.g. Pennyfarthing House, Romsey Road, Chandlers Ford">
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input type="text" id="sPhone" name="phone" placeholder="e.g. 023 8026 7444">
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="text" id="sEmail" name="email" placeholder="e.g. info@pennyfarthinghomes.co.uk">
+          </div>
+          <div class="field">
+            <label>Website</label>
+            <input type="text" id="sWebsite" name="website" placeholder="e.g. www.pennyfarthinghomes.co.uk">
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Logo & Colours</div>
+      <form id="brandingForm" enctype="multipart/form-data">
+        <div class="form-grid">
+          <div class="field form-full">
+            <label>Company Logo</label>
+            <input type="file" name="logo" accept="image/*" id="logoInput" onchange="previewLogo(this)">
+            <div id="logoPreview" style="margin-top:10px"></div>
+          </div>
+          <div class="field">
+            <label>Primary Colour</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="sPrimary" name="primary_color" value="#1a1a2e" style="width:48px;height:36px;padding:2px;border-radius:6px;border:1.5px solid #e5e7eb">
+              <input type="text" id="sPrimaryHex" value="#1a1a2e" style="flex:1" oninput="document.getElementById('sPrimary').value=this.value">
+            </div>
+          </div>
+          <div class="field">
+            <label>Secondary Colour</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="color" id="sSecondary" name="secondary_color" value="#C5962A" style="width:48px;height:36px;padding:2px;border-radius:6px;border:1.5px solid #e5e7eb">
+              <input type="text" id="sSecondaryHex" value="#C5962A" style="flex:1" oninput="document.getElementById('sSecondary').value=this.value">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
+          <button type="button" class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+          <span id="settingsSaved" style="color:#16a34a;font-size:13px;display:none">✓ Saved</span>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Preview</div>
+      <div id="brandPreview" style="background:#1a1a2e;padding:16px;border-radius:8px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="color:#C5962A;font-size:16px;font-weight:700">Perfect Delivery</div>
+          <div style="color:#9ca3af;font-size:12px">Pennyfarthing Homes</div>
+        </div>
+        <div style="background:#C5962A;color:#1a1a2e;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700">Plot 1</div>
       </div>
     </div>
   </div>
@@ -334,6 +408,86 @@ async function loadSubmissions() {
     </tr>`;
   }).join('');
 }
+
+// ── Settings ────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  const res = await fetch('/pd/admin/settings?key=' + ADMIN_KEY);
+  const json = await res.json();
+  if (!json.ok || !json.tenant) return;
+  const t = json.tenant;
+  if (t.name)            document.getElementById('sCompanyName').value = t.name;
+  if (t.address)         document.getElementById('sAddress').value = t.address;
+  if (t.phone)           document.getElementById('sPhone').value = t.phone;
+  if (t.email)           document.getElementById('sEmail').value = t.email;
+  if (t.website)         document.getElementById('sWebsite').value = t.website;
+  if (t.primary_color) {
+    document.getElementById('sPrimary').value = t.primary_color;
+    document.getElementById('sPrimaryHex').value = t.primary_color;
+  }
+  if (t.secondary_color) {
+    document.getElementById('sSecondary').value = t.secondary_color;
+    document.getElementById('sSecondaryHex').value = t.secondary_color;
+  }
+  if (t.logo_url) {
+    document.getElementById('logoPreview').innerHTML = `<img src="${t.logo_url}" style="max-height:60px;border-radius:6px;border:1px solid #e5e7eb">`;
+  }
+  updatePreview(t.primary_color, t.secondary_color, t.name);
+}
+
+function previewLogo(input) {
+  if (!input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('logoPreview').innerHTML = `<img src="${e.target.result}" style="max-height:60px;border-radius:6px;border:1px solid #e5e7eb">`;
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function updatePreview(primary, secondary, name) {
+  const p = document.getElementById('brandPreview');
+  if (p) {
+    p.style.background = primary || '#1a1a2e';
+    p.querySelector('div > div:first-child').style.color = secondary || '#C5962A';
+    p.querySelector('div:last-child').style.background = secondary || '#C5962A';
+    p.querySelector('div:last-child').style.color = primary || '#1a1a2e';
+    if (name) p.querySelector('div > div:last-child').textContent = name;
+  }
+}
+
+document.getElementById('sPrimary')?.addEventListener('input', function() {
+  document.getElementById('sPrimaryHex').value = this.value;
+  updatePreview(this.value, document.getElementById('sSecondary').value, document.getElementById('sCompanyName').value);
+});
+document.getElementById('sSecondary')?.addEventListener('input', function() {
+  document.getElementById('sSecondaryHex').value = this.value;
+  updatePreview(document.getElementById('sPrimary').value, this.value, document.getElementById('sCompanyName').value);
+});
+
+async function saveSettings() {
+  const fd = new FormData();
+  fd.append('name', document.getElementById('sCompanyName').value);
+  fd.append('address', document.getElementById('sAddress').value);
+  fd.append('phone', document.getElementById('sPhone').value);
+  fd.append('email', document.getElementById('sEmail').value);
+  fd.append('website', document.getElementById('sWebsite').value);
+  fd.append('primary_color', document.getElementById('sPrimary').value);
+  fd.append('secondary_color', document.getElementById('sSecondary').value);
+  const logoInput = document.getElementById('logoInput');
+  if (logoInput.files[0]) fd.append('logo', logoInput.files[0]);
+
+  const res = await fetch('/pd/admin/settings?key=' + ADMIN_KEY, { method: 'POST', body: fd });
+  const json = await res.json();
+  if (json.ok) {
+    const saved = document.getElementById('settingsSaved');
+    saved.style.display = 'inline';
+    setTimeout(() => saved.style.display = 'none', 3000);
+    showToast('Settings saved!');
+  } else {
+    showToast('Error saving settings', 'error');
+  }
+}
+
+loadSettings();
 </script>
 </body>
 </html>
