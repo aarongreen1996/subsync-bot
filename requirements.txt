@@ -12,3 +12,4 @@ qrcode[pil]
 Pillow
 supabase
 reportlab
+
