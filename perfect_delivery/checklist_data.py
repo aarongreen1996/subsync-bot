@@ -95,7 +95,8 @@ STAGES = {
             {"id": "05_02", "text": "Brickwork level, plumb and true to gauge", "type": "check", "photo": True},
             {"id": "05_03", "text": "Mortar joints full, perpends vertically aligned", "type": "check", "photo": True},
             {"id": "05_04", "text": "Wall ties correct type, spacing 450mm vert / 750mm horiz. At openings 225mm vert. Not falling back into blockwork", "type": "check", "photo": True},
-            {"id": "05_05", "text": "Insulation installed tightly, no voids, not bridging cavity", "type": "check", "photo": True},
+            {"id": "05_05", "text": "PART L 1b — Cavity wall insulation installed tightly with no gaps or voids, not bridging cavity. Full width of cavity filled. Photo must show insulation coverage across full wall section", "type": "check", "photo": True},
+            {"id": "05_05b", "text": "PART L 1c — Thermal bridging at window and door reveals: cavity closers correctly installed, insulated reveal liners in place, no uninsulated cold bridges at junctions. Photo must show reveal detail with insulated closer in place", "type": "check", "photo": True},
             {"id": "05_06", "text": "Cavity clean and free from mortar droppings", "type": "check", "photo": True},
             {"id": "05_07", "text": "DPC to top of floor planks and brickwork in accordance with drawings", "type": "check", "photo": True},
             {"id": "05_08", "text": "Weep holes at 450mm centres above all openings, above lintels but not bedded", "type": "check", "photo": True},
@@ -118,7 +119,7 @@ STAGES = {
             {"id": "06_04", "text": "Cavity trays installed with min 75mm turn-up at stop ends, free from debris", "type": "check", "photo": True},
             {"id": "06_05", "text": "Stepped trays fully bedded and clean within cavity", "type": "check", "photo": True},
             {"id": "06_06", "text": "Weep holes at 450mm centres above all openings, above lintels not bedded", "type": "check", "photo": True},
-            {"id": "06_07", "text": "Insulation installed tightly, no voids, not bridging cavity", "type": "check", "photo": True},
+            {"id": "06_07", "text": "PART L 2a — Insulation continuity at joist level junction: insulation installed tightly with no gaps at wall/floor interface, full fill maintained across joist hangers and at all structural junctions. Photo must show insulation continuous at the floor/wall junction with no cold bridges", "type": "check", "photo": True},
             {"id": "06_08", "text": "Lintels fully bedded and level, steels with correct bearings", "type": "check", "photo": True},
             {"id": "06_09", "text": "Lateral restraint straps built in correctly on joists and gables per drawings", "type": "check", "photo": True},
             {"id": "06_10", "text": "Storey height correct per drawings, blockwork level under joists", "type": "check", "photo": True},
@@ -300,12 +301,13 @@ STAGES = {
         "items": [
             {"id": "15_01", "text": "Subfloor clean and free from all debris", "type": "check", "photo": True},
             {"id": "15_02", "text": "Any pipework below screed protected and route documented", "type": "check", "photo": True},
-            {"id": "15_03", "text": "Perimeter insulation strip installed around all walls", "type": "check", "photo": True},
-            {"id": "15_04", "text": "Expansion joints marked where required per design", "type": "check", "photo": True},
-            {"id": "15_05", "text": "Substrate inspected for cracks or defects — none present", "type": "check", "photo": True},
-            {"id": "15_06", "text": "Damp proof membrane lapped minimum 150mm and sealed", "type": "check", "photo": True},
-            {"id": "15_07", "text": "All service routes confirmed and marked before screed", "type": "check", "photo": True},
-            {"id": "15_08", "text": "Level datum points set at correct finished floor level", "type": "check", "photo": True},
+            {"id": "15_03", "text": "PART L 2b — Floor insulation boards installed before screed: correct thickness per SAP calculation, all joints tightly butted with no gaps, insulation continuous to perimeter insulation strip with no cold bridge at wall junction. Photo must show insulation fully covering floor with perimeter strip in place", "type": "check", "photo": True},
+            {"id": "15_04", "text": "Perimeter insulation strip installed around all walls — correct height to match screed + floor finish depth", "type": "check", "photo": True},
+            {"id": "15_05", "text": "Expansion joints marked where required per design", "type": "check", "photo": True},
+            {"id": "15_06", "text": "Substrate inspected for cracks or defects — none present", "type": "check", "photo": True},
+            {"id": "15_07", "text": "Damp proof membrane lapped minimum 150mm and sealed", "type": "check", "photo": True},
+            {"id": "15_08", "text": "All service routes confirmed and marked before screed", "type": "check", "photo": True},
+            {"id": "15_09", "text": "Level datum points set at correct finished floor level", "type": "check", "photo": True},
         ]
     },
     16: {
@@ -335,12 +337,13 @@ STAGES = {
         "items": [
             {"id": "17_01", "text": "Screed mix correct per specification — confirm mix", "type": "text_with_check", "placeholder": "e.g. 1:4.5 sand cement or liquid screed", "photo": True},
             {"id": "17_02", "text": "Screed thickness correct per design — minimum 65mm on UFH", "type": "check", "photo": True},
-            {"id": "17_03", "text": "Screed level to tolerance (±3mm under 2m straight edge)", "type": "check", "photo": True},
-            {"id": "17_04", "text": "Perimeter insulation strip maintained throughout", "type": "check", "photo": True},
-            {"id": "17_05", "text": "Screed joints formed at doorways between rooms", "type": "check", "photo": True},
-            {"id": "17_06", "text": "Screed protected from traffic for minimum 24 hours after pour", "type": "check", "photo": True},
-            {"id": "17_07", "text": "No cracking or delamination visible on inspection", "type": "check", "photo": True},
-            {"id": "17_08", "text": "Sound coat applied correctly where required", "type": "check", "photo": True},
+            {"id": "17_03", "text": "PART L 1a — Floor insulation continuity under screed: perimeter insulation strip continuous and unbroken at all wall junctions, insulation not displaced during pour, screed does not bridge insulation at perimeter. Photo must show perimeter edge detail with strip intact and screed poured tight to it", "type": "check", "photo": True},
+            {"id": "17_04", "text": "Screed level to tolerance (±3mm under 2m straight edge)", "type": "check", "photo": True},
+            {"id": "17_05", "text": "Perimeter insulation strip intact and at correct height throughout", "type": "check", "photo": True},
+            {"id": "17_06", "text": "Screed joints formed at doorways between rooms", "type": "check", "photo": True},
+            {"id": "17_07", "text": "Screed protected from traffic for minimum 24 hours after pour", "type": "check", "photo": True},
+            {"id": "17_08", "text": "No cracking or delamination visible on inspection", "type": "check", "photo": True},
+            {"id": "17_09", "text": "Sound coat applied correctly where required", "type": "check", "photo": True},
         ]
     },
     18: {
@@ -396,6 +399,10 @@ STAGES = {
             {"id": "20_07", "text": "Separating wall acoustic details maintained throughout", "type": "check", "photo": True},
             {"id": "20_08", "text": "Fire stopping installed at all partition heads", "type": "check", "photo": True},
             {"id": "20_09", "text": "2m rule clearance from stairs to bulkhead", "type": "check", "photo": True},
+            {"id": "20_10", "text": "PART L 3b — Thermal bridging at all wall/ceiling/floor junctions: insulated cavity closers fitted at all openings, insulation continuous at all structural junctions with no uninsulated gaps. Photo must show insulation continuity at junctions with no cold bridges", "type": "check", "photo": True},
+            {"id": "20_11", "text": "SHOWER — Studwork uprights at maximum 200mm centres. Photo must show tape measure confirming 200mm centres across full stud bay", "type": "check", "photo": True},
+            {"id": "20_12", "text": "SHOWER — Studwork uprights fixed to both head plate and sole plate with correct fixings. Photo must show fixing at head and sole plate", "type": "check", "photo": True},
+            {"id": "20_13", "text": "SHOWER — Two layers of 15mm moisture-resistant board fixed at 200mm centres with staggered joints. Each layer has minimum 50mm overhang beyond shower tray on each side. Photo must show both layers in place with overhang clearly visible over tray line", "type": "check", "photo": True},
         ]
     },
     21: {
@@ -419,6 +426,7 @@ STAGES = {
             {"id": "21_12", "text": "All service penetrations through structure sealed", "type": "check", "photo": True},
             {"id": "21_13", "text": "Plastic pipework on blockwork walls has metal tape applied", "type": "check", "photo": True},
             {"id": "21_14", "text": "WC cold fill installed and capped", "type": "check", "photo": True},
+            {"id": "21_15", "text": "SHOWER — Sand and cement bed under shower tray: full bed laid across entire tray footprint, correct depth, tray pressed firmly into bed. Photo must show the full bed covering the complete tray area before tray is seated", "type": "check", "photo": True},
         ]
     },
     22: {
@@ -477,6 +485,9 @@ STAGES = {
             {"id": "24_09", "text": "Timber base plate to all metal studwork installed", "type": "check", "photo": True},
             {"id": "24_10", "text": "2m headroom clearance from stairs to bulkhead confirmed", "type": "check", "photo": True},
             {"id": "24_11", "text": "Plot fully cleaned out and protection applied to all surfaces", "type": "check", "photo": True},
+            {"id": "24_12", "text": "PART L 4a — Air tightness: all service penetrations through the air barrier (floors, walls, ceiling) sealed with appropriate air tightness tape or mastic. Photo must show sealed penetrations at each service entry through the fabric", "type": "check", "photo": True},
+            {"id": "24_13", "text": "PART L 4b — Air tightness at junctions: all wall/floor/ceiling junctions taped and sealed, loft hatch sealed with draught seal, all electrical back boxes fitted with air tightness membranes where required. Photo must show junction sealing detail", "type": "check", "photo": True},
+            {"id": "24_14", "text": "PART L 5 — Party wall airtightness: parge coat fully continuous on party wall with no gaps, cracks or missing sections. All service penetrations through party wall sealed. Photo must show completed parge coat across full party wall height", "type": "check", "photo": True},
         ]
     },
     25: {
@@ -487,6 +498,7 @@ STAGES = {
         "applies_to": "Plasterers / Drylining",
         "items": [
             {"id": "25_01", "text": "Plasterboard type correct — moisture resistant and fireline where required", "type": "check", "photo": True},
+            {"id": "25_01b", "text": "PART L 3a — Wall insulation continuity: insulation installed behind drylining fully continuous with no gaps, voids or compression, correctly overlapping floor and ceiling insulation layers. Photo must show insulation fully covering wall face with no gaps before boarding", "type": "check", "photo": True},
             {"id": "25_02", "text": "All boards installed per contract drawings, fixings per manufacturer's recommendations", "type": "check", "photo": True},
             {"id": "25_03", "text": "Fixings at correct centres — maximum 300mm", "type": "check", "photo": True},
             {"id": "25_04", "text": "Staggered joints above doors and at ceiling junctions", "type": "check", "photo": True},
@@ -539,8 +551,10 @@ STAGES = {
             {"id": "27_07", "text": "PLASTERBOARD — Layer 1 fixed at correct centres / 200mm intervals", "type": "check", "photo": True},
             {"id": "27_08", "text": "PLASTERBOARD — Layer 2 fixed at 200mm centres with staggered joints to Layer 1", "type": "check", "photo": True},
             # Tanking
-            {"id": "27_09", "text": "TANKING — Tanking tapes applied to tray, walls and pipework with correct lapping before any tanking application", "type": "check", "photo": True},
-            {"id": "27_10", "text": "TANKING — Two coats of tanking paint applied, switching horizontal to vertical to ensure full coverage", "type": "check", "photo": True},
+            {"id": "27_09", "text": "SHOWER — Tanking to shower enclosure: tanking membrane applied minimum 50mm past the shower tray line on all sides. Photo must show the 50mm overhang beyond tray edge clearly marked or measured", "type": "check", "photo": True},
+            {"id": "27_09b", "text": "SHOWER — Tanking tape applied to shower tray perimeter: tape lipped onto tray lip and up onto wall board with correct lapping. Photo must show tape lipped over tray edge with no lifting or gaps", "type": "check", "photo": True},
+            {"id": "27_09c", "text": "SHOWER — Tanking applied to surround all water feed penetrations: tanking membrane covers minimum 50mm around each pipe entry point. Photo must show each water feed penetration fully tanked", "type": "check", "photo": True},
+            {"id": "27_10", "text": "SHOWER — Two coats of tanking paint applied switching horizontal then vertical application to ensure full coverage of all surfaces. Photo must show completed second coat with no missed areas", "type": "check", "photo": True},
             # Ceramic tiles
             {"id": "27_11", "text": "TILES — Adhesive applied to walls and back-buttered to tiles (buttered method)", "type": "check", "photo": True},
             {"id": "27_12", "text": "TILES — Tiles completed and left minimum 24 hours before grouting", "type": "check", "photo": True},
@@ -584,6 +598,7 @@ STAGES = {
         "applies_to": "Plumbers",
         "items": [
             {"id": "29_01", "text": "Boiler installed — hot and cold connections correct, no gas or water leaks", "type": "check", "photo": True},
+            {"id": "29_01b", "text": "PART L 6a — Hot water cylinder and pipework insulation: cylinder insulated to manufacturer's specification, all hot water pipes insulated for minimum 1m from cylinder and throughout accessible areas. Photo must show cylinder insulation and first metre of pipe insulation", "type": "check", "photo": True},
             {"id": "29_02", "text": "Boiler benchmark book completed and label on boiler showing installer details", "type": "check", "photo": True},
             {"id": "29_03", "text": "Boiler flue fitted correctly with adequate brackets in roof space", "type": "check", "photo": True},
             {"id": "29_04", "text": "Boiler flow and returns correctly fitted", "type": "check", "photo": True},
@@ -659,6 +674,8 @@ STAGES = {
             {"id": "32_08", "text": "All airing cupboard pipework labelled correctly", "type": "check", "photo": True},
             {"id": "32_09", "text": "Stop cocks labelled correctly", "type": "check", "photo": True},
             {"id": "32_10", "text": "All documentation, warranties and benchmark books left with property", "type": "check", "photo": True},
+            {"id": "32_11", "text": "PART L 6b — Heating controls installed and commissioned: programmer/timer, room thermostat and TRVs all operational and correctly set. Hot water thermostat set to 60°C. Photo must show controls display and thermostat settings", "type": "check", "photo": True},
+            {"id": "32_12", "text": "PART L 6c — Boiler efficiency and controls: boiler set to weather compensation or load compensation where fitted, flow temperature set correctly per SAP. Confirm boiler flow temperature setting", "type": "text_with_check", "placeholder": "e.g. Flow temp set to 55°C with weather comp enabled", "photo": True},
         ]
     },
     33: {
@@ -680,6 +697,7 @@ STAGES = {
             {"id": "33_10", "text": "Carbon monoxide detectors tested and operational", "type": "check", "photo": True},
             {"id": "33_11", "text": "All lights fully operational throughout property", "type": "check", "photo": True},
             {"id": "33_12", "text": "All documentation left with property", "type": "check", "photo": True},
+            {"id": "33_13", "text": "PART L 6c — Lighting efficacy: minimum 75% of fixed light fittings are low energy (LED or equivalent, minimum 45 lumens/watt). Confirm number of LED fittings vs total fittings", "type": "text_with_check", "placeholder": "e.g. 18 of 22 fittings LED — 82%", "photo": True},
         ]
     },
     34: {
@@ -714,6 +732,7 @@ STAGES = {
             {"id": "35_06", "text": "Window and door mastic to external perimeter complete", "type": "check", "photo": True},
             {"id": "35_07", "text": "Movement and expansion joints mastics complete", "type": "check", "photo": True},
             {"id": "35_08", "text": "All wet areas internal mastic complete — shower, bath, basin", "type": "check", "photo": True},
+            {"id": "35_09", "text": "SHOWER — Mastic applied to full shower tray perimeter prior to shower screen installation: continuous bead with no gaps, correct profile, correct colour. Photo must show completed mastic bead around full tray perimeter before screen is fitted", "type": "check", "photo": True},
         ]
     },
     36: {
