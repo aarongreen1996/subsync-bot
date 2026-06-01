@@ -252,9 +252,9 @@ function renderEditor(stageNum) {
 
 function buildItemCard(item, num) {
   const ov      = overrides[item.id] || {};
-  const text    = ov.text !== undefined ? ov.text : item.text;
-  const photoReq = ov.photo_required !== undefined ? ov.photo_required : (item.photo || false);
-  const enabled  = ov.enabled !== undefined ? ov.enabled : true;
+  const text    = (ov.text !== undefined && ov.text !== null) ? ov.text : item.text;
+  const photoReq = ov.photo_required !== undefined && ov.photo_required !== null ? ov.photo_required : (item.photo || false);
+  const enabled  = ov.enabled !== undefined && ov.enabled !== null ? ov.enabled : true;
   const exPhoto  = ov.example_photo_url || '';
   const exGuide  = ov.example_guidance || '';
   const hasOv    = Object.keys(ov).length > 0;
@@ -437,11 +437,22 @@ async function addItem() {
 async function saveAll() {
   if (!Object.keys(pendingChanges).length) { toast('No changes to save'); return; }
 
-  const items = Object.entries(pendingChanges).map(([item_id, changes]) => ({
-    stage_number: currentStage,
-    item_id,
-    ...changes,
-  }));
+  const stage = STAGES_DATA[currentStage];
+  const items = Object.entries(pendingChanges).map(([item_id, changes]) => {
+    // Find original item to fill in any missing fields
+    const original = stage.items.find(i => i.id === item_id) || {};
+    const existing = overrides[item_id] || {};
+    return {
+      stage_number:   currentStage,
+      item_id,
+      // Always include text so it never saves as null
+      text:           changes.text !== undefined ? changes.text : (existing.text || original.text || ''),
+      photo_required: changes.photo_required !== undefined ? changes.photo_required : (existing.photo_required !== undefined ? existing.photo_required : (original.photo || false)),
+      enabled:        changes.enabled !== undefined ? changes.enabled : (existing.enabled !== undefined ? existing.enabled : true),
+      example_photo_url: changes.example_photo_url !== undefined ? changes.example_photo_url : (existing.example_photo_url || ''),
+      example_guidance:  changes.example_guidance !== undefined ? changes.example_guidance : (existing.example_guidance || ''),
+    };
+  });
 
   const res  = await fetch(`/pd/admin/checklist/${currentStage}?key=${ADMIN_KEY}`, {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(items),
