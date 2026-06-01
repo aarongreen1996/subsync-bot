@@ -329,6 +329,225 @@ def api_plots_clear(user, plot_id):
     return jsonify({"ok": True})
 
 
+
+
+# ── Plot import (AI-powered + manual) ────────────────────────────────────────
+
+@portal_bp.route("/api/plots/import-preview", methods=["POST"])
+@_require_admin_role
+def api_plots_import_preview(user):
+    """Accept PDF/Excel upload, use AI to extract plots, return preview."""
+    import os, base64
+
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+
+    file_obj = request.files["file"]
+    site_id  = request.form.get("site_id", "")
+    if not site_id:
+        return jsonify({"ok": False, "error": "Site ID required"}), 400
+
+    filename = (file_obj.filename or "").lower()
+    file_bytes = file_obj.read()
+
+    # Build prompt for Claude
+    system_prompt = """You are extracting plot data from a house builder's accommodation schedule.
+Extract each residential plot and return ONLY a JSON array with no other text.
+Each item: {"plot_number": "1", "house_type": "Rushbury NFR3", "dwelling_type": "Detached"}
+Rules:
+- plot_number: the numeric plot identifier (column 1)
+- house_type: the PF house type name (column 2, e.g. "Rushbury", "Anderbury", "Flat Block A")
+- dwelling_type: the Type column value (Det/Semi/Bung/Flat/Terrace/End-Terrace/Semi-Detached etc)
+- Skip communal areas, cycle stores, bin stores — only include numbered residential plots
+- If plot_number is not a simple number or is blank, skip it"""
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
+
+        if filename.endswith(".pdf"):
+            # Send as base64 PDF document
+            b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
+            msg = client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64,
+                            }
+                        },
+                        {"type": "text", "text": "Extract all residential plots from this accommodation schedule. Return only the JSON array."}
+                    ]
+                }]
+            )
+        else:
+            # Excel — extract text and send as text
+            try:
+                import openpyxl, io as _io
+                wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), data_only=True)
+                ws = wb.active
+                rows = []
+                for row in ws.iter_rows(values_only=True):
+                    if any(v is not None for v in row):
+                        rows.append("	".join(str(v or "") for v in row))
+                text_content = "
+".join(rows[:200])  # first 200 rows
+            except Exception:
+                text_content = file_bytes.decode("utf-8", errors="ignore")[:8000]
+
+            msg = client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{
+                    "role": "user",
+                    "content": f"Extract all residential plots from this accommodation schedule data:
+
+{text_content}
+
+Return only the JSON array."
+                }]
+            )
+
+        response_text = msg.content[0].text.strip()
+
+        # Parse JSON from response
+        import re as _re, json as _json
+        # Extract JSON array from response
+        match = _re.search(r'\[.*\]', response_text, _re.DOTALL)
+        if not match:
+            return jsonify({"ok": False, "error": "Could not parse AI response", "raw": response_text[:500]}), 400
+
+        plots = _json.loads(match.group())
+
+        # Validate and clean
+        cleaned = []
+        for p in plots:
+            pn = str(p.get("plot_number","")).strip()
+            ht = str(p.get("house_type","")).strip()
+            dt = str(p.get("dwelling_type","")).strip()
+            if pn and pn.replace("-","").replace("_","").replace(" ","").isalnum():
+                cleaned.append({
+                    "plot_number":  pn,
+                    "house_type":   ht,
+                    "dwelling_type": dt,
+                    "site_id":      site_id,
+                })
+
+        return jsonify({"ok": True, "plots": cleaned, "count": len(cleaned)})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@portal_bp.route("/api/plots/import-confirm", methods=["POST"])
+@_require_admin_role
+def api_plots_import_confirm(user):
+    """Bulk create plots from confirmed preview data."""
+    data    = request.get_json() or {}
+    plots   = data.get("plots", [])
+    site_id = data.get("site_id", "")
+
+    if not plots or not site_id:
+        return jsonify({"ok": False, "error": "No plots or site provided"}), 400
+
+    created = 0
+    skipped = 0
+    errors  = []
+
+    for p in plots:
+        if not p.get("plot_number"):
+            continue
+        # Combine house_type and dwelling_type
+        ht = p.get("house_type","").strip()
+        dt = p.get("dwelling_type","").strip()
+
+        try:
+            supabase.table("pd_plots").insert({
+                "site_id":          site_id,
+                "plot_number":      str(p["plot_number"]).strip(),
+                "house_type":       ht,
+                "house_type_detail": dt,
+            }).execute()
+            created += 1
+        except Exception as e:
+            err = str(e)
+            if "unique" in err.lower() or "duplicate" in err.lower():
+                skipped += 1
+            else:
+                errors.append(f"Plot {p['plot_number']}: {err}")
+
+    return jsonify({"ok": True, "created": created, "skipped": skipped, "errors": errors})
+
+
+@portal_bp.route("/api/plots/import-range", methods=["POST"])
+@_require_admin_role
+def api_plots_import_range(user):
+    """Create plots from a numeric range e.g. 1-164."""
+    data       = request.get_json() or {}
+    site_id    = data.get("site_id","")
+    range_str  = data.get("range","").strip()
+    house_type = data.get("house_type","").strip()
+
+    if not site_id or not range_str:
+        return jsonify({"ok": False, "error": "Site and range required"}), 400
+
+    # Parse range or comma list
+    plot_numbers = []
+    for part in range_str.split(","):
+        part = part.strip()
+        if "-" in part:
+            try:
+                start, end = part.split("-", 1)
+                # Handle prefixed ranges like A1-A20
+                prefix = "".join(c for c in start if not c.isdigit())
+                s = int("".join(c for c in start if c.isdigit()))
+                e = int("".join(c for c in end if c.isdigit()))
+                for n in range(s, e + 1):
+                    plot_numbers.append(f"{prefix}{n}")
+            except Exception:
+                return jsonify({"ok": False, "error": f"Invalid range: {part}"}), 400
+        else:
+            plot_numbers.append(part)
+
+    created = skipped = 0
+    for pn in plot_numbers:
+        try:
+            supabase.table("pd_plots").insert({
+                "site_id":    site_id,
+                "plot_number": pn,
+                "house_type":  house_type,
+            }).execute()
+            created += 1
+        except Exception as e:
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                skipped += 1
+
+    return jsonify({"ok": True, "created": created, "skipped": skipped})
+
+
+@portal_bp.route("/api/plots/<plot_id>", methods=["PUT"])
+@_require_admin_role
+def api_plots_update(user, plot_id):
+    """Update plot details including house type."""
+    data = request.get_json() or {}
+    updates = {}
+    if "plot_number"      in data: updates["plot_number"]      = str(data["plot_number"]).strip()
+    if "house_type"       in data: updates["house_type"]       = data["house_type"].strip()
+    if "house_type_detail"in data: updates["house_type_detail"]= data["house_type_detail"].strip()
+    if not updates:
+        return jsonify({"ok": False, "error": "Nothing to update"}), 400
+    supabase.table("pd_plots").update(updates).eq("id", plot_id).execute()
+    return jsonify({"ok": True})
+
+
 # ── Plot report (portal) ─────────────────────────────────────────────────────
 
 @portal_bp.route("/plot/<plot_id>/report")
@@ -524,7 +743,7 @@ def api_sites(user):
 @_require_login
 def api_plots(user):
     site_id = request.args.get("site_id")
-    query = supabase.table("pd_plots").select("*").order("plot_number")
+    query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail").order("plot_number")
     if site_id:
         query = query.eq("site_id", site_id)
     res = query.execute()
