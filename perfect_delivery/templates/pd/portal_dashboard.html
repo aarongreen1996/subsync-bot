@@ -166,6 +166,14 @@
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
   .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
+  /* ── Sortable table ── */
+  .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable:hover { color: var(--text); background: #f2f2f7; }
+  .sort-icon { font-size: 10px; color: #c7c7cc; margin-left: 4px; }
+  .sort-active .sort-icon { color: var(--accent); }
+  .sort-asc .sort-icon::after { content: " ↑"; }
+  .sort-desc .sort-icon::after { content: " ↓"; }
+
   /* ── Mobile nav ── */
   .mobile-nav {
     display: none;
@@ -316,8 +324,15 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Site / Plot</th><th>Stage</th><th>Submitted by</th><th>Date</th><th>Status</th><th></th></tr></thead>
+        <table id="subsTable">
+          <thead><tr>
+            <th class="sortable" onclick="sortSubs('site')" id="sort-site">Site / Plot <span class="sort-icon">↕</span></th>
+            <th class="sortable" onclick="sortSubs('stage')" id="sort-stage">Stage <span class="sort-icon">↕</span></th>
+            <th class="sortable" onclick="sortSubs('name')" id="sort-name">Submitted by <span class="sort-icon">↕</span></th>
+            <th class="sortable" onclick="sortSubs('date')" id="sort-date">Date <span class="sort-icon">↕</span></th>
+            <th class="sortable" onclick="sortSubs('status')" id="sort-status">Status <span class="sort-icon">↕</span></th>
+            <th></th>
+          </tr></thead>
           <tbody id="submissionsTable"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -651,7 +666,9 @@ async function loadSites() {
               <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
               <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
               <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
-              ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕</button>` : ''}
+              ${isAdmin ? `
+                <button class="btn btn-sm" style="background:#fff4e6;color:#b35900" onclick="clearPlot('${p.id}','${p.plot_number}')">🗑 Clear</button>
+                <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕ Delete</button>` : ''}
             </div>
           </div>`).join('')}
         ${isAdmin ? `<div style="padding:12px 20px;border-top:1px solid #f2f2f7">
@@ -665,24 +682,11 @@ async function loadSites() {
 // ── Submissions ───────────────────────────────────────────────────────────────
 async function loadSubmissions() {
   const status = document.getElementById('filterStatus').value;
-  let url = '/pd/portal/api/submissions?limit=100';
+  let url = '/pd/portal/api/submissions?limit=200';
   if (status) url += '&status=' + status;
   const res  = await fetch(url);
-  const subs = await res.json();
-  const tbody = document.getElementById('submissionsTable');
-  if (!subs.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>'; return; }
-  tbody.innerHTML = subs.map(s => `
-    <tr>
-      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
-      <td style="font-size:13px">${s.stage_name}</td>
-      <td style="font-size:13px">${s.submitted_by_name}<br><span style="font-size:11px;color:#8e8e93">${s.submitted_by_company}</span></td>
-      <td style="font-size:12px;color:#8e8e93">${(s.submitted_at||'').slice(0,10)}</td>
-      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
-      <td style="display:flex;gap:6px">
-        <a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review</a>
-        <a href="/pd/review/${s.review_token}/pdf" target="_blank" class="btn btn-ghost btn-sm">PDF</a>
-      </td>
-    </tr>`).join('');
+  subsData   = await res.json();
+  renderSubmissions();
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────────
@@ -825,6 +829,58 @@ async function saveSettings() {
   } else toast('Error saving','error');
 }
 
+// ── Submissions sort ─────────────────────────────────────────────────────────
+let subsData = [];
+let sortField = 'date';
+let sortDir   = 'desc';
+
+function sortSubs(field) {
+  if (sortField === field) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortField = field;
+    sortDir   = 'asc';
+  }
+  // Update header classes
+  document.querySelectorAll('.sortable').forEach(th => {
+    th.classList.remove('sort-active','sort-asc','sort-desc');
+  });
+  const th = document.getElementById('sort-' + field);
+  if (th) { th.classList.add('sort-active', 'sort-' + sortDir); }
+  renderSubmissions();
+}
+
+function renderSubmissions() {
+  const sorted = [...subsData].sort((a, b) => {
+    let av, bv;
+    if (sortField === 'site')   { av = a.pd_plots?.pd_sites?.name||''; bv = b.pd_plots?.pd_sites?.name||''; }
+    if (sortField === 'stage')  { av = a.stage_name||''; bv = b.stage_name||''; }
+    if (sortField === 'name')   { av = a.submitted_by_name||''; bv = b.submitted_by_name||''; }
+    if (sortField === 'date')   { av = a.submitted_at||''; bv = b.submitted_at||''; }
+    if (sortField === 'status') { av = a.status||''; bv = b.status||''; }
+    const cmp = av.localeCompare(bv);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const tbody = document.getElementById('submissionsTable');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map(s => `
+    <tr>
+      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
+      <td style="font-size:13px">${s.stage_name}</td>
+      <td style="font-size:13px">${s.submitted_by_name}<br><span style="font-size:11px;color:#8e8e93">${s.submitted_by_company}</span></td>
+      <td style="font-size:12px;color:#8e8e93">${(s.submitted_at||'').slice(0,10)}</td>
+      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td style="display:flex;gap:6px">
+        <a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review</a>
+        <a href="/pd/review/${s.review_token}/pdf" target="_blank" class="btn btn-ghost btn-sm">PDF</a>
+      </td>
+    </tr>`).join('');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function statusBadge(s) {
   return {approved:'badge-green',pending:'badge-amber',rejected:'badge-red'}[s]||'badge-grey';
@@ -923,6 +979,14 @@ async function savePlot() {
     loadSites();
     toast(`Plot ${payload.plot_number} created`);
   } else { toast(json.error||'Error','error'); }
+}
+
+async function clearPlot(id, number) {
+  if (!confirm(`Clear ALL submission data for Plot ${number}?\n\nThis deletes all checklist answers, photos and signatures but keeps the plot and QR code.\n\nThis cannot be undone.`)) return;
+  const res  = await fetch(`/pd/portal/api/plots/${id}/clear`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) { loadSites(); toast(`Plot ${number} data cleared`); }
+  else toast('Error clearing plot data','error');
 }
 
 async function deletePlot(id, number) {
