@@ -303,7 +303,29 @@ def api_plots_create(user):
 @portal_bp.route("/api/plots/<plot_id>", methods=["DELETE"])
 @_require_admin_role
 def api_plots_delete(user, plot_id):
+    # Cascade: delete photos → submissions → plot
+    try:
+        subs = supabase.table("pd_submissions").select("id").eq("plot_id", plot_id).execute()
+        for sub in (subs.data or []):
+            supabase.table("pd_photos").delete().eq("submission_id", sub["id"]).execute()
+        supabase.table("pd_submissions").delete().eq("plot_id", plot_id).execute()
+    except Exception as e:
+        print(f"Cascade delete error: {e}")
     supabase.table("pd_plots").delete().eq("id", plot_id).execute()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/plots/<plot_id>/clear", methods=["DELETE"])
+@_require_admin_role
+def api_plots_clear(user, plot_id):
+    """Clear all submissions for a plot without deleting the plot itself."""
+    try:
+        subs = supabase.table("pd_submissions").select("id").eq("plot_id", plot_id).execute()
+        for sub in (subs.data or []):
+            supabase.table("pd_photos").delete().eq("submission_id", sub["id"]).execute()
+        supabase.table("pd_submissions").delete().eq("plot_id", plot_id).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True})
 
 
