@@ -397,8 +397,7 @@ Rules:
                 for row in ws.iter_rows(values_only=True):
                     if any(v is not None for v in row):
                         rows.append("	".join(str(v or "") for v in row))
-                text_content = "
-".join(rows[:200])  # first 200 rows
+                text_content = "\n".join(rows[:200])  # first 200 rows
             except Exception:
                 text_content = file_bytes.decode("utf-8", errors="ignore")[:8000]
 
@@ -408,11 +407,7 @@ Rules:
                 system=system_prompt,
                 messages=[{
                     "role": "user",
-                    "content": f"Extract all residential plots from this accommodation schedule data:
-
-{text_content}
-
-Return only the JSON array."
+                    "content": f"Extract all residential plots from this accommodation schedule data:\n\n{text_content}\n\nReturn only the JSON array."
                 }]
             )
 
@@ -421,7 +416,7 @@ Return only the JSON array."
         # Parse JSON from response
         import re as _re, json as _json
         # Extract JSON array from response
-        match = _re.search(r'\[.*\]', response_text, _re.DOTALL)
+        match = _re.search(r'\[[\s\S]*\]', response_text)
         if not match:
             return jsonify({"ok": False, "error": "Could not parse AI response", "raw": response_text[:500]}), 400
 
