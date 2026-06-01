@@ -369,49 +369,51 @@ RULES:
         import anthropic as _anthropic
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
 
+        # Extract text from file first (fast — no base64 PDF processing)
+        text_content = ""
+        msg = None
+
         if filename.endswith(".pdf"):
-            # Send as base64 PDF document
-            b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
-            msg = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": b64,
-                            }
-                        },
-                        {"type": "text", "text": "This is a Pennyfarthing Homes accommodation schedule. Extract every numbered residential plot. The first column is the plot number (integer), second column is the house type name, and there is a column showing the dwelling type (Det/Semi/Flat/Terrace etc). Return ONLY the JSON array with no other text."}
-                    ]
-                }]
-            )
-        else:
-            # Excel — extract text and send as text
             try:
-                import openpyxl, io as _io
-                wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), data_only=True)
+                import pypdf as _pypdf, io as _io
+                reader = _pypdf.PdfReader(_io.BytesIO(file_bytes))
+                pages = [p.extract_text() or "" for p in reader.pages]
+                text_content = "\n".join(pages)[:12000]
+                print(f"PDF text extracted: {len(text_content)} chars")
+            except Exception as e:
+                print(f"pypdf failed: {e} — falling back to base64")
+                b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
+                msg = client.messages.create(
+                    model="claude-haiku-4-5", max_tokens=4096,
+                    system=system_prompt,
+                    messages=[{"role":"user","content":[
+                        {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}},
+                        {"type":"text","text":"Extract all numbered residential plots. Return ONLY the JSON array."}
+                    ]}]
+                )
+
+        elif filename.endswith((".xlsx",".xls")):
+            try:
+                import openpyxl as _openpyxl, io as _io
+                wb = _openpyxl.load_workbook(_io.BytesIO(file_bytes), data_only=True)
                 ws = wb.active
                 rows = []
                 for row in ws.iter_rows(values_only=True):
                     if any(v is not None for v in row):
-                        rows.append("	".join(str(v or "") for v in row))
-                text_content = "\n".join(rows[:200])  # first 200 rows
-            except Exception:
-                text_content = file_bytes.decode("utf-8", errors="ignore")[:8000]
+                        rows.append("\t".join(str(v or "") for v in row))
+                text_content = "\n".join(rows[:300])
+            except Exception as e:
+                text_content = file_bytes.decode("utf-8", errors="ignore")[:12000]
+        else:
+            text_content = file_bytes.decode("utf-8", errors="ignore")[:12000]
 
+        # Send as text (fast) unless msg already set by fallback
+        if msg is None:
             msg = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=4096,
+                model="claude-haiku-4-5", max_tokens=4096,
                 system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": f"Extract all residential plots from this accommodation schedule data:\n\n{text_content}\n\nReturn only the JSON array."
+                messages=[{"role":"user","content":
+                    f"Extract all residential plots from this accommodation schedule:\n\n{text_content}\n\nReturn ONLY the JSON array."
                 }]
             )
 
