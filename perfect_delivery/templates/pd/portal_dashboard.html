@@ -167,6 +167,9 @@
   .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
   /* ── Sortable table ── */
+  .import-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #8e8e93; cursor: pointer; margin-bottom: -2px; transition: all 0.15s; }
+  .import-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .import-tab:hover { color: var(--text); }
   .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   .sortable:hover { color: var(--text); background: #f2f2f7; }
   .sort-icon { font-size: 10px; color: #c7c7cc; margin-left: 4px; }
@@ -303,6 +306,7 @@
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="showSiteModal()">+ Add Site</button>
       <button class="btn btn-ghost" onclick="showPlotModal()">+ Add Plot</button>
+      <button class="btn btn-gold" onclick="showImportModal()">📋 Import Plots</button>
     </div>
     {% endif %}
     <div id="sitesList"></div>
@@ -527,6 +531,99 @@
   </div>
 </div>
 
+<!-- Plot Import Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-title">Import Plots</div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
+      <button class="import-tab active" id="itab-ai" onclick="switchImportTab('ai')">📄 Upload Schedule (AI)</button>
+      <button class="import-tab" id="itab-range" onclick="switchImportTab('range')">🔢 Enter Range</button>
+    </div>
+
+    <!-- AI Upload tab -->
+    <div id="import-ai">
+      <p style="font-size:13px;color:#8e8e93;margin-bottom:16px">Upload a Pennyfarthing accommodation schedule (PDF or Excel). AI will extract all plot numbers and house types automatically.</p>
+      <div class="field">
+        <label>Site</label>
+        <select id="iSiteIdAi" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;background:#f9f9fb">
+          <option value="">— Select site —</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Accommodation Schedule</label>
+        <div id="importDropZone" style="border:2px dashed #e5e5ea;border-radius:12px;padding:28px;text-align:center;cursor:pointer;background:#f9f9fb;transition:all 0.15s"
+          onclick="document.getElementById('importFile').click()"
+          ondragover="event.preventDefault();this.style.borderColor='#C5962A'"
+          ondragleave="this.style.borderColor='#e5e5ea'"
+          ondrop="handleImportDrop(event)">
+          <div style="font-size:32px;margin-bottom:8px">📋</div>
+          <div style="font-size:14px;font-weight:600;color:#1a1a2e">Drop PDF or Excel here</div>
+          <div style="font-size:12px;color:#8e8e93;margin-top:4px">or tap to browse</div>
+          <div id="importFileName" style="margin-top:8px;font-size:13px;color:#007aff;font-weight:600"></div>
+        </div>
+        <input type="file" id="importFile" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(this)">
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="runAiImport()" id="aiImportBtn">Extract Plots with AI</button>
+      </div>
+    </div>
+
+    <!-- Range tab -->
+    <div id="import-range" style="display:none">
+      <p style="font-size:13px;color:#8e8e93;margin-bottom:16px">Enter a range like <strong>1-164</strong> or a comma list like <strong>1,2,5,7</strong>. Supports prefixes like <strong>A1-A20</strong>.</p>
+      <div class="form-grid">
+        <div class="field form-full">
+          <label>Site</label>
+          <select id="iSiteIdRange" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;background:#f9f9fb">
+            <option value="">— Select site —</option>
+          </select>
+        </div>
+        <div class="field form-full">
+          <label>Plot Range</label>
+          <input type="text" id="iRange" placeholder="e.g. 1-164 or 1,2,5,7 or A1-A20">
+        </div>
+        <div class="field form-full">
+          <label>House Type (optional — can be filled in later)</label>
+          <input type="text" id="iHouseType" placeholder="e.g. Mixed — fill in per plot after">
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="runRangeImport()">Create Plots</button>
+      </div>
+    </div>
+
+    <!-- Preview section -->
+    <div id="importPreview" style="display:none;margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:700" id="previewTitle">Preview</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importPreview').style.display='none'">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="confirmImport()" id="confirmBtn">Import All</button>
+        </div>
+      </div>
+      <div style="max-height:260px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead style="position:sticky;top:0;background:#f9f9fb">
+            <tr>
+              <th style="padding:8px 12px;text-align:left;font-weight:700;color:#8e8e93;font-size:11px;border-bottom:1px solid var(--border)">PLOT</th>
+              <th style="padding:8px 12px;text-align:left;font-weight:700;color:#8e8e93;font-size:11px;border-bottom:1px solid var(--border)">HOUSE TYPE</th>
+              <th style="padding:8px 12px;text-align:left;font-weight:700;color:#8e8e93;font-size:11px;border-bottom:1px solid var(--border)">DWELLING</th>
+              <th style="padding:8px 12px;text-align:left;font-weight:700;color:#8e8e93;font-size:11px;border-bottom:1px solid var(--border)"></th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeImportModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mobile nav -->
 <nav class="mobile-nav">
   <div class="mobile-nav-items">
@@ -658,8 +755,9 @@ async function loadSites() {
         ${plots.map(p => `
           <div class="site-row">
             <div class="site-info">
-              <h3>Plot ${p.plot_number}</h3>
-              <div class="plot-progress-bar"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
+              <h3>Plot ${p.plot_number}${p.house_type ? ' <span style="font-weight:400;color:#8e8e93;font-size:13px">— ' + p.house_type + '</span>' : ''}</h3>
+              ${p.house_type_detail ? '<div style="font-size:11px;color:#c7c7cc;margin-top:1px">' + p.house_type_detail + '</div>' : ''}
+              <div class="plot-progress-bar" style="margin-top:4px"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
               <p>${p.approved_count||0} of 37 stages approved</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -667,6 +765,7 @@ async function loadSites() {
               <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
               <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
               ${isAdmin ? `
+                <button class="btn btn-ghost btn-sm" onclick="editPlotHouseType('${p.id}','${p.plot_number}','${(p.house_type||'').replace(/'/g,"\'")}','${(p.house_type_detail||'').replace(/'/g,"\'")}')">✏️</button>
                 <button class="btn btn-sm" style="background:#fff4e6;color:#b35900" onclick="clearPlot('${p.id}','${p.plot_number}')">🗑 Clear</button>
                 <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕ Delete</button>` : ''}
             </div>
@@ -909,6 +1008,151 @@ function initPhotoFilters() {
 
 initPhotoFilters();
 loadOverview();
+
+// ── Plot import ──────────────────────────────────────────────────────────────
+let importPreviewData = [];
+let importSiteId = '';
+
+function showImportModal() {
+  // Populate site dropdowns
+  ['iSiteIdAi','iSiteIdRange'].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">— Select site —</option>';
+    allSitesList.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id; o.textContent = s.name;
+      sel.appendChild(o);
+    });
+  });
+  document.getElementById('importPreview').style.display = 'none';
+  document.getElementById('importModal').classList.add('show');
+}
+function closeImportModal() { document.getElementById('importModal').classList.remove('show'); }
+
+function switchImportTab(tab) {
+  document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('itab-' + tab).classList.add('active');
+  document.getElementById('import-ai').style.display    = tab === 'ai'    ? 'block' : 'none';
+  document.getElementById('import-range').style.display = tab === 'range' ? 'block' : 'none';
+  document.getElementById('importPreview').style.display = 'none';
+}
+
+function handleImportFile(input) {
+  if (input.files[0]) {
+    document.getElementById('importFileName').textContent = '📎 ' + input.files[0].name;
+    document.getElementById('importDropZone').style.borderColor = '#C5962A';
+    document.getElementById('importDropZone').style.background = '#fdf8ec';
+  }
+}
+function handleImportDrop(e) {
+  e.preventDefault();
+  document.getElementById('importDropZone').style.borderColor = '#e5e5ea';
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer(); dt.items.add(file);
+    document.getElementById('importFile').files = dt.files;
+    handleImportFile(document.getElementById('importFile'));
+  }
+}
+
+async function runAiImport() {
+  const siteId = document.getElementById('iSiteIdAi').value;
+  const file   = document.getElementById('importFile').files[0];
+  if (!siteId) { toast('Please select a site','error'); return; }
+  if (!file)   { toast('Please upload a file','error'); return; }
+
+  const btn = document.getElementById('aiImportBtn');
+  btn.disabled = true; btn.textContent = 'Extracting with AI…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('site_id', siteId);
+
+  const res  = await fetch('/pd/portal/api/plots/import-preview', { method: 'POST', body: fd });
+  const json = await res.json();
+
+  btn.disabled = false; btn.textContent = 'Extract Plots with AI';
+
+  if (!json.ok) { toast(json.error || 'AI extraction failed','error'); return; }
+
+  importPreviewData = json.plots;
+  importSiteId = siteId;
+  showImportPreview();
+  toast(`AI found ${json.count} plots — review below before importing`);
+}
+
+function showImportPreview() {
+  const body = document.getElementById('previewBody');
+  body.innerHTML = importPreviewData.map((p, i) => `
+    <tr style="border-bottom:1px solid #f2f2f7">
+      <td style="padding:8px 12px;font-weight:600">${p.plot_number}</td>
+      <td style="padding:8px 12px"><input type="text" value="${p.house_type||''}" onchange="importPreviewData[${i}].house_type=this.value"
+        style="width:100%;padding:4px 8px;border:1px solid #e5e5ea;border-radius:6px;font-size:13px"></td>
+      <td style="padding:8px 12px"><input type="text" value="${p.dwelling_type||''}" onchange="importPreviewData[${i}].dwelling_type=this.value"
+        style="width:100%;padding:4px 8px;border:1px solid #e5e5ea;border-radius:6px;font-size:13px"></td>
+      <td style="padding:8px 12px"><button onclick="importPreviewData.splice(${i},1);showImportPreview()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button></td>
+    </tr>`).join('');
+  document.getElementById('previewTitle').textContent = `Preview — ${importPreviewData.length} plots`;
+  document.getElementById('confirmBtn').textContent = `Import ${importPreviewData.length} Plots`;
+  document.getElementById('importPreview').style.display = 'block';
+}
+
+async function confirmImport() {
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true; btn.textContent = 'Importing…';
+
+  const res  = await fetch('/pd/portal/api/plots/import-confirm', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ plots: importPreviewData, site_id: importSiteId }),
+  });
+  const json = await res.json();
+  btn.disabled = false;
+
+  if (json.ok) {
+    closeImportModal();
+    loadSites();
+    const msg = `${json.created} plots imported${json.skipped ? ', ' + json.skipped + ' skipped (already exist)' : ''}`;
+    toast(msg);
+    if (json.errors?.length) console.warn('Import errors:', json.errors);
+  } else {
+    toast(json.error || 'Import failed','error');
+  }
+}
+
+async function runRangeImport() {
+  const siteId    = document.getElementById('iSiteIdRange').value;
+  const range     = document.getElementById('iRange').value.trim();
+  const houseType = document.getElementById('iHouseType').value.trim();
+
+  if (!siteId || !range) { toast('Site and range are required','error'); return; }
+
+  const res  = await fetch('/pd/portal/api/plots/import-range', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ site_id: siteId, range, house_type: houseType }),
+  });
+  const json = await res.json();
+
+  if (json.ok) {
+    closeImportModal();
+    loadSites();
+    toast(`${json.created} plots created${json.skipped ? ', ' + json.skipped + ' already existed' : ''}`);
+  } else {
+    toast(json.error || 'Error creating plots','error');
+  }
+}
+
+// Edit plot house type inline
+async function editPlotHouseType(id, number, houseType, houseTypeDetail) {
+  const newHT = prompt(`House type for Plot ${number}:`, houseType);
+  if (newHT === null) return;
+  const res  = await fetch(`/pd/portal/api/plots/${id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ house_type: newHT }),
+  });
+  const json = await res.json();
+  if (json.ok) { loadSites(); toast('House type updated'); }
+  else toast('Error updating','error');
+}
 
 // ── Site management ───────────────────────────────────────────────────────────
 function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='') {
