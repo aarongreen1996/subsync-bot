@@ -99,7 +99,7 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}}
     _send(site.get("manager_email", ""), subject, html)
 
 
-def send_decision_to_subcontractor(submission: dict, plot: dict, site: dict, decision: str, manager_notes: str):
+def send_decision_to_subcontractor(submission: dict, plot: dict, site: dict, decision: str, manager_notes: str, flagged_items: dict = None, resubmit_url: str = None):
     is_approved = decision == "approved"
     stage_name  = submission.get("stage_name", "")
     plot_number = plot.get("plot_number", "")
@@ -118,6 +118,31 @@ def send_decision_to_subcontractor(submission: dict, plot: dict, site: dict, dec
     subject = f"PD Stage {'Approved' if is_approved else 'Rejected'} — {site_name} | Plot {plot_number} | {stage_name}"
 
     notes_html = f'<div style="background:#fff3cd;border-left:4px solid #ffc107;padding:14px;margin:16px 0;border-radius:0 8px 8px 0"><strong style="color:#856404">Notes from Site Manager</strong><p style="margin-top:8px;white-space:pre-wrap;color:#333">{manager_notes}</p></div>' if manager_notes else ""
+
+    # Flagged items
+    flagged_html = ""
+    if flagged_items and not is_approved:
+        rows = "".join(
+            f'<tr><td style="padding:8px 12px;border-bottom:1px solid #fecaca;font-size:13px;color:#374151">' +
+            f'Item {iid.replace("_",".")} &mdash; {(d.get("comment") or "No comment provided")}</td></tr>'
+            for iid, d in (flagged_items or {}).items() if isinstance(d, dict)
+        )
+        if rows:
+            flagged_html = (
+                '<div style="margin:16px 0">' +
+                '<div style="font-weight:700;color:#dc2626;font-size:13px;margin-bottom:8px">Flagged Items — Action Required</div>' +
+                '<table style="width:100%;border-collapse:collapse;background:#fff5f5;border-radius:8px;overflow:hidden">' +
+                rows + '</table></div>'
+            )
+
+    # Resubmit button
+    resubmit_html = ""
+    if resubmit_url and not is_approved:
+        resubmit_html = (
+            '<div style="text-align:center;margin:24px 0">' +
+            f'<a href="{resubmit_url}" style="display:inline-block;background:#1a1a2e;color:#C5962A;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold">Resubmit Stage</a>' +
+            '<p style="font-size:12px;color:#999;margin-top:8px">Your previous answers are saved &mdash; only flagged items need updating</p></div>'
+        )
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
@@ -148,8 +173,10 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0}}
   <div class="row"><span class="lbl">Reviewed by</span><span class="val">{manager_name}</span></div>
 </div>
 {notes_html}
+{flagged_html}
+{resubmit_html}
 <p style="font-size:14px;color:#555;margin-top:24px">
-  {'Please speak to your site manager if you have any questions.' if is_approved else 'Please address the points above and resubmit by scanning the plot QR code again.'}
+  {'Please speak to your site manager if you have any questions.' if is_approved else 'Please address all flagged items above and use the Resubmit button to resend.'}
 </p>
 </div>
 <div class="ft">Pennyfarthing Perfect Delivery · Auto-generated</div>
