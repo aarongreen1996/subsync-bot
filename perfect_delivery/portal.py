@@ -351,15 +351,19 @@ def api_plots_import_preview(user):
     file_bytes = file_obj.read()
 
     # Build prompt for Claude
-    system_prompt = """You are extracting plot data from a house builder's accommodation schedule.
-Extract each residential plot and return ONLY a JSON array with no other text.
-Each item: {"plot_number": "1", "house_type": "Rushbury NFR3", "dwelling_type": "Detached"}
-Rules:
-- plot_number: the numeric plot identifier (column 1)
-- house_type: the PF house type name (column 2, e.g. "Rushbury", "Anderbury", "Flat Block A")
-- dwelling_type: the Type column value (Det/Semi/Bung/Flat/Terrace/End-Terrace/Semi-Detached etc)
-- Skip communal areas, cycle stores, bin stores — only include numbered residential plots
-- If plot_number is not a simple number or is blank, skip it"""
+    system_prompt = """You are a data extraction assistant for a UK house builder.
+You will receive an accommodation schedule document. Extract every RESIDENTIAL PLOT.
+
+OUTPUT FORMAT — return ONLY a valid JSON array, nothing else, no markdown, no explanation:
+[{"plot_number":"1","house_type":"Rushbury NFR3","dwelling_type":"Detached"},...]
+
+RULES:
+- plot_number = the integer at the start of the row (column 1). Must be a number 1-999.
+- house_type = the PF house type/name (e.g. "Rushbury NFR3", "Anderbury NFR1", "Flats Block A Special Flat")
+- dwelling_type = the dwelling type column (Det, Semi, Detached, Semi-Detached, Terrace, End-Terrace, Flat, Bungalow, Linked-Semi-Detached etc)
+- SKIP rows where plot_number is blank or not a number (communal areas, cycle stores, bin stores etc)
+- INCLUDE all numbered plots including flats
+- Do not include any text before or after the JSON array"""
 
     try:
         import anthropic as _anthropic
@@ -383,7 +387,7 @@ Rules:
                                 "data": b64,
                             }
                         },
-                        {"type": "text", "text": "Extract all residential plots from this accommodation schedule. Return only the JSON array."}
+                        {"type": "text", "text": "This is a Pennyfarthing Homes accommodation schedule. Extract every numbered residential plot. The first column is the plot number (integer), second column is the house type name, and there is a column showing the dwelling type (Det/Semi/Flat/Terrace etc). Return ONLY the JSON array with no other text."}
                     ]
                 }]
             )
@@ -412,15 +416,42 @@ Rules:
             )
 
         response_text = msg.content[0].text.strip()
+        print(f"AI response preview: {response_text[:300]}")
 
-        # Parse JSON from response
         import re as _re, json as _json
-        # Extract JSON array from response
-        match = _re.search(r'\[[\s\S]*\]', response_text)
-        if not match:
-            return jsonify({"ok": False, "error": "Could not parse AI response", "raw": response_text[:500]}), 400
+        plots = None
 
-        plots = _json.loads(match.group())
+        # Strategy 1: direct parse
+        try:
+            plots = _json.loads(response_text)
+        except Exception:
+            pass
+
+        # Strategy 2: find array bounds
+        if plots is None:
+            try:
+                start = response_text.index("[")
+                end   = response_text.rindex("]") + 1
+                plots = _json.loads(response_text[start:end])
+            except Exception:
+                pass
+
+        # Strategy 3: strip markdown fences
+        if plots is None:
+            try:
+                cleaned_r = _re.sub(r"```(?:json)?", "", response_text).strip()
+                start = cleaned_r.index("[")
+                end   = cleaned_r.rindex("]") + 1
+                plots = _json.loads(cleaned_r[start:end])
+            except Exception:
+                pass
+
+        if plots is None:
+            return jsonify({
+                "ok": False,
+                "error": "Could not parse AI response — check Railway logs for the raw output",
+                "raw": response_text[:800]
+            }), 400
 
         # Validate and clean
         cleaned = []
