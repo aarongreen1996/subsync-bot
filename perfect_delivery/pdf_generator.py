@@ -359,3 +359,251 @@ def generate_submission_pdf(
 
     doc.build(story)
     return buf.getvalue()
+
+
+def generate_plot_report_pdf(
+    plot: dict,
+    site: dict,
+    stage_map: dict,
+    STAGES: dict,
+    stage_to_group: dict,
+    tenant: dict = None,
+    supabase=None,
+) -> bytes:
+    """Generate full plot audit trail PDF for NHBC/warranty/building control."""
+    if not REPORTLAB_AVAILABLE:
+        raise RuntimeError("ReportLab not installed")
+
+    tenant = tenant or {}
+    company_name   = tenant.get("name") or "Pennyfarthing Homes"
+    company_address= tenant.get("address") or ""
+    logo_url       = tenant.get("logo_url") or ""
+    primary_hex    = tenant.get("primary_color") or "#1a1a2e"
+    secondary_hex  = tenant.get("secondary_color") or "#C5962A"
+
+    PRIMARY   = _hex_to_color(primary_hex)
+    SECONDARY = _hex_to_color(secondary_hex)
+    WHITE     = colors.white
+    LIGHT_GREY= colors.Color(0.96, 0.96, 0.96)
+    MID_GREY  = colors.Color(0.75, 0.75, 0.75)
+    YES_GREEN = colors.Color(0.086, 0.639, 0.29)
+    NO_RED    = colors.Color(0.863, 0.149, 0.149)
+    AMBER     = colors.Color(0.855, 0.647, 0.125)
+    GREY_TEXT = colors.Color(0.5, 0.5, 0.5)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        leftMargin=15*mm, rightMargin=15*mm, topMargin=15*mm, bottomMargin=15*mm)
+    W = A4[0] - 30*mm
+
+    def s(name, **kw):
+        return ParagraphStyle(name, parent=getSampleStyleSheet()["Normal"], **kw)
+
+    s_body  = s("b", fontSize=8, leading=12, textColor=colors.Color(0.15,0.15,0.15))
+    s_small = s("sm", fontSize=7, leading=10, textColor=GREY_TEXT)
+    s_bold  = s("bd", fontSize=8, leading=12, fontName="Helvetica-Bold", textColor=colors.Color(0.1,0.1,0.1))
+    s_head  = s("h", fontSize=11, leading=15, fontName="Helvetica-Bold", textColor=PRIMARY)
+    s_sub   = s("sh", fontSize=9, leading=13, fontName="Helvetica-Bold", textColor=GREY_TEXT)
+
+    story = []
+
+    # ── Header ───────────────────────────────────────────────────────────────
+    logo_cell = None
+    if logo_url:
+        ib = _fetch_image_bytes(logo_url)
+        if ib:
+            try: logo_cell = RLImage(io.BytesIO(ib), width=35*mm, height=18*mm, kind="bound")
+            except: pass
+    if not logo_cell:
+        logo_cell = Paragraph(company_name, s("ln", fontSize=12, fontName="Helvetica-Bold", textColor=WHITE))
+
+    title_cell = Paragraph(
+        "PERFECT DELIVERY<br/>PLOT AUDIT REPORT",
+        s("dt", fontSize=12, fontName="Helvetica-Bold", textColor=SECONDARY, alignment=TA_RIGHT, leading=17)
+    )
+    hdr = Table([[logo_cell, title_cell]], colWidths=[W*0.5, W*0.5])
+    hdr.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),PRIMARY),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LEFTPADDING",(0,0),(0,0),10),
+        ("RIGHTPADDING",(1,0),(1,0),10),
+        ("TOPPADDING",(0,0),(-1,-1),10),
+        ("BOTTOMPADDING",(0,0),(-1,-1),10),
+    ]))
+    story.append(hdr)
+    story.append(Spacer(1,4*mm))
+
+    # ── Plot meta ────────────────────────────────────────────────────────────
+    from datetime import date as _d
+    meta = Table([
+        [Paragraph("<b>Site</b>",s_bold),  Paragraph(str(site.get("name","") or ""),s_body),
+         Paragraph("<b>Plot</b>",s_bold),  Paragraph(str(plot.get("plot_number","") or ""),s_body)],
+        [Paragraph("<b>Address</b>",s_bold),Paragraph(str(site.get("address","") or ""),s_body),
+         Paragraph("<b>Report date</b>",s_bold), Paragraph(_d.today().strftime("%d %b %Y"),s_body)],
+        [Paragraph("<b>Company</b>",s_bold),Paragraph(company_name,s_body),
+         Paragraph("<b>Address</b>",s_bold),Paragraph(company_address,s_body)],
+    ], colWidths=[W*0.18,W*0.32,W*0.18,W*0.32])
+    meta.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),LIGHT_GREY),
+        ("GRID",(0,0),(-1,-1),0.5,MID_GREY),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("RIGHTPADDING",(0,0),(-1,-1),6),
+        ("TOPPADDING",(0,0),(-1,-1),4),
+        ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+    ]))
+    story.append(meta)
+    story.append(Spacer(1,4*mm))
+
+    # ── Summary stats ─────────────────────────────────────────────────────────
+    approved = sum(1 for s in stage_map.values() if s.get("status")=="approved")
+    pending  = sum(1 for s in stage_map.values() if s.get("status")=="pending")
+    rejected = sum(1 for s in stage_map.values() if s.get("status")=="rejected")
+    not_started = 37 - approved - pending - rejected
+    pct = round((approved/37)*100)
+
+    stats = Table([[
+        Paragraph(f"<b>{approved}</b><br/>Approved",  s("sa",fontSize=9,alignment=TA_CENTER,textColor=YES_GREEN)),
+        Paragraph(f"<b>{pending}</b><br/>Pending",    s("sp",fontSize=9,alignment=TA_CENTER,textColor=AMBER)),
+        Paragraph(f"<b>{rejected}</b><br/>Rejected",  s("sr",fontSize=9,alignment=TA_CENTER,textColor=NO_RED)),
+        Paragraph(f"<b>{not_started}</b><br/>Not started",s("sn",fontSize=9,alignment=TA_CENTER,textColor=GREY_TEXT)),
+        Paragraph(f"<b>{pct}%</b><br/>Complete",      s("sc",fontSize=9,alignment=TA_CENTER,textColor=PRIMARY)),
+    ]], colWidths=[W/5]*5)
+    stats.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),LIGHT_GREY),
+        ("GRID",(0,0),(-1,-1),0.5,MID_GREY),
+        ("TOPPADDING",(0,0),(-1,-1),6),
+        ("BOTTOMPADDING",(0,0),(-1,-1),6),
+    ]))
+    story.append(stats)
+    story.append(Spacer(1,5*mm))
+
+    # ── Stage audit table ─────────────────────────────────────────────────────
+    story.append(Paragraph("Stage Audit Trail", s_head))
+    story.append(Spacer(1,2*mm))
+
+    col_w = [W*0.05, W*0.22, W*0.18, W*0.12, W*0.18, W*0.10, W*0.15]
+    hdrs  = ["#","Stage","Trade","Status","Submitted by","Date","Reviewed by"]
+    hdr_row = [Paragraph(h, s("th",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT)) for h in hdrs]
+
+    table_data = [hdr_row]
+    current_group = ""
+
+    for n in range(1, 38):
+        stage_data = STAGES.get(n, {})
+        sub        = stage_map.get(n)
+        status     = sub["status"] if sub else "not_started"
+        group      = stage_to_group.get(n, "")
+
+        # Group header row
+        if group != current_group:
+            current_group = group
+            group_row = [Paragraph(group, s("gr",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT))]
+            group_row += [""] * 6
+            table_data.append(group_row)
+
+        if status == "approved":   sc, st = YES_GREEN, "Approved"
+        elif status == "pending":  sc, st = AMBER,    "Pending"
+        elif status == "rejected": sc, st = NO_RED,   "Rejected"
+        else:                      sc, st = GREY_TEXT, "—"
+
+        row = [
+            Paragraph(str(n).zfill(2), s_small),
+            Paragraph(str(stage_data.get("name","") or ""), s_body),
+            Paragraph(str(stage_data.get("applies_to","") or ""), s_small),
+            Paragraph(st, s(f"st{n}", fontSize=7, fontName="Helvetica-Bold", textColor=sc)),
+            Paragraph(str(sub.get("submitted_by_name","") or "") + ("<br/>" + str(sub.get("submitted_by_company","") or "") if sub else ""), s_small) if sub else Paragraph("—",s_small),
+            Paragraph(str((sub.get("submitted_at","")[:10] if sub else "") or ""), s_small),
+            Paragraph(str(sub.get("reviewed_by","") or "—") if sub else "—", s_small),
+        ]
+        table_data.append(row)
+
+    audit_table = Table(table_data, colWidths=col_w, repeatRows=1)
+    audit_style = [
+        ("BACKGROUND",(0,0),(-1,0),PRIMARY),
+        ("TEXTCOLOR",(0,0),(-1,0),WHITE),
+        ("GRID",(0,0),(-1,-1),0.3,MID_GREY),
+        ("LEFTPADDING",(0,0),(-1,-1),4),
+        ("RIGHTPADDING",(0,0),(-1,-1),4),
+        ("TOPPADDING",(0,0),(-1,-1),3),
+        ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("FONTSIZE",(0,0),(-1,-1),7),
+    ]
+    # Shade alternate rows and group headers
+    row_idx = 1
+    for n in range(1, 38):
+        group = stage_to_group.get(n, "")
+        if group != stage_to_group.get(n-1, "") or n == 1:
+            audit_style.append(("BACKGROUND",(0,row_idx),(-1,row_idx),colors.Color(0.88,0.88,0.92)))
+            audit_style.append(("SPAN",(0,row_idx),(-1,row_idx)))
+            row_idx += 1
+        bg = LIGHT_GREY if n % 2 == 0 else WHITE
+        audit_style.append(("BACKGROUND",(0,row_idx),(-1,row_idx),bg))
+        row_idx += 1
+
+    audit_table.setStyle(TableStyle(audit_style))
+    story.append(audit_table)
+
+    # ── Part L compliance ─────────────────────────────────────────────────────
+    part_l_rows = []
+    if supabase:
+        for sub in stage_map.values():
+            if sub.get("status") != "approved": continue
+            stage_d = STAGES.get(sub["stage_number"], {})
+            answers = sub.get("answers") or {}
+            for item in stage_d.get("items", []):
+                if "PART L" not in item.get("text", ""): continue
+                a = answers.get(item["id"]) or {}
+                val = a.get("value","") if isinstance(a,dict) else ""
+                part_l_rows.append({
+                    "stage": stage_d.get("name",""),
+                    "text":  item["text"][:70],
+                    "val":   val,
+                    "date":  (sub.get("submitted_at","")[:10] or ""),
+                })
+
+    if part_l_rows:
+        story.append(Spacer(1,6*mm))
+        story.append(Paragraph("Part L Compliance Record", s_head))
+        story.append(Spacer(1,2*mm))
+
+        pl_hdrs = ["Stage","Item","Result","Date"]
+        pl_cols = [W*0.18, W*0.55, W*0.12, W*0.15]
+        pl_data = [[Paragraph(h,s("ph",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT)) for h in pl_hdrs]]
+
+        for r in part_l_rows:
+            if r["val"]=="yes":   rc,rt = YES_GREEN,"Pass"
+            elif r["val"]=="no":  rc,rt = NO_RED,   "Fail"
+            elif r["val"]=="n/a": rc,rt = GREY_TEXT,"N/A"
+            else:                 rc,rt = GREY_TEXT,"—"
+            pl_data.append([
+                Paragraph(r["stage"],s_small),
+                Paragraph(r["text"], s_small),
+                Paragraph(rt, s(f"plr{len(pl_data)}",fontSize=7,fontName="Helvetica-Bold",textColor=rc)),
+                Paragraph(r["date"], s_small),
+            ])
+
+        pl_table = Table(pl_data, colWidths=pl_cols, repeatRows=1)
+        pl_table.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),PRIMARY),
+            ("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("GRID",(0,0),(-1,-1),0.3,MID_GREY),
+            ("LEFTPADDING",(0,0),(-1,-1),4),
+            ("TOPPADDING",(0,0),(-1,-1),3),
+            ("BOTTOMPADDING",(0,0),(-1,-1),3),
+            ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ]))
+        story.append(pl_table)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    story.append(Spacer(1,6*mm))
+    story.append(HRFlowable(width=W, thickness=1, color=SECONDARY))
+    story.append(Spacer(1,2*mm))
+    ft = f"{company_name}"
+    if company_address: ft += f" · {company_address}"
+    ft += f" · Generated {_d.today().strftime('%d %b %Y')}"
+    story.append(Paragraph(ft, s("ft",fontSize=7,textColor=GREY_TEXT,alignment=TA_CENTER)))
+
+    doc.build(story)
+    return buf.getvalue()
