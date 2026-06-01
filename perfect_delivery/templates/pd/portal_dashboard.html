@@ -587,7 +587,10 @@ async function loadSites() {
           <div class="card-title">${site.name}</div>
           <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''}</div>
         </div>
-        <span class="badge badge-blue">${plots.length} plots</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-blue">${plots.length} plots</span>
+          <a href="/pd/portal/site/${site.id}/qr-sheet" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af;text-decoration:none">🖨 QR Sheet</a>
+        </div>
       </div>
       <div>${plots.map(p => `
         <div class="site-row">
@@ -596,9 +599,10 @@ async function loadSites() {
             <div class="plot-progress-bar"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
             <p>${p.approved_count||0} of 37 stages approved</p>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
             <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
+            <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
           </div>
         </div>`).join('')}
       </div>`;
