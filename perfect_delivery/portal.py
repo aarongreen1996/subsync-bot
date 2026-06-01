@@ -378,8 +378,64 @@ RULES:
                 import pypdf as _pypdf, io as _io
                 reader = _pypdf.PdfReader(_io.BytesIO(file_bytes))
                 pages = [p.extract_text() or "" for p in reader.pages]
-                text_content = "\n".join(pages)[:12000]
-                print(f"PDF text extracted: {len(text_content)} chars")
+                full_text = "\n".join(pages)
+                print(f"PDF pages: {len(pages)}, total chars: {len(full_text)}")
+
+                # Process in chunks of 3 pages at a time to avoid token limits
+                all_plots = []
+                chunk_size = 3
+                page_chunks = [pages[i:i+chunk_size] for i in range(0, len(pages), chunk_size)]
+
+                for chunk_idx, page_chunk in enumerate(page_chunks):
+                    chunk_text = "\n".join(page_chunk)[:15000]
+                    print(f"Processing chunk {chunk_idx+1}/{len(page_chunks)}: {len(chunk_text)} chars")
+                    chunk_msg = client.messages.create(
+                        model="claude-haiku-4-5", max_tokens=8096,
+                        system=system_prompt,
+                        messages=[{"role":"user","content":
+                            f"Extract all residential plots from this section of the accommodation schedule:\n\n{chunk_text}\n\nReturn ONLY the JSON array. If no plots found return []."
+                        }]
+                    )
+                    chunk_text_resp = chunk_msg.content[0].text.strip()
+                    import re as _re2, json as _json2
+                    chunk_plots = None
+                    for strategy in [
+                        lambda t: _json2.loads(t),
+                        lambda t: _json2.loads(t[t.index("["):t.rindex("]")+1]),
+                        lambda t: _json2.loads(_re2.sub(r"```[a-z]*","",t).replace("```","").strip()[
+                            _re2.sub(r"```[a-z]*","",t).replace("```","").strip().index("["):
+                            _re2.sub(r"```[a-z]*","",t).replace("```","").strip().rindex("]")+1
+                        ]),
+                    ]:
+                        try:
+                            chunk_plots = strategy(chunk_text_resp)
+                            break
+                        except Exception:
+                            continue
+                    if chunk_plots:
+                        all_plots.extend(chunk_plots)
+                        print(f"Chunk {chunk_idx+1}: found {len(chunk_plots)} plots, total so far: {len(all_plots)}")
+
+                # Deduplicate by plot_number
+                seen = set()
+                deduped = []
+                for p in all_plots:
+                    pn = str(p.get("plot_number","")).strip()
+                    if pn and pn not in seen:
+                        seen.add(pn)
+                        deduped.append(p)
+
+                print(f"Total unique plots found: {len(deduped)}")
+                # Skip the normal msg processing — return directly
+                cleaned = []
+                for p in deduped:
+                    pn = str(p.get("plot_number","")).strip()
+                    ht = str(p.get("house_type","")).strip()
+                    dt = str(p.get("dwelling_type","")).strip()
+                    if pn and pn.replace("-","").replace("_","").replace(" ","").isalnum():
+                        cleaned.append({"plot_number":pn,"house_type":ht,"dwelling_type":dt,"site_id":site_id})
+                return jsonify({"ok":True,"plots":cleaned,"count":len(cleaned)})
+
             except Exception as e:
                 print(f"pypdf failed: {e} — falling back to base64")
                 b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
