@@ -241,6 +241,97 @@ def plot_progress(user, plot_id):
     )
 
 
+# ── Plot report (portal) ─────────────────────────────────────────────────────
+
+@portal_bp.route("/plot/<plot_id>/report")
+@_require_login
+def plot_report(user, plot_id):
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    site = plot["pd_sites"]
+
+    # Check access
+    if user.get("role") != "tenant_admin":
+        site_ids = user.get("site_ids") or []
+        if isinstance(site_ids, str):
+            try: site_ids = json.loads(site_ids)
+            except: site_ids = []
+        if plot["site_id"] not in site_ids:
+            abort(403)
+
+    from .checklist_data import STAGES, STAGE_GROUPS
+    from datetime import date as _date
+
+    subs_res = supabase.table("pd_submissions").select("*").eq("plot_id", plot_id).order("submitted_at", desc=True).execute()
+    subs = subs_res.data or []
+    stage_map = {}
+    for s in reversed(subs):
+        stage_map[s["stage_number"]] = s
+
+    stage_to_group = {}
+    for group_name, stage_nums in STAGE_GROUPS.items():
+        for n in stage_nums:
+            stage_to_group[n] = group_name
+
+    approved_count = pending_count = rejected_count = 0
+    stage_rows = []
+    for n in range(1, 38):
+        stage  = STAGES.get(n, {})
+        sub    = stage_map.get(n)
+        status = sub["status"] if sub else "not_started"
+        if status == "approved":   approved_count += 1
+        elif status == "pending":  pending_count  += 1
+        elif status == "rejected": rejected_count += 1
+        stage_rows.append({
+            "stage_number": n,
+            "stage_name":   stage.get("name", f"Stage {n}"),
+            "applies_to":   stage.get("applies_to", ""),
+            "group":        stage_to_group.get(n, ""),
+            "status":       status,
+            "submitted_by": sub.get("submitted_by_name", "") if sub else "",
+            "company":      sub.get("submitted_by_company", "") if sub else "",
+            "date":         (sub.get("submitted_at") or "")[:10] if sub else "",
+            "reviewed_by":  sub.get("reviewed_by", "") if sub else "",
+            "signature_url":sub.get("signature_url", "") if sub else "",
+            "review_token": sub.get("review_token", "") if sub else "",
+        })
+
+    not_started = 37 - approved_count - pending_count - rejected_count
+    pct = round((approved_count / 37) * 100)
+
+    part_l_rows = []
+    for sub in stage_map.values():
+        if sub.get("status") != "approved":
+            continue
+        stage   = STAGES.get(sub["stage_number"], {})
+        answers = sub.get("answers") or {}
+        photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+        photos_map = {p["item_id"]: p["public_url"] for p in (photos_res.data or [])}
+        for item in stage.get("items", []):
+            if "PART L" not in item.get("text", ""):
+                continue
+            a = answers.get(item["id"]) or {}
+            part_l_rows.append({
+                "stage_name": stage.get("name", ""),
+                "item_text":  item["text"][:80],
+                "answer":     a.get("value", "") if isinstance(a, dict) else "",
+                "photo_url":  photos_map.get(item["id"], ""),
+                "date":       (sub.get("submitted_at") or "")[:10],
+            })
+
+    return render_template(
+        "pd/plot_report.html",
+        plot=plot, site=site,
+        stage_rows=stage_rows, part_l_rows=part_l_rows,
+        approved_count=approved_count, pending_count=pending_count,
+        rejected_count=rejected_count, not_started=not_started,
+        pct=pct, admin_key=ADMIN_KEY,
+        now=_date.today().strftime("%d %b %Y"),
+    )
+
+
 # ── API routes ────────────────────────────────────────────────────────────────
 
 @portal_bp.route("/api/sites")
