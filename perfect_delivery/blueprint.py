@@ -463,6 +463,137 @@ def admin_photos():
 
 
 
+
+
+# ── QR Sheet ─────────────────────────────────────────────────────────────────
+
+@pd_bp.route("/admin/site/<site_id>/qr-sheet")
+def qr_sheet(site_id: str):
+    _require_admin()
+    site_res = supabase.table("pd_sites").select("*").eq("id", site_id).single().execute()
+    if not site_res.data:
+        abort(404)
+    site = site_res.data
+    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).order("plot_number").execute()
+    plots = plots_res.data or []
+    from datetime import date
+    return render_template(
+        "pd/qr_sheet.html",
+        site=site,
+        plots=plots,
+        admin_key=ADMIN_KEY,
+        base_url=BASE_URL,
+        now=date.today().strftime("%d %b %Y"),
+    )
+
+
+@pd_bp.route("/admin/qr/<plot_id>")
+def admin_qr(plot_id: str):
+    _require_admin()
+    res = supabase.table("pd_plots").select("*, pd_sites(name)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    inline = request.args.get("inline") == "1"
+    png_bytes = generate_qr_png(plot["access_token"], plot["plot_number"], plot["pd_sites"]["name"])
+    return send_file(
+        io.BytesIO(png_bytes), mimetype="image/png",
+        as_attachment=not inline,
+        download_name=f"QR_Plot_{plot['plot_number']}.png",
+    )
+
+
+# ── Plot Report / NHBC Export ─────────────────────────────────────────────────
+
+@pd_bp.route("/admin/plot/<plot_id>/report")
+def plot_report(plot_id: str):
+    _require_admin()
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    site = plot["pd_sites"]
+
+    from .checklist_data import STAGES, STAGE_GROUPS
+    from datetime import date
+
+    # Get all submissions for this plot — latest per stage
+    subs_res = supabase.table("pd_submissions").select("*").eq("plot_id", plot_id).order("submitted_at", desc=True).execute()
+    subs = subs_res.data or []
+
+    stage_map = {}
+    for s in reversed(subs):  # oldest first so latest overwrites
+        stage_map[s["stage_number"]] = s
+
+    # Build stage rows with group info
+    stage_rows = []
+    stage_to_group = {}
+    for group_name, stage_nums in STAGE_GROUPS.items():
+        for n in stage_nums:
+            stage_to_group[n] = group_name
+
+    approved_count = pending_count = rejected_count = 0
+    for n in range(1, 38):
+        stage    = STAGES.get(n, {})
+        sub      = stage_map.get(n)
+        status   = sub["status"] if sub else "not_started"
+        if status == "approved":   approved_count += 1
+        elif status == "pending":  pending_count  += 1
+        elif status == "rejected": rejected_count += 1
+        stage_rows.append({
+            "stage_number": n,
+            "stage_name":   stage.get("name", f"Stage {n}"),
+            "applies_to":   stage.get("applies_to", ""),
+            "group":        stage_to_group.get(n, ""),
+            "status":       status,
+            "submitted_by": sub.get("submitted_by_name", "") if sub else "",
+            "company":      sub.get("submitted_by_company", "") if sub else "",
+            "date":         (sub.get("submitted_at") or "")[:10] if sub else "",
+            "reviewed_by":  sub.get("reviewed_by", "") if sub else "",
+            "signature_url":sub.get("signature_url", "") if sub else "",
+            "review_token": sub.get("review_token", "") if sub else "",
+        })
+
+    not_started = 37 - approved_count - pending_count - rejected_count
+    pct = round((approved_count / 37) * 100)
+
+    # Part L compliance rows
+    part_l_rows = []
+    for sub in stage_map.values():
+        if sub.get("status") != "approved":
+            continue
+        stage   = STAGES.get(sub["stage_number"], {})
+        answers = sub.get("answers") or {}
+        photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+        photos_map = {p["item_id"]: p["public_url"] for p in (photos_res.data or [])}
+        for item in stage.get("items", []):
+            if "PART L" not in item.get("text", ""):
+                continue
+            a = answers.get(item["id"]) or {}
+            part_l_rows.append({
+                "stage_name": stage.get("name", ""),
+                "item_text":  item["text"][:80],
+                "answer":     a.get("value", "") if isinstance(a, dict) else "",
+                "photo_url":  photos_map.get(item["id"], ""),
+                "date":       (sub.get("submitted_at") or "")[:10],
+            })
+
+    return render_template(
+        "pd/plot_report.html",
+        plot=plot,
+        site=site,
+        stage_rows=stage_rows,
+        part_l_rows=part_l_rows,
+        approved_count=approved_count,
+        pending_count=pending_count,
+        rejected_count=rejected_count,
+        not_started=not_started,
+        pct=pct,
+        admin_key=ADMIN_KEY,
+        now=date.today().strftime("%d %b %Y"),
+    )
+
+
 # ── Checklist Editor Routes ───────────────────────────────────────────────────
 
 @pd_bp.route("/admin/checklist-editor")
