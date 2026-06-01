@@ -316,6 +316,33 @@ def generate_submission_pdf(
         story.append(KeepTogether(els))
         story.append(Spacer(1, 1*mm))
 
+    # ── Signature ─────────────────────────────────────────────────────────────
+    sig_url = submission.get("signature_url")
+    if sig_url:
+        sig_bytes = _fetch_image_bytes(sig_url)
+        if sig_bytes:
+            try:
+                story.append(Spacer(1, 4*mm))
+                sig_table = Table(
+                    [[
+                        Paragraph('<b>Subcontractor Signature</b>', s_bold),
+                        RLImage(io.BytesIO(sig_bytes), width=50*mm, height=20*mm, kind='bound'),
+                    ]],
+                    colWidths=[W*0.5, W*0.5],
+                )
+                sig_table.setStyle(TableStyle([
+                    ('BACKGROUND',    (0,0),(-1,-1), LIGHT_GREY),
+                    ('GRID',          (0,0),(-1,-1), 0.5, MID_GREY),
+                    ('LEFTPADDING',   (0,0),(-1,-1), 8),
+                    ('RIGHTPADDING',  (0,0),(-1,-1), 8),
+                    ('TOPPADDING',    (0,0),(-1,-1), 6),
+                    ('BOTTOMPADDING', (0,0),(-1,-1), 6),
+                    ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
+                ]))
+                story.append(sig_table)
+            except Exception as e:
+                print(f"Signature in PDF error: {e}")
+
     # ── Footer ────────────────────────────────────────────────────────────────
     story.append(Spacer(1, 6*mm))
     story.append(HRFlowable(width=W, thickness=1, color=SECONDARY))
