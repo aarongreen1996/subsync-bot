@@ -97,6 +97,17 @@
   .info-note { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin-bottom: 16px; }
   textarea { resize: vertical; min-height: 80px; }
 
+  /* Example photo popup */
+  .example-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; transition: background 0.12s; vertical-align: middle; }
+  .example-btn:hover { background: #f0f2f5; }
+  .example-popup { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 998; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .example-popup.show { display: flex; }
+  .example-popup-card { background: white; border-radius: 16px; padding: 20px; max-width: 360px; width: 100%; }
+  .example-popup-title { font-size: 14px; font-weight: 700; color: #1a1a2e; margin-bottom: 10px; }
+  .example-popup-img { width: 100%; border-radius: 10px; margin-bottom: 10px; }
+  .example-popup-guide { font-size: 13px; color: #374151; line-height: 1.5; }
+  .example-popup-close { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 14px; }
+
   /* Loading */
   #loading { position: fixed; inset: 0; background: rgba(26,26,46,0.85); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
   #loading.show { display: flex; }
@@ -212,6 +223,16 @@
 
 <div id="loading"><div class="spinner"></div><p>Submitting… please wait</p></div>
 <div id="fileInputPool" style="display:none"></div>
+
+<!-- Example photo popup -->
+<div class="example-popup" id="examplePopup" onclick="closeExample()">
+  <div class="example-popup-card" onclick="event.stopPropagation()">
+    <div class="example-popup-title" id="exampleTitle">Example Photo</div>
+    <img class="example-popup-img" id="exampleImg" src="" alt="Example">
+    <div class="example-popup-guide" id="exampleGuide"></div>
+    <button class="example-popup-close" onclick="closeExample()">Close</button>
+  </div>
+</div>
 
 <script>
 const STAGES = {{ stages_json | safe }};
@@ -358,9 +379,14 @@ function buildItem(item, num) {
   itemEl.className = 'checklist-item';
   itemEl.id = 'item_' + item.id;
 
+  const hasExample = item.example_photo_url || item.example_guidance;
+  const exBtn = hasExample
+    ? `<button class="example-btn" onclick="showExample('${item.example_photo_url||''}','${(item.example_guidance||'').replace(/'/g,"\'")}','${item.text.slice(0,40).replace(/'/g,"\'")}…')" title="See example">💡</button>`
+    : '';
+
   let html = `
     <div class="item-num">Item ${String(num).padStart(2,'0')}</div>
-    <div class="item-text">${item.text}</div>
+    <div class="item-text">${item.text} ${exBtn}</div>
     <div class="yn-group">
       <button class="yn-btn yes" onclick="setAnswer('${item.id}','yes',this)">✓ Yes</button>
       <button class="yn-btn no" onclick="setAnswer('${item.id}','no',this)">✗ No</button>
@@ -542,6 +568,17 @@ function buildSummary() {
 }
 
 // ── Submit ───────────────────────────────────────────────────────────────────
+function showExample(photoUrl, guidance, title) {
+  document.getElementById('exampleTitle').textContent = title || 'Example Photo';
+  document.getElementById('exampleImg').src = photoUrl;
+  document.getElementById('exampleGuide').textContent = guidance || '';
+  document.getElementById('exampleImg').style.display = photoUrl ? 'block' : 'none';
+  document.getElementById('examplePopup').classList.add('show');
+}
+function closeExample() {
+  document.getElementById('examplePopup').classList.remove('show');
+}
+
 async function submitForm() {
   const stage = STAGES[selectedStage];
   document.getElementById('loading').classList.add('show');
