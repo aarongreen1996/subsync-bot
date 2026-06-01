@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checklist Editor — Perfect Delivery Admin</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #f2f2f7; color: #1a1a2e; }
+
+  .header { background: #1a1a2e; padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { color: #C5962A; font-size: 18px; font-weight: 700; }
+  .header p { color: #9ca3af; font-size: 13px; margin-top: 2px; }
+  .btn-back { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; }
+
+  .layout { display: flex; height: calc(100vh - 65px); }
+
+  /* Stage list sidebar */
+  .stage-sidebar { width: 260px; background: white; border-right: 1px solid #e5e5ea; overflow-y: auto; flex-shrink: 0; }
+  .sidebar-search { padding: 12px; border-bottom: 1px solid #e5e5ea; }
+  .sidebar-search input { width: 100%; padding: 8px 12px; border: 1.5px solid #e5e5ea; border-radius: 8px; font-size: 13px; background: #f9f9fb; }
+  .sidebar-search input:focus { outline: none; border-color: #1a1a2e; }
+
+  .group-header-side { padding: 8px 14px 4px; font-size: 10px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.8px; background: #f9f9fb; border-bottom: 1px solid #f2f2f7; }
+
+  .stage-item { padding: 11px 14px; border-bottom: 1px solid #f2f2f7; cursor: pointer; transition: background 0.12s; display: flex; align-items: center; justify-content: space-between; }
+  .stage-item:hover { background: #f2f2f7; }
+  .stage-item.active { background: #1a1a2e; }
+  .stage-item.active .stage-item-name { color: #C5962A; }
+  .stage-item.active .stage-item-trade { color: #9ca3af; }
+  .stage-item.active .stage-num-badge { background: #C5962A; color: #1a1a2e; }
+  .stage-num-badge { background: #f2f2f7; color: #6b7280; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+  .stage-item-info { flex: 1; margin-left: 8px; }
+  .stage-item-name { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+  .stage-item-trade { font-size: 11px; color: #8e8e93; margin-top: 1px; }
+  .stage-mod-dot { width: 7px; height: 7px; background: #C5962A; border-radius: 50%; flex-shrink: 0; display: none; }
+  .stage-mod-dot.show { display: block; }
+
+  /* Main editor */
+  .editor-main { flex: 1; overflow-y: auto; padding: 24px; }
+  .editor-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 12px; color: #8e8e93; }
+  .editor-placeholder-icon { font-size: 48px; }
+
+  .editor-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 16px; flex-wrap: wrap; }
+  .editor-title { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+  .editor-trade { font-size: 13px; color: #8e8e93; margin-top: 3px; }
+  .editor-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.12s; }
+  .btn-primary { background: #1a1a2e; color: white; }
+  .btn-primary:hover { background: #252540; }
+  .btn-gold { background: #C5962A; color: #1a1a2e; }
+  .btn-ghost { background: #f2f2f7; color: #1a1a2e; }
+  .btn-ghost:hover { background: #e5e5ea; }
+  .btn-red { background: #fff0f0; color: #c0392b; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* Item cards */
+  .item-card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); border-left: 3px solid #e5e5ea; transition: border-color 0.15s; }
+  .item-card.has-override { border-left-color: #C5962A; }
+  .item-card.disabled { opacity: 0.5; }
+
+  .item-top { display: flex; align-items: flex-start; gap: 10px; }
+  .item-drag { color: #c7c7cc; cursor: grab; font-size: 16px; padding-top: 2px; flex-shrink: 0; }
+  .item-num { font-size: 11px; font-weight: 700; color: #8e8e93; flex-shrink: 0; min-width: 28px; }
+  .item-text-display { flex: 1; font-size: 14px; color: #1a1a2e; line-height: 1.5; cursor: pointer; }
+  .item-text-display:hover { color: #007aff; }
+  .item-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  /* Toggle switch */
+  .toggle { position: relative; width: 40px; height: 22px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: #e5e5ea; border-radius: 22px; cursor: pointer; transition: 0.2s; }
+  .toggle-slider:before { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked + .toggle-slider { background: #34c759; }
+  .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+  /* Expanded edit panel */
+  .item-edit-panel { margin-top: 14px; padding-top: 14px; border-top: 1px solid #f2f2f7; display: none; }
+  .item-edit-panel.open { display: block; }
+
+  .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .edit-full { grid-column: 1/-1; }
+  .edit-field label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .edit-field textarea, .edit-field input[type=text] {
+    width: 100%; padding: 9px 12px; border: 1.5px solid #e5e5ea; border-radius: 8px;
+    font-size: 13px; color: #1a1a2e; background: #f9f9fb; resize: vertical;
+  }
+  .edit-field textarea:focus, .edit-field input:focus { outline: none; border-color: #1a1a2e; background: white; }
+  .edit-field textarea { min-height: 70px; }
+
+  .photo-toggle-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .photo-toggle-label { font-size: 13px; font-weight: 600; color: #1a1a2e; flex: 1; }
+  .photo-toggle-sub { font-size: 12px; color: #8e8e93; }
+
+  /* Example photo upload */
+  .example-photo-area { border: 2px dashed #e5e5ea; border-radius: 10px; padding: 14px; text-align: center; cursor: pointer; background: #f9f9fb; transition: all 0.15s; }
+  .example-photo-area:hover { border-color: #C5962A; background: #fdf8ec; }
+  .example-photo-preview { width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
+  .example-photo-text { font-size: 12px; color: #8e8e93; }
+
+  /* Save bar */
+  .save-bar { position: fixed; bottom: 0; left: 260px; right: 0; background: white; border-top: 1px solid #e5e5ea; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; z-index: 50; }
+  .save-bar-msg { font-size: 13px; color: #8e8e93; }
+  .save-bar-msg.modified { color: #d97706; font-weight: 600; }
+
+  /* Add item form */
+  .add-item-card { background: #f9f9fb; border: 2px dashed #e5e5ea; border-radius: 12px; padding: 16px; margin-bottom: 10px; }
+  .add-item-card .edit-grid { margin-top: 12px; }
+
+  /* Toast */
+  .toast { position: fixed; top: 80px; right: 24px; background: #1a1a2e; color: white; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.15); transform: translateY(-20px); opacity: 0; transition: all 0.3s; z-index: 999; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { background: #16a34a; }
+  .toast.error { background: #dc2626; }
+
+  @media(max-width:700px) {
+    .stage-sidebar { width: 100%; height: 200px; border-right: none; border-bottom: 1px solid #e5e5ea; }
+    .layout { flex-direction: column; height: auto; }
+    .save-bar { left: 0; }
+    .edit-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Checklist Editor</h1>
+    <p>Customise questions, photos and guidance for each stage</p>
+  </div>
+  <a href="/pd/admin?key={{ admin_key }}" class="btn-back">← Admin</a>
+</div>
+
+<div class="layout">
+
+  <!-- Stage sidebar -->
+  <div class="stage-sidebar">
+    <div class="sidebar-search">
+      <input type="text" id="stageSearch" placeholder="Search stages…" oninput="filterStages(this.value)">
+    </div>
+    <div id="stageList"></div>
+  </div>
+
+  <!-- Editor main -->
+  <div class="editor-main" id="editorMain">
+    <div class="editor-placeholder">
+      <div class="editor-placeholder-icon">📋</div>
+      <p style="font-weight:600;font-size:15px">Select a stage to edit</p>
+      <p style="font-size:13px">Choose from the list on the left</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- Save bar -->
+<div class="save-bar">
+  <span class="save-bar-msg" id="saveBarMsg">All changes saved</span>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-ghost" onclick="resetStage()" id="resetBtn" style="display:none">Reset to defaults</button>
+    <button class="btn btn-gold" onclick="saveAll()" id="saveBtn">Save Changes</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ADMIN_KEY    = "{{ admin_key }}";
+const STAGES_DATA  = {{ stages_json | safe }};
+const GROUPS_DATA  = {{ groups_json | safe }};
+let overrides      = {}; // { item_id: override_obj }
+let pendingChanges = {}; // { item_id: changes }
+let currentStage   = null;
+let addItemCount   = 0;
+
+// ── Render stage sidebar ─────────────────────────────────────────────────────
+function renderSidebar(filter = '') {
+  const container = document.getElementById('stageList');
+  container.innerHTML = '';
+  GROUPS_DATA.forEach(group => {
+    const stages = group.stages.filter(n => {
+      const s = STAGES_DATA[n];
+      return !filter || s.name.toLowerCase().includes(filter.toLowerCase()) || s.applies_to.toLowerCase().includes(filter.toLowerCase());
+    });
+    if (!stages.length) return;
+
+    const gh = document.createElement('div');
+    gh.className = 'group-header-side';
+    gh.textContent = group.name;
+    container.appendChild(gh);
+
+    stages.forEach(n => {
+      const s    = STAGES_DATA[n];
+      const item = document.createElement('div');
+      item.className = 'stage-item' + (currentStage === n ? ' active' : '');
+      item.id = 'sidebar_' + n;
+      item.onclick = () => loadStage(n);
+      item.innerHTML = `
+        <span class="stage-num-badge">${String(n).padStart(2,'0')}</span>
+        <div class="stage-item-info">
+          <div class="stage-item-name">${s.name}</div>
+          <div class="stage-item-trade">${s.applies_to}</div>
+        </div>
+        <div class="stage-mod-dot" id="moddot_${n}"></div>`;
+      container.appendChild(item);
+    });
+  });
+}
+
+function filterStages(v) { renderSidebar(v); }
+
+// ── Load stage overrides from server ────────────────────────────────────────
+async function loadStage(stageNum) {
+  currentStage   = stageNum;
+  pendingChanges = {};
+  renderSidebar(document.getElementById('stageSearch').value);
+
+  const res = await fetch(`/pd/admin/checklist/${stageNum}?key=${ADMIN_KEY}`);
+  const data = await res.json();
+  overrides = {};
+  (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
+
+  renderEditor(stageNum);
+  updateSaveBar(false);
+}
+
+// ── Render editor ────────────────────────────────────────────────────────────
+function renderEditor(stageNum) {
+  const stage  = STAGES_DATA[stageNum];
+  const main   = document.getElementById('editorMain');
+
+  main.innerHTML = `
+    <div class="editor-header">
+      <div>
+        <div class="editor-title">Stage ${String(stageNum).padStart(2,'0')} — ${stage.name}</div>
+        <div class="editor-trade">${stage.applies_to}</div>
+      </div>
+      <div class="editor-actions">
+        <button class="btn btn-ghost btn-sm" onclick="expandAll()">Expand all</button>
+        <button class="btn btn-primary btn-sm" onclick="showAddItem()">+ Add item</button>
+      </div>
+    </div>
+    <div id="addItemArea"></div>
+    <div id="itemsContainer"></div>
+    <div style="height:64px"></div>`;
+
+  const container = document.getElementById('itemsContainer');
+  stage.items.forEach((item, idx) => {
+    container.appendChild(buildItemCard(item, idx + 1));
+  });
+}
+
+function buildItemCard(item, num) {
+  const ov      = overrides[item.id] || {};
+  const text    = ov.text !== undefined ? ov.text : item.text;
+  const photoReq = ov.photo_required !== undefined ? ov.photo_required : (item.photo || false);
+  const enabled  = ov.enabled !== undefined ? ov.enabled : true;
+  const exPhoto  = ov.example_photo_url || '';
+  const exGuide  = ov.example_guidance || '';
+  const hasOv    = Object.keys(ov).length > 0;
+  const isModified = pendingChanges[item.id] !== undefined;
+
+  const card = document.createElement('div');
+  card.className = `item-card${hasOv || isModified ? ' has-override' : ''}${!enabled ? ' disabled' : ''}`;
+  card.id = 'card_' + item.id;
+
+  card.innerHTML = `
+    <div class="item-top">
+      <span class="item-drag">⠿</span>
+      <span class="item-num">${String(num).padStart(2,'0')}</span>
+      <span class="item-text-display" onclick="toggleEdit('${item.id}')">${text}</span>
+      <div class="item-controls">
+        <label class="toggle" title="Enable/disable this item">
+          <input type="checkbox" ${enabled ? 'checked' : ''} onchange="markChange('${item.id}', 'enabled', this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="toggleEdit('${item.id}')">Edit</button>
+      </div>
+    </div>
+
+    <div class="item-edit-panel" id="edit_${item.id}">
+      <div class="edit-grid">
+        <div class="edit-field edit-full">
+          <label>Question Text</label>
+          <textarea id="txt_${item.id}" oninput="markChange('${item.id}', 'text', this.value)">${text}</textarea>
+        </div>
+        <div class="edit-field edit-full">
+          <div class="photo-toggle-row">
+            <div>
+              <div class="photo-toggle-label">📷 Require Photo</div>
+              <div class="photo-toggle-sub">Subcontractor must upload a photo for this item</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="photo_${item.id}" ${photoReq ? 'checked' : ''} onchange="markChange('${item.id}', 'photo_required', this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="edit-field">
+          <label>Example Photo</label>
+          <div class="example-photo-area" onclick="document.getElementById('exfile_${item.id}').click()">
+            ${exPhoto ? `<img src="${exPhoto}" class="example-photo-preview" id="eximg_${item.id}">` : `<div id="eximg_${item.id}"></div>`}
+            <div class="example-photo-text">Tap to upload example photo</div>
+          </div>
+          <input type="file" id="exfile_${item.id}" accept="image/*" style="display:none" onchange="uploadExamplePhoto('${item.id}', this)">
+        </div>
+        <div class="edit-field">
+          <label>Guidance Text</label>
+          <textarea id="guide_${item.id}" placeholder="Describe what the photo should show…" oninput="markChange('${item.id}', 'example_guidance', this.value)">${exGuide}</textarea>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="toggleEdit('${item.id}')">Collapse</button>
+        ${hasOv ? `<button class="btn btn-sm btn-red" onclick="resetItem('${item.id}')">Reset to default</button>` : ''}
+      </div>
+    </div>`;
+
+  return card;
+}
+
+function toggleEdit(itemId) {
+  const panel = document.getElementById('edit_' + itemId);
+  panel.classList.toggle('open');
+}
+
+function expandAll() {
+  document.querySelectorAll('.item-edit-panel').forEach(p => p.classList.add('open'));
+}
+
+// ── Track changes ─────────────────────────────────────────────────────────────
+function markChange(itemId, field, value) {
+  if (!pendingChanges[itemId]) pendingChanges[itemId] = {};
+  pendingChanges[itemId][field] = value;
+  const card = document.getElementById('card_' + itemId);
+  if (card) card.classList.add('has-override');
+  updateSaveBar(true);
+}
+
+function updateSaveBar(modified) {
+  const msg = document.getElementById('saveBarMsg');
+  const resetBtn = document.getElementById('resetBtn');
+  if (modified) {
+    msg.textContent = 'Unsaved changes…';
+    msg.className = 'save-bar-msg modified';
+  } else {
+    msg.textContent = 'All changes saved';
+    msg.className = 'save-bar-msg';
+  }
+  resetBtn.style.display = Object.keys(overrides).length ? 'inline-flex' : 'none';
+}
+
+// ── Example photo upload ──────────────────────────────────────────────────────
+async function uploadExamplePhoto(itemId, input) {
+  if (!input.files[0]) return;
+  const fd = new FormData();
+  fd.append('photo', input.files[0]);
+  fd.append('item_id', itemId);
+  fd.append('stage_number', currentStage);
+
+  const res  = await fetch(`/pd/admin/checklist/upload-example?key=${ADMIN_KEY}`, { method: 'POST', body: fd });
+  const json = await res.json();
+  if (json.ok) {
+    markChange(itemId, 'example_photo_url', json.url);
+    const imgEl = document.getElementById('eximg_' + itemId);
+    if (imgEl) {
+      imgEl.outerHTML = `<img src="${json.url}" class="example-photo-preview" id="eximg_${itemId}">`;
+    }
+    toast('Example photo uploaded', 'success');
+  } else {
+    toast('Upload failed: ' + json.error, 'error');
+  }
+}
+
+// ── Add new item ──────────────────────────────────────────────────────────────
+function showAddItem() {
+  const area = document.getElementById('addItemArea');
+  if (area.innerHTML) { area.innerHTML = ''; return; }
+  area.innerHTML = `
+    <div class="add-item-card">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">Add New Item</div>
+      <div class="edit-grid">
+        <div class="edit-field edit-full">
+          <label>Question Text</label>
+          <textarea id="newItemText" placeholder="Enter the checklist question…"></textarea>
+        </div>
+        <div class="edit-field">
+          <div class="photo-toggle-row">
+            <div class="photo-toggle-label">Require Photo</div>
+            <label class="toggle">
+              <input type="checkbox" id="newItemPhoto" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="edit-field">
+          <label>Guidance Text</label>
+          <textarea id="newItemGuide" placeholder="What should the photo show?"></textarea>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="addItem()">Add Item</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('addItemArea').innerHTML=''">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function addItem() {
+  const text  = document.getElementById('newItemText').value.trim();
+  const photo = document.getElementById('newItemPhoto').checked;
+  const guide = document.getElementById('newItemGuide').value.trim();
+  if (!text) { toast('Question text is required', 'error'); return; }
+
+  const newId = `custom_${currentStage}_${Date.now()}`;
+  const payload = {
+    stage_number: currentStage,
+    item_id: newId,
+    text, photo_required: photo,
+    example_guidance: guide,
+    enabled: true,
+    is_new: true,
+  };
+
+  const res  = await fetch(`/pd/admin/checklist/${currentStage}?key=${ADMIN_KEY}`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify([payload]),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    toast('Item added', 'success');
+    document.getElementById('addItemArea').innerHTML = '';
+    await loadStage(currentStage);
+  } else {
+    toast('Error: ' + json.error, 'error');
+  }
+}
+
+// ── Save all changes ──────────────────────────────────────────────────────────
+async function saveAll() {
+  if (!Object.keys(pendingChanges).length) { toast('No changes to save'); return; }
+
+  const items = Object.entries(pendingChanges).map(([item_id, changes]) => ({
+    stage_number: currentStage,
+    item_id,
+    ...changes,
+  }));
+
+  const res  = await fetch(`/pd/admin/checklist/${currentStage}?key=${ADMIN_KEY}`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(items),
+  });
+  const json = await res.json();
+  if (json.ok) {
+    pendingChanges = {};
+    await loadStage(currentStage);
+    toast('Saved successfully', 'success');
+    document.getElementById('moddot_' + currentStage)?.classList.add('show');
+  } else {
+    toast('Error saving: ' + json.error, 'error');
+  }
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+async function resetStage() {
+  if (!confirm('Reset all customisations for this stage to defaults?')) return;
+  const res  = await fetch(`/pd/admin/checklist/${currentStage}/reset?key=${ADMIN_KEY}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) {
+    overrides = {}; pendingChanges = {};
+    await loadStage(currentStage);
+    toast('Reset to defaults', 'success');
+    document.getElementById('moddot_' + currentStage)?.classList.remove('show');
+  }
+}
+
+async function resetItem(itemId) {
+  if (!confirm('Reset this item to its default?')) return;
+  const res  = await fetch(`/pd/admin/checklist/item/${itemId}/reset?key=${ADMIN_KEY}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) { await loadStage(currentStage); toast('Item reset', 'success'); }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderSidebar();
+</script>
+</body>
+</html>
