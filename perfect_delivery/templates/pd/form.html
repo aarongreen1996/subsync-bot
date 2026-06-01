@@ -192,7 +192,7 @@
     <p class="section-title" id="checklistTitle">Checklist</p>
     <p class="section-sub" id="checklistSub"></p>
   </div>
-  <div class="info-note">📷 A photo is required for every item. Photos are automatically geotagged and timestamped.</div>
+  <div class="info-note">📷 Photos are required where shown. All photos are automatically geotagged and timestamped.</div>
   <div id="itemsContainer"></div>
   <div class="card" style="margin-top:8px">
     <label style="margin-bottom:8px">Additional Notes</label>
@@ -400,18 +400,21 @@ function buildItem(item, num) {
     </div>`;
   }
 
-  // Photo zone — every item
-  const photoId = 'photo_' + item.id;
-  html += `<div class="photo-zone">
-    <div class="photo-trigger" onclick="triggerPhoto('${photoId}','${item.id}')">
-      <div class="photo-trigger-inner">
-        <span style="font-size:20px">📷</span>
-        <span class="photo-trigger-text">Take photo</span>
-        <span class="photo-required-badge">REQUIRED</span>
+  // Photo zone — respects photo_required from overrides
+  const photoRequired = item.photo !== false; // default true unless explicitly disabled
+  if (photoRequired) {
+    const photoId = 'photo_' + item.id;
+    html += `<div class="photo-zone">
+      <div class="photo-trigger" onclick="triggerPhoto('${photoId}','${item.id}')">
+        <div class="photo-trigger-inner">
+          <span style="font-size:20px">📷</span>
+          <span class="photo-trigger-text">Take photo</span>
+          <span class="photo-required-badge">REQUIRED</span>
+        </div>
       </div>
-    </div>
-    <div class="photo-preview-grid" id="preview_${photoId}"></div>
-  </div>`;
+      <div class="photo-preview-grid" id="preview_${photoId}"></div>
+    </div>`;
+  }
 
   itemEl.innerHTML = html;
 
@@ -540,18 +543,21 @@ function buildSummary() {
   addRow('Plot', '{{ plot.plot_number }}');
   addRow('Stage', stage.name);
 
-  let yes = 0, no = 0, na = 0, unanswered = 0, photosMissing = 0;
+  let yes = 0, no = 0, na = 0, unanswered = 0, photosMissing = 0, photoRequired = 0;
   stage.items.forEach(item => {
     const a = answers[item.id];
     if (!a || !a.value) unanswered++;
     else if (a.value === 'yes') yes++;
     else if (a.value === 'no') no++;
     else na++;
-    if (!photoFiles[item.id] || !photoFiles[item.id].length) photosMissing++;
+    if (item.photo !== false) {
+      photoRequired++;
+      if (!photoFiles[item.id] || !photoFiles[item.id].length) photosMissing++;
+    }
   });
 
   addRow('Answers', `<span class="ans-badge ans-yes">✓ ${yes}</span> <span class="ans-badge ans-no" style="margin:0 4px">✗ ${no}</span> <span class="ans-badge ans-na">— ${na}</span>`);
-  addRow('Photos', (stage.items.length - photosMissing) + ' of ' + stage.items.length + ' captured');
+  addRow('Photos', (photoRequired - photosMissing) + ' of ' + photoRequired + ' captured');
   addRow('Location', geoLocation ? `${geoLocation.lat.toFixed(5)}, ${geoLocation.lng.toFixed(5)}` : '⚠ Not captured');
 
   const warnEl = document.getElementById('incompletWarning');
