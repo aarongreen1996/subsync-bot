@@ -290,7 +290,13 @@
   <!-- Sites & Plots -->
   <div class="page" id="page-sites">
     <div class="page-title">Sites & Plots</div>
-    <div class="page-sub">All sites and their plot progress</div>
+    <div class="page-sub">Manage your development sites and plots</div>
+    {% if user.role == 'tenant_admin' %}
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="showSiteModal()">+ Add Site</button>
+      <button class="btn btn-ghost" onclick="showPlotModal()">+ Add Plot</button>
+    </div>
+    {% endif %}
     <div id="sitesList"></div>
   </div>
 
@@ -445,14 +451,10 @@
           <option value="tenant_admin">Admin</option>
         </select>
       </div>
-      <div class="field form-full">
+      <div class="field form-full" id="uSitesWrapper">
         <label>Assigned Sites</label>
-        <select id="uSites" multiple style="height:90px">
-          {% for site in sites %}
-          <option value="{{ site.id }}">{{ site.name }}</option>
-          {% endfor %}
-        </select>
-        <p style="font-size:12px;color:#8e8e93;margin-top:4px">Hold Ctrl/Cmd to select multiple. Admins see all sites regardless.</p>
+        <div id="uSites" style="max-height:180px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;padding:4px 12px;background:#f9f9fb"></div>
+        <p style="font-size:12px;color:#8e8e93;margin-top:4px">Tick the sites this user can access. Admins see all sites automatically.</p>
       </div>
     </div>
     <div class="modal-footer">
@@ -469,6 +471,45 @@
   <img id="lbImg" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px">
   <div id="lbInfo" style="color:white;text-align:center;margin-top:12px;font-size:13px"></div>
   <button style="position:absolute;right:20px;top:50%;transform:translateY(-50%);color:white;font-size:32px;background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:48px;height:48px;cursor:pointer" onclick="event.stopPropagation();navPhoto(1)">›</button>
+</div>
+
+<!-- Add Site Modal -->
+<div class="modal-overlay" id="siteModal">
+  <div class="modal">
+    <div class="modal-title" id="siteModalTitle">Add Site</div>
+    <input type="hidden" id="editSiteId">
+    <div class="form-grid">
+      <div class="field form-full"><label>Site Name <span style="color:var(--red)">*</span></label><input type="text" id="sName" placeholder="e.g. Danes Park"></div>
+      <div class="field form-full"><label>Address</label><input type="text" id="sAddress" placeholder="e.g. Church Lane, Bishops Waltham"></div>
+      <div class="field"><label>Manager Name <span style="color:var(--red)">*</span></label><input type="text" id="sManagerName" placeholder="Full name"></div>
+      <div class="field"><label>Manager Email <span style="color:var(--red)">*</span></label><input type="email" id="sManagerEmail" placeholder="manager@company.co.uk"></div>
+      <div class="field"><label>Manager Phone</label><input type="text" id="sManagerPhone" placeholder="+44 7700 000000"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSiteModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSite()">Save Site</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Plot Modal -->
+<div class="modal-overlay" id="plotModal">
+  <div class="modal">
+    <div class="modal-title">Add Plot</div>
+    <div class="form-grid">
+      <div class="field form-full">
+        <label>Site <span style="color:var(--red)">*</span></label>
+        <select id="pSiteId" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;background:#f9f9fb">
+          <option value="">— Select site —</option>
+        </select>
+      </div>
+      <div class="field form-full"><label>Plot Number <span style="color:var(--red)">*</span></label><input type="text" id="pNumber" placeholder="e.g. 14 or B-07"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePlotModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePlot()">Add Plot</button>
+    </div>
+  </div>
 </div>
 
 <!-- Mobile nav -->
@@ -547,6 +588,7 @@ async function loadOverview() {
     fetch('/pd/portal/api/submissions?limit=8'),
   ]);
   const sites = await sitesRes.json();
+  allSitesList = sites; // store for plot modal dropdown
   const subs  = await subsRes.json();
 
   document.getElementById('statSites').textContent    = sites.length;
@@ -569,6 +611,8 @@ async function loadOverview() {
 }
 
 // ── Sites ────────────────────────────────────────────────────────────────────
+let allSitesList = [];
+
 async function loadSites() {
   const res   = await fetch('/pd/portal/api/sites');
   const sites = await res.json();
@@ -579,32 +623,40 @@ async function loadSites() {
   for (const site of sites) {
     const plotsRes = await fetch('/pd/portal/api/plots?site_id=' + site.id);
     const plots    = await plotsRes.json();
+    const isAdmin = USER_ROLE === 'tenant_admin';
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
       <div class="card-header">
         <div>
           <div class="card-title">${site.name}</div>
-          <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''}</div>
+          <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''} ${site.manager_name ? '· ' + site.manager_name : ''}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="badge badge-blue">${plots.length} plots</span>
           <a href="/pd/portal/site/${site.id}/qr-sheet" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af;text-decoration:none">🖨 QR Sheet</a>
+          ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="showSiteModal('${site.id}','${site.name.replace(/'/g,"\'")}','${(site.address||'').replace(/'/g,"\'")}','${(site.manager_name||'').replace(/'/g,"\'")}','${(site.manager_email||'')}','${(site.manager_phone||'')}')">Edit</button>` : ''}
+          ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteSite('${site.id}','${site.name.replace(/'/g,"\'")}')">Delete</button>` : ''}
         </div>
       </div>
-      <div>${plots.map(p => `
-        <div class="site-row">
-          <div class="site-info">
-            <h3>Plot ${p.plot_number}</h3>
-            <div class="plot-progress-bar"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
-            <p>${p.approved_count||0} of 37 stages approved</p>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
-            <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
-            <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
-          </div>
-        </div>`).join('')}
+      <div>
+        ${plots.map(p => `
+          <div class="site-row">
+            <div class="site-info">
+              <h3>Plot ${p.plot_number}</h3>
+              <div class="plot-progress-bar"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
+              <p>${p.approved_count||0} of 37 stages approved</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
+              <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
+              <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
+              ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕</button>` : ''}
+            </div>
+          </div>`).join('')}
+        ${isAdmin ? `<div style="padding:12px 20px;border-top:1px solid #f2f2f7">
+          <button class="btn btn-ghost btn-sm" onclick="showPlotModal('${site.id}')">+ Add Plot to ${site.name}</button>
+        </div>` : ''}
       </div>`;
     el.appendChild(card);
   }
@@ -730,7 +782,7 @@ function closeUserModal() { document.getElementById('userModal').classList.remov
 
 async function saveUser() {
   const id       = document.getElementById('editUserId').value;
-  const siteOpts = Array.from(document.getElementById('uSites').selectedOptions).map(o=>o.value);
+  const siteOpts = Array.from(document.getElementById('uSites').querySelectorAll('input[type=checkbox]:checked')).map(cb=>cb.value);
   const payload  = {
     name:     document.getElementById('uName').value.trim(),
     email:    document.getElementById('uEmail').value.trim(),
@@ -801,6 +853,123 @@ function initPhotoFilters() {
 
 initPhotoFilters();
 loadOverview();
+
+// ── Site management ───────────────────────────────────────────────────────────
+function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='') {
+  document.getElementById('siteModalTitle').textContent = id ? 'Edit Site' : 'Add Site';
+  document.getElementById('editSiteId').value  = id;
+  document.getElementById('sName').value        = name;
+  document.getElementById('sAddress').value     = address;
+  document.getElementById('sManagerName').value = mgName;
+  document.getElementById('sManagerEmail').value= mgEmail;
+  document.getElementById('sManagerPhone').value= mgPhone;
+  document.getElementById('siteModal').classList.add('show');
+}
+function closeSiteModal() { document.getElementById('siteModal').classList.remove('show'); }
+
+async function saveSite() {
+  const id = document.getElementById('editSiteId').value;
+  const payload = {
+    name:          document.getElementById('sName').value.trim(),
+    address:       document.getElementById('sAddress').value.trim(),
+    manager_name:  document.getElementById('sManagerName').value.trim(),
+    manager_email: document.getElementById('sManagerEmail').value.trim(),
+    manager_phone: document.getElementById('sManagerPhone').value.trim(),
+  };
+  if (!payload.name || !payload.manager_email) { toast('Site name and manager email are required','error'); return; }
+  const url = id ? `/pd/portal/api/sites/${id}` : '/pd/portal/api/sites';
+  const res  = await fetch(url, { method: id ? 'PUT' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const json = await res.json();
+  if (json.ok) {
+    closeSiteModal();
+    loadSites();
+    toast(id ? 'Site updated' : 'Site created');
+  } else { toast(json.error||'Error','error'); }
+}
+
+async function deleteSite(id, name) {
+  if (!confirm(`Delete site "${name}"? This will also delete all plots and submissions. This cannot be undone.`)) return;
+  const res  = await fetch(`/pd/portal/api/sites/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) { loadSites(); toast('Site deleted'); }
+  else toast(json.error||'Error deleting','error');
+}
+
+// ── Plot management ───────────────────────────────────────────────────────────
+function showPlotModal(preselectedSiteId='') {
+  const select = document.getElementById('pSiteId');
+  select.innerHTML = '<option value="">— Select site —</option>';
+  allSitesList.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.name;
+    if (s.id === preselectedSiteId) o.selected = true;
+    select.appendChild(o);
+  });
+  document.getElementById('pNumber').value = '';
+  document.getElementById('plotModal').classList.add('show');
+}
+function closePlotModal() { document.getElementById('plotModal').classList.remove('show'); }
+
+async function savePlot() {
+  const payload = {
+    site_id:      document.getElementById('pSiteId').value,
+    plot_number:  document.getElementById('pNumber').value.trim(),
+  };
+  if (!payload.site_id || !payload.plot_number) { toast('Site and plot number are required','error'); return; }
+  const res  = await fetch('/pd/portal/api/plots', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const json = await res.json();
+  if (json.ok) {
+    closePlotModal();
+    loadSites();
+    toast(`Plot ${payload.plot_number} created`);
+  } else { toast(json.error||'Error','error'); }
+}
+
+async function deletePlot(id, number) {
+  if (!confirm(`Delete Plot ${number}? All submissions will also be deleted.`)) return;
+  const res  = await fetch(`/pd/portal/api/plots/${id}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (json.ok) { loadSites(); toast(`Plot ${number} deleted`); }
+  else toast('Error deleting plot','error');
+}
+
+// ── Better user site assignment ───────────────────────────────────────────────
+function showUserModal(u) {
+  document.getElementById('userModalTitle').textContent = u ? 'Edit User' : 'Add User';
+  document.getElementById('editUserId').value  = u?.id || '';
+  document.getElementById('uName').value       = u?.name || '';
+  document.getElementById('uEmail').value      = u?.email || '';
+  document.getElementById('uPassword').value   = '';
+  document.getElementById('uRole').value       = u?.role || 'site_manager';
+
+  // Build site toggles instead of multi-select
+  const userSiteIds = u?.site_ids || [];
+  const parsed = typeof userSiteIds === 'string' ? JSON.parse(userSiteIds) : userSiteIds;
+  const container = document.getElementById('uSites');
+  container.innerHTML = '';
+  allSitesList.forEach(site => {
+    const checked = parsed.includes(site.id);
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f2f2f7;cursor:pointer;font-size:14px';
+    row.innerHTML = `
+      <input type="checkbox" value="${site.id}" ${checked ? 'checked' : ''} style="width:18px;height:18px;accent-color:#1a1a2e;cursor:pointer">
+      <span>${site.name}</span>
+      <span style="font-size:12px;color:#8e8e93;margin-left:auto">${site.address||''}</span>`;
+    container.appendChild(row);
+  });
+
+  updateSiteAssignVisibility();
+  document.getElementById('userModal').classList.add('show');
+}
+
+function updateSiteAssignVisibility() {
+  const role = document.getElementById('uRole').value;
+  const container = document.getElementById('uSites');
+  const wrapper = document.getElementById('uSitesWrapper');
+  if (wrapper) wrapper.style.display = role === 'tenant_admin' ? 'none' : 'block';
+}
+
+document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVisibility);
 </script>
 </body>
 </html>
