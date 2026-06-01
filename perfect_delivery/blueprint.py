@@ -125,6 +125,21 @@ def submit(token: str):
         except Exception:
             pass
 
+    # Save signature image to storage
+    signature_url = None
+    sig_data = data.get("signature")
+    if sig_data and sig_data.startswith("data:image/png;base64,"):
+        try:
+            import base64
+            sig_bytes = base64.b64decode(sig_data.split(",", 1)[1])
+            sig_path  = f"signatures/{submission_id}.png"
+            supabase.storage.from_(STORAGE_BUCKET).upload(
+                sig_path, sig_bytes, {"content-type": "image/png"}
+            )
+            signature_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(sig_path)
+        except Exception as e:
+            print(f"Signature upload error: {e}")
+
     sub_record = {
         "id": submission_id,
         "plot_id": plot_row["id"],
@@ -139,6 +154,7 @@ def submit(token: str):
         "review_token": review_token,
         "revision_number": revision,
         "parent_submission_id": parent_id,
+        "signature_url": signature_url,
     }
     supabase.table("pd_submissions").insert(sub_record).execute()
 
@@ -252,8 +268,28 @@ def decide(review_token: str):
     plot = sub["pd_plots"]
     site = plot["pd_sites"]
     resubmit_url = f"{BASE_URL}/pd/resubmit/{resubmit_token}" if resubmit_token else None
+
+    # Generate PDF to attach to email
+    pdf_bytes = None
+    if decision == "approved":
+        try:
+            from .pdf_generator import generate_submission_pdf
+            tenant = _get_tenant()
+            stage  = get_stage(sub["stage_number"])
+            stage_items = stage.get("items", []) if stage else []
+            photos_res  = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+            photos_by_item = {}
+            for p in (photos_res.data or []):
+                photos_by_item.setdefault(p["item_id"], []).append(p["public_url"])
+            # Re-fetch updated submission with manager notes
+            updated = supabase.table("pd_submissions").select("*").eq("id", sub["id"]).single().execute()
+            sub_for_pdf = updated.data if updated.data else sub
+            pdf_bytes = generate_submission_pdf(sub_for_pdf, plot, site, stage_items, photos_by_item, tenant)
+        except Exception as e:
+            print(f"PDF generation for email error: {e}")
+
     try:
-        send_decision_to_subcontractor(sub, plot, site, decision, manager_notes, flagged_items, resubmit_url)
+        send_decision_to_subcontractor(sub, plot, site, decision, manager_notes, flagged_items, resubmit_url, pdf_bytes)
     except Exception as e:
         print(f"Subcontractor email error: {e}")
 
