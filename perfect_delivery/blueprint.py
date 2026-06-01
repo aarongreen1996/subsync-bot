@@ -583,6 +583,47 @@ def plot_report(plot_id: str):
     )
 
 
+
+
+@pd_bp.route("/admin/plot/<plot_id>/report/pdf")
+def plot_report_pdf(plot_id: str):
+    """Generate and download full plot audit trail as PDF."""
+    _require_admin()
+    _generate_plot_report_pdf(plot_id, send_response=True)
+
+
+def _generate_plot_report_pdf(plot_id: str, send_response: bool = True):
+    from .checklist_data import STAGES, STAGE_GROUPS
+    from datetime import date
+
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    site = plot["pd_sites"]
+    tenant = _get_tenant()
+
+    subs_res = supabase.table("pd_submissions").select("*").eq("plot_id", plot_id).order("submitted_at", desc=True).execute()
+    subs = subs_res.data or []
+    stage_map = {}
+    for s in reversed(subs):
+        stage_map[s["stage_number"]] = s
+
+    stage_to_group = {}
+    for gn, nums in STAGE_GROUPS.items():
+        for n in nums:
+            stage_to_group[n] = gn
+
+    from .pdf_generator import generate_plot_report_pdf
+    pdf_bytes = generate_plot_report_pdf(plot, site, stage_map, STAGES, stage_to_group, tenant, supabase)
+
+    filename = f"PD_Report_{site.get('name','').replace(' ','_')}_Plot{plot.get('plot_number','')}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype="application/pdf",
+        as_attachment=True, download_name=filename,
+    )
+
+
 # ── Checklist Editor Routes ───────────────────────────────────────────────────
 
 @pd_bp.route("/admin/checklist-editor")
