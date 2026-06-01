@@ -241,6 +241,72 @@ def plot_progress(user, plot_id):
     )
 
 
+
+
+# ── Site & Plot management (tenant admin) ────────────────────────────────────
+
+@portal_bp.route("/api/sites", methods=["POST"])
+@_require_admin_role
+def api_sites_create(user):
+    data = request.get_json() or {}
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    record = {
+        "name":          (data.get("name") or "").strip(),
+        "address":       (data.get("address") or "").strip(),
+        "manager_name":  (data.get("manager_name") or "").strip(),
+        "manager_email": (data.get("manager_email") or "").strip(),
+        "manager_phone": (data.get("manager_phone") or "").strip(),
+        "tenant_id":     tenant_id,
+    }
+    if not record["name"] or not record["manager_email"]:
+        return jsonify({"ok": False, "error": "Site name and manager email are required"}), 400
+    res = supabase.table("pd_sites").insert(record).execute()
+    return jsonify({"ok": True, "site": res.data[0]})
+
+
+@portal_bp.route("/api/sites/<site_id>", methods=["PUT"])
+@_require_admin_role
+def api_sites_update(user, site_id):
+    data = request.get_json() or {}
+    updates = {}
+    for f in ["name","address","manager_name","manager_email","manager_phone"]:
+        if data.get(f) is not None:
+            updates[f] = data[f].strip()
+    if not updates:
+        return jsonify({"ok": False, "error": "Nothing to update"}), 400
+    supabase.table("pd_sites").update(updates).eq("id", site_id).execute()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/sites/<site_id>", methods=["DELETE"])
+@_require_admin_role
+def api_sites_delete(user, site_id):
+    supabase.table("pd_sites").delete().eq("id", site_id).execute()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/plots", methods=["POST"])
+@_require_admin_role
+def api_plots_create(user):
+    data = request.get_json() or {}
+    record = {
+        "site_id":      (data.get("site_id") or "").strip(),
+        "plot_number":  (data.get("plot_number") or "").strip(),
+    }
+    if not record["site_id"] or not record["plot_number"]:
+        return jsonify({"ok": False, "error": "Site and plot number are required"}), 400
+    res = supabase.table("pd_plots").insert(record).execute()
+    return jsonify({"ok": True, "plot": res.data[0]})
+
+
+@portal_bp.route("/api/plots/<plot_id>", methods=["DELETE"])
+@_require_admin_role
+def api_plots_delete(user, plot_id):
+    supabase.table("pd_plots").delete().eq("id", plot_id).execute()
+    return jsonify({"ok": True})
+
+
 # ── Plot report (portal) ─────────────────────────────────────────────────────
 
 @portal_bp.route("/plot/<plot_id>/report")
