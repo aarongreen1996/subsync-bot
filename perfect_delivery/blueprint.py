@@ -575,8 +575,8 @@ def _get_stage_with_overrides(stage_number: int, tenant_id: str = None) -> dict:
             continue
         if ov.get("text"):
             item["text"] = ov["text"]
-        if ov.get("photo_required") is not None:
-            item["photo"] = ov["photo_required"]
+        if "photo_required" in ov and ov["photo_required"] is not None:
+            item["photo"] = bool(ov["photo_required"])
         if ov.get("example_photo_url"):
             item["example_photo_url"] = ov["example_photo_url"]
         if ov.get("example_guidance"):
