@@ -374,110 +374,110 @@ RULES:
         msg = None
 
         if filename.endswith(".pdf"):
-            # Extract pages — try multiple libraries
-            pages = []
+            import re as _re2, json as _json2, io as _io2
+
+            # Step 1 — extract text with pypdf
+            raw_text = ""
             try:
-                import pypdf as _pypdf, io as _io
-                reader = _pypdf.PdfReader(_io.BytesIO(file_bytes))
-                pages = [p.extract_text() or "" for p in reader.pages]
-                print(f"pypdf: extracted {len(pages)} pages")
-            except Exception as e1:
-                print(f"pypdf failed: {e1}")
-                try:
-                    from pdfminer.high_level import extract_text_to_fp
-                    from pdfminer.layout import LAParams
-                    import pdfminer.high_level as _pdfm, io as _io
-                    full = _pdfm.extract_text(_io.BytesIO(file_bytes))
-                    # Split into rough page chunks by character count
-                    chunk = len(full) // 3 if len(full) > 3000 else len(full)
-                    pages = [full[i:i+chunk] for i in range(0, len(full), chunk)]
-                    print(f"pdfminer: extracted {len(pages)} chunks")
-                except Exception as e2:
-                    print(f"pdfminer failed: {e2} — using base64 per page")
-                    # Last resort: send as base64 but split into page images via PyMuPDF
-                    pages = []  # will trigger base64 path below
+                import pypdf as _pypdf
+                reader = _pypdf.PdfReader(_io2.BytesIO(file_bytes))
+                raw_text = "\n".join(p.extract_text() or "" for p in reader.pages)
+                print(f"pypdf extracted {len(raw_text)} chars from {len(reader.pages)} pages")
+            except Exception as e:
+                print(f"pypdf failed: {e}")
+
+            # Step 2 — regex parse (instant, no API calls)
+            DWELLING_TYPES = [
+                "Linked-End-Terrace","Linked-Semi-Detached","Semi-Detached",
+                "End-Terrace","Detached","Terrace","Flat","Bungalow","Det","Semi","Bung"
+            ]
+            STRIP_WORDS = [
+                "Gold Private","Silver Private","Affordable","Aff Shared","Aff Rent",
+                "Social Rent","1st Homes","Private","OPP","AS","SITE SPECIFIC",
+                "NFR1","NFR2","NFR3","NFR4","Special","SPECIAL"
+            ]
+
+            def parse_schedule(text):
+                plots = []
+                seen = set()
+                for line in text.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    m = _re2.match(r"^(\d+)\s+(.+)", line)
+                    if not m:
+                        continue
+                    pn   = m.group(1)
+                    rest = m.group(2).strip()
+                    # Skip communal/non-residential rows
+                    if any(w in rest.lower() for w in ["communal","cycle","bin store","car park","substation","store -"]):
+                        continue
+                    if pn in seen:
+                        continue
+                    # Find dwelling type
+                    dwelling = ""
+                    for dt in DWELLING_TYPES:
+                        if _re2.search(r"\b" + _re2.escape(dt) + r"\b", rest, _re2.IGNORECASE):
+                            dwelling = dt
+                            break
+                    # Extract house type — everything before first GIA number
+                    ht = _re2.split(r"\s+\d{2,3}\.\d", rest)[0].strip()
+                    # Remove tenure/version keywords
+                    for kw in STRIP_WORDS:
+                        ht = ht.replace(kw, " ")
+                    # Remove dwelling type
+                    for dt in DWELLING_TYPES:
+                        ht = _re2.sub(r"\b" + _re2.escape(dt) + r"\b", "", ht, flags=_re2.IGNORECASE)
+                    ht = _re2.sub(r"\s+", " ", ht).strip().strip("-").strip()
+                    seen.add(pn)
+                    plots.append({"plot_number": pn, "house_type": ht, "dwelling_type": dwelling, "site_id": site_id})
+                return plots
 
             all_plots = []
+            if raw_text:
+                all_plots = parse_schedule(raw_text)
+                print(f"Regex parser found {len(all_plots)} plots")
 
-            if pages:
-                # Process each page separately — guaranteed to get all plots
-                import re as _re2, json as _json2
-                for page_idx, page_text in enumerate(pages):
-                    if not page_text.strip():
-                        continue
-                    print(f"Processing page {page_idx+1}/{len(pages)}: {len(page_text)} chars")
-                    try:
-                        page_msg = client.messages.create(
-                            model="claude-haiku-4-5",
-                            max_tokens=8096,
-                            system=system_prompt,
-                            messages=[{"role":"user","content":
-                                f"Extract all residential plots from this page of the accommodation schedule. Return ONLY a JSON array:\n\n{page_text[:15000]}"
-                            }]
-                        )
-                        resp = page_msg.content[0].text.strip()
-                        print(f"Page {page_idx+1} response preview: {resp[:100]}")
-                        page_plots = None
-                        # Try multiple parse strategies
-                        cleaned_resp = _re2.sub(r"```[a-zA-Z]*", "", resp).replace("```", "").strip()
-                        for attempt in [resp, cleaned_resp]:
-                            for strategy in [
-                                lambda t: _json2.loads(t),
-                                lambda t: _json2.loads(t[t.index("["):t.rindex("]")+1]),
-                            ]:
-                                try:
-                                    page_plots = strategy(attempt)
-                                    break
-                                except Exception:
-                                    continue
-                            if page_plots is not None:
-                                break
-                        if page_plots:
-                            print(f"Page {page_idx+1}: found {len(page_plots)} plots")
-                            all_plots.extend(page_plots)
-                        else:
-                            print(f"Page {page_idx+1}: no plots parsed from response")
-                    except Exception as e:
-                        print(f"Page {page_idx+1} API error: {e}")
-            else:
-                # No text extracted — send whole PDF as base64 in one shot
-                import re as _re2, json as _json2
-                print("No text extracted — sending as base64")
-                b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
-                b64_msg = client.messages.create(
-                    model="claude-haiku-4-5", max_tokens=8096,
-                    system=system_prompt,
-                    messages=[{"role":"user","content":[
-                        {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}},
-                        {"type":"text","text":"Extract ALL numbered residential plots from every page. Return ONLY the JSON array."}
-                    ]}]
-                )
-                resp = b64_msg.content[0].text.strip()
-                cleaned_resp = _re2.sub(r"```[a-zA-Z]*", "", resp).replace("```", "").strip()
+            # Step 3 — if regex found < 10 plots, fall back to AI on full text
+            if len(all_plots) < 10:
+                print("Regex found few plots — trying AI fallback")
                 try:
-                    all_plots = _json2.loads(cleaned_resp[cleaned_resp.index("["):cleaned_resp.rindex("]")+1])
+                    fallback_text = raw_text[:20000] if raw_text else file_bytes.decode("utf-8", errors="ignore")[:20000]
+                    fb_msg = client.messages.create(
+                        model="claude-haiku-4-5", max_tokens=8096,
+                        system=system_prompt,
+                        messages=[{"role":"user","content":
+                            f"Extract all residential plots:\n\n{fallback_text}\n\nReturn ONLY JSON array."
+                        }]
+                    )
+                    resp = fb_msg.content[0].text.strip()
+                    cleaned_r = _re2.sub(r"```[a-zA-Z]*","",resp).replace("```","").strip()
+                    ai_plots = _json2.loads(cleaned_r[cleaned_r.index("["):cleaned_r.rindex("]")+1])
+                    for p in ai_plots:
+                        p["site_id"] = site_id
+                    all_plots = ai_plots
+                    print(f"AI fallback found {len(all_plots)} plots")
                 except Exception as e:
-                    print(f"Base64 parse failed: {e}, raw: {resp[:300]}")
+                    print(f"AI fallback error: {e}")
 
-            # Deduplicate by plot_number
-            seen = set()
-            deduped = []
+            # Validate and return
+            cleaned_plots = []
+            seen2 = set()
             for p in all_plots:
                 pn = str(p.get("plot_number","")).strip()
-                if pn and pn not in seen:
-                    seen.add(pn)
-                    deduped.append(p)
-            print(f"Total unique plots: {len(deduped)}")
+                if pn and pn not in seen2 and pn.isdigit():
+                    seen2.add(pn)
+                    cleaned_plots.append({
+                        "plot_number":   pn,
+                        "house_type":    str(p.get("house_type","")).strip(),
+                        "dwelling_type": str(p.get("dwelling_type","")).strip(),
+                        "site_id":       site_id,
+                    })
 
-            # Return directly — skip normal msg flow
-            cleaned_plots = []
-            for p in deduped:
-                pn = str(p.get("plot_number","")).strip()
-                ht = str(p.get("house_type","")).strip()
-                dt = str(p.get("dwelling_type","")).strip()
-                if pn and pn.replace("-","").replace("_","").replace(" ","").isalnum():
-                    cleaned_plots.append({"plot_number":pn,"house_type":ht,"dwelling_type":dt,"site_id":site_id})
-            return jsonify({"ok":True,"plots":cleaned_plots,"count":len(cleaned_plots)})
+            # Sort numerically
+            cleaned_plots.sort(key=lambda x: int(x["plot_number"]))
+            print(f"Returning {len(cleaned_plots)} validated plots")
+            return jsonify({"ok": True, "plots": cleaned_plots, "count": len(cleaned_plots)})
 
         elif filename.endswith((".xlsx",".xls")):
             try:
