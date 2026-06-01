@@ -97,6 +97,16 @@
   .info-note { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin-bottom: 16px; }
   textarea { resize: vertical; min-height: 80px; }
 
+  /* Signature pad */
+  .sig-wrap { margin-top: 12px; }
+  .sig-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+  .sig-canvas { width: 100%; height: 160px; border: 2px solid var(--border); border-radius: 12px; background: #fafafa; touch-action: none; cursor: crosshair; display: block; }
+  .sig-canvas.has-sig { border-color: var(--yes); background: white; }
+  .sig-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .sig-clear { background: #f2f2f7; color: var(--text); border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .sig-placeholder { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 13px; color: #c7c7cc; pointer-events: none; text-align: center; }
+  .sig-wrap-inner { position: relative; }
+
   /* Example photo popup */
   .example-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; transition: background 0.12s; vertical-align: middle; }
   .example-btn:hover { background: #f0f2f5; }
@@ -216,7 +226,19 @@
     <p style="color:var(--no);font-weight:700;margin-bottom:4px">⚠ Incomplete Items</p>
     <p style="font-size:13px;color:#555" id="incompleteMsg"></p>
   </div>
-  <div class="info-note">By submitting you confirm the works comply with contract drawings, warranty provider requirements and current Building Regulations.</div>
+  <div class="card">
+    <div class="sig-label">
+      <span>Signature <span class="required">*</span></span>
+      <button class="sig-clear" onclick="clearSig()">Clear</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Sign below to confirm you have completed the works described above in accordance with contract drawings and Building Regulations.</p>
+    <div class="sig-wrap-inner">
+      <canvas class="sig-canvas" id="sigCanvas"></canvas>
+      <div class="sig-placeholder" id="sigPlaceholder">Sign here with your finger</div>
+    </div>
+  </div>
+
+  <div class="info-note">By signing and submitting you confirm the works comply with contract drawings, warranty provider requirements and current Building Regulations.</div>
   <button class="fab-back" onclick="goStep2()">← Edit</button>
   <button class="fab-next" id="fabSubmit" onclick="submitForm()" style="background:var(--yes);color:white;box-shadow:0 4px 20px rgba(22,163,74,0.3)">Submit ✓</button>
 </div>
@@ -340,7 +362,11 @@ function goStep2() {
   buildChecklist();
   showStep(2);
 }
-function goStep3() { buildSummary(); showStep(3); }
+function goStep3() {
+  buildSummary();
+  showStep(3);
+  setTimeout(initSig, 100); // init after DOM renders
+}
 
 function validateStep1() {
   const name = document.getElementById('inputName').value.trim();
@@ -574,6 +600,64 @@ function buildSummary() {
 }
 
 // ── Submit ───────────────────────────────────────────────────────────────────
+// ── Signature pad ────────────────────────────────────────────────────────────
+let sigCanvas, sigCtx, sigDrawing = false, sigHasData = false;
+
+function initSig() {
+  sigCanvas = document.getElementById('sigCanvas');
+  if (!sigCanvas) return;
+  sigCtx = sigCanvas.getContext('2d');
+
+  // Set actual canvas resolution to match display size
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCanvas.width  = rect.width  * window.devicePixelRatio;
+  sigCanvas.height = rect.height * window.devicePixelRatio;
+  sigCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  sigCtx.strokeStyle = '#1a1a2e';
+  sigCtx.lineWidth   = 2.5;
+  sigCtx.lineCap     = 'round';
+  sigCtx.lineJoin    = 'round';
+
+  const getPos = e => {
+    const r = sigCanvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  };
+
+  sigCanvas.addEventListener('mousedown',  e => { sigDrawing = true; const p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
+  sigCanvas.addEventListener('mousemove',  e => { if (!sigDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); markSig(); });
+  sigCanvas.addEventListener('mouseup',    () => sigDrawing = false);
+  sigCanvas.addEventListener('mouseleave', () => sigDrawing = false);
+
+  sigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDrawing = true; const p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
+  sigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); markSig(); }, { passive: false });
+  sigCanvas.addEventListener('touchend',   () => sigDrawing = false);
+}
+
+function markSig() {
+  if (!sigHasData) {
+    sigHasData = true;
+    sigCanvas.classList.add('has-sig');
+    const ph = document.getElementById('sigPlaceholder');
+    if (ph) ph.style.display = 'none';
+  }
+}
+
+function clearSig() {
+  if (!sigCtx) return;
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCtx.clearRect(0, 0, rect.width, rect.height);
+  sigHasData = false;
+  sigCanvas.classList.remove('has-sig');
+  const ph = document.getElementById('sigPlaceholder');
+  if (ph) ph.style.display = 'block';
+}
+
+function getSigDataUrl() {
+  if (!sigCanvas || !sigHasData) return null;
+  return sigCanvas.toDataURL('image/png');
+}
+
 function showExample(photoUrl, guidance, title) {
   document.getElementById('exampleTitle').textContent = title || 'Example Photo';
   document.getElementById('exampleImg').src = photoUrl;
@@ -589,6 +673,14 @@ async function submitForm() {
   const stage = STAGES[selectedStage];
   document.getElementById('loading').classList.add('show');
 
+  // Validate signature
+  const sigData = getSigDataUrl();
+  if (!sigData) {
+    document.getElementById('loading').classList.remove('show');
+    alert('Please sign before submitting.');
+    return;
+  }
+
   const payload = {
     stage_number: selectedStage,
     submitted_by_name: document.getElementById('inputName').value.trim(),
@@ -596,6 +688,7 @@ async function submitForm() {
     submitted_by_email: document.getElementById('inputEmail').value.trim(),
     answers: answers,
     geolocation: geoLocation,
+    signature: sigData,
     additional_notes: document.getElementById('additionalNotes').value.trim(),
   };
 
