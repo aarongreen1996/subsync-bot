@@ -438,13 +438,25 @@ RULES:
             except Exception:
                 pass
 
-        # Strategy 3: strip markdown fences
+        # Strategy 3: strip markdown fences (```json ... ```)
         if plots is None:
             try:
-                cleaned_r = _re.sub(r"```(?:json)?", "", response_text).strip()
+                cleaned_r = _re.sub(r"```[a-z]*", "", response_text).replace("```", "").strip()
                 start = cleaned_r.index("[")
                 end   = cleaned_r.rindex("]") + 1
                 plots = _json.loads(cleaned_r[start:end])
+            except Exception:
+                pass
+
+        # Strategy 4: aggressive — find first { after [ and last } before ]
+        if plots is None:
+            try:
+                start = response_text.index("[")
+                end   = response_text.rindex("]") + 1
+                chunk = response_text[start:end]
+                # Remove any trailing commas before ]
+                chunk = _re.sub(r',\s*\]', ']', chunk)
+                plots = _json.loads(chunk)
             except Exception:
                 pass
 
