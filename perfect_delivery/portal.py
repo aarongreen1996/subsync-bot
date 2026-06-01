@@ -374,79 +374,110 @@ RULES:
         msg = None
 
         if filename.endswith(".pdf"):
+            # Extract pages — try multiple libraries
+            pages = []
             try:
                 import pypdf as _pypdf, io as _io
                 reader = _pypdf.PdfReader(_io.BytesIO(file_bytes))
                 pages = [p.extract_text() or "" for p in reader.pages]
-                full_text = "\n".join(pages)
-                print(f"PDF pages: {len(pages)}, total chars: {len(full_text)}")
+                print(f"pypdf: extracted {len(pages)} pages")
+            except Exception as e1:
+                print(f"pypdf failed: {e1}")
+                try:
+                    from pdfminer.high_level import extract_text_to_fp
+                    from pdfminer.layout import LAParams
+                    import pdfminer.high_level as _pdfm, io as _io
+                    full = _pdfm.extract_text(_io.BytesIO(file_bytes))
+                    # Split into rough page chunks by character count
+                    chunk = len(full) // 3 if len(full) > 3000 else len(full)
+                    pages = [full[i:i+chunk] for i in range(0, len(full), chunk)]
+                    print(f"pdfminer: extracted {len(pages)} chunks")
+                except Exception as e2:
+                    print(f"pdfminer failed: {e2} — using base64 per page")
+                    # Last resort: send as base64 but split into page images via PyMuPDF
+                    pages = []  # will trigger base64 path below
 
-                # Process in chunks of 3 pages at a time to avoid token limits
-                all_plots = []
-                chunk_size = 3
-                page_chunks = [pages[i:i+chunk_size] for i in range(0, len(pages), chunk_size)]
+            all_plots = []
 
-                for chunk_idx, page_chunk in enumerate(page_chunks):
-                    chunk_text = "\n".join(page_chunk)[:15000]
-                    print(f"Processing chunk {chunk_idx+1}/{len(page_chunks)}: {len(chunk_text)} chars")
-                    chunk_msg = client.messages.create(
-                        model="claude-haiku-4-5", max_tokens=8096,
-                        system=system_prompt,
-                        messages=[{"role":"user","content":
-                            f"Extract all residential plots from this section of the accommodation schedule:\n\n{chunk_text}\n\nReturn ONLY the JSON array. If no plots found return []."
-                        }]
-                    )
-                    chunk_text_resp = chunk_msg.content[0].text.strip()
-                    import re as _re2, json as _json2
-                    chunk_plots = None
-                    for strategy in [
-                        lambda t: _json2.loads(t),
-                        lambda t: _json2.loads(t[t.index("["):t.rindex("]")+1]),
-                        lambda t: _json2.loads(_re2.sub(r"```[a-z]*","",t).replace("```","").strip()[
-                            _re2.sub(r"```[a-z]*","",t).replace("```","").strip().index("["):
-                            _re2.sub(r"```[a-z]*","",t).replace("```","").strip().rindex("]")+1
-                        ]),
-                    ]:
-                        try:
-                            chunk_plots = strategy(chunk_text_resp)
-                            break
-                        except Exception:
-                            continue
-                    if chunk_plots:
-                        all_plots.extend(chunk_plots)
-                        print(f"Chunk {chunk_idx+1}: found {len(chunk_plots)} plots, total so far: {len(all_plots)}")
-
-                # Deduplicate by plot_number
-                seen = set()
-                deduped = []
-                for p in all_plots:
-                    pn = str(p.get("plot_number","")).strip()
-                    if pn and pn not in seen:
-                        seen.add(pn)
-                        deduped.append(p)
-
-                print(f"Total unique plots found: {len(deduped)}")
-                # Skip the normal msg processing — return directly
-                cleaned = []
-                for p in deduped:
-                    pn = str(p.get("plot_number","")).strip()
-                    ht = str(p.get("house_type","")).strip()
-                    dt = str(p.get("dwelling_type","")).strip()
-                    if pn and pn.replace("-","").replace("_","").replace(" ","").isalnum():
-                        cleaned.append({"plot_number":pn,"house_type":ht,"dwelling_type":dt,"site_id":site_id})
-                return jsonify({"ok":True,"plots":cleaned,"count":len(cleaned)})
-
-            except Exception as e:
-                print(f"pypdf failed: {e} — falling back to base64")
+            if pages:
+                # Process each page separately — guaranteed to get all plots
+                import re as _re2, json as _json2
+                for page_idx, page_text in enumerate(pages):
+                    if not page_text.strip():
+                        continue
+                    print(f"Processing page {page_idx+1}/{len(pages)}: {len(page_text)} chars")
+                    try:
+                        page_msg = client.messages.create(
+                            model="claude-haiku-4-5",
+                            max_tokens=8096,
+                            system=system_prompt,
+                            messages=[{"role":"user","content":
+                                f"Extract all residential plots from this page of the accommodation schedule. Return ONLY a JSON array:\n\n{page_text[:15000]}"
+                            }]
+                        )
+                        resp = page_msg.content[0].text.strip()
+                        print(f"Page {page_idx+1} response preview: {resp[:100]}")
+                        page_plots = None
+                        # Try multiple parse strategies
+                        cleaned_resp = _re2.sub(r"```[a-zA-Z]*", "", resp).replace("```", "").strip()
+                        for attempt in [resp, cleaned_resp]:
+                            for strategy in [
+                                lambda t: _json2.loads(t),
+                                lambda t: _json2.loads(t[t.index("["):t.rindex("]")+1]),
+                            ]:
+                                try:
+                                    page_plots = strategy(attempt)
+                                    break
+                                except Exception:
+                                    continue
+                            if page_plots is not None:
+                                break
+                        if page_plots:
+                            print(f"Page {page_idx+1}: found {len(page_plots)} plots")
+                            all_plots.extend(page_plots)
+                        else:
+                            print(f"Page {page_idx+1}: no plots parsed from response")
+                    except Exception as e:
+                        print(f"Page {page_idx+1} API error: {e}")
+            else:
+                # No text extracted — send whole PDF as base64 in one shot
+                import re as _re2, json as _json2
+                print("No text extracted — sending as base64")
                 b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
-                msg = client.messages.create(
-                    model="claude-haiku-4-5", max_tokens=4096,
+                b64_msg = client.messages.create(
+                    model="claude-haiku-4-5", max_tokens=8096,
                     system=system_prompt,
                     messages=[{"role":"user","content":[
                         {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}},
-                        {"type":"text","text":"Extract all numbered residential plots. Return ONLY the JSON array."}
+                        {"type":"text","text":"Extract ALL numbered residential plots from every page. Return ONLY the JSON array."}
                     ]}]
                 )
+                resp = b64_msg.content[0].text.strip()
+                cleaned_resp = _re2.sub(r"```[a-zA-Z]*", "", resp).replace("```", "").strip()
+                try:
+                    all_plots = _json2.loads(cleaned_resp[cleaned_resp.index("["):cleaned_resp.rindex("]")+1])
+                except Exception as e:
+                    print(f"Base64 parse failed: {e}, raw: {resp[:300]}")
+
+            # Deduplicate by plot_number
+            seen = set()
+            deduped = []
+            for p in all_plots:
+                pn = str(p.get("plot_number","")).strip()
+                if pn and pn not in seen:
+                    seen.add(pn)
+                    deduped.append(p)
+            print(f"Total unique plots: {len(deduped)}")
+
+            # Return directly — skip normal msg flow
+            cleaned_plots = []
+            for p in deduped:
+                pn = str(p.get("plot_number","")).strip()
+                ht = str(p.get("house_type","")).strip()
+                dt = str(p.get("dwelling_type","")).strip()
+                if pn and pn.replace("-","").replace("_","").replace(" ","").isalnum():
+                    cleaned_plots.append({"plot_number":pn,"house_type":ht,"dwelling_type":dt,"site_id":site_id})
+            return jsonify({"ok":True,"plots":cleaned_plots,"count":len(cleaned_plots)})
 
         elif filename.endswith((".xlsx",".xls")):
             try:
