@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plot Report — Plot {{ plot.plot_number }} · {{ site.name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #f2f2f7; color: #1a1a2e; }
+
+  .screen-header { background: #1a1a2e; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .screen-header h1 { color: #C5962A; font-size: 17px; font-weight: 700; }
+  .screen-header p { color: #9ca3af; font-size: 13px; margin-top: 2px; }
+  .screen-actions { display: flex; gap: 10px; }
+  .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-gold { background: #C5962A; color: #1a1a2e; }
+  .btn-ghost { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
+  .btn-blue { background: #007aff; color: white; }
+
+  .container { max-width: 900px; margin: 24px auto; padding: 0 16px 60px; }
+
+  /* Summary cards */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: white; border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .summary-card .n { font-size: 28px; font-weight: 800; }
+  .summary-card .l { font-size: 12px; color: #8e8e93; margin-top: 2px; }
+  .n-green { color: #34c759; } .n-amber { color: #ff9500; } .n-red { color: #ff3b30; } .n-grey { color: #8e8e93; } .n-dark { color: #1a1a2e; }
+
+  /* Progress bar */
+  .progress-card { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .progress-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .progress-track { height: 10px; background: #f2f2f7; border-radius: 10px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #34c759, #30d158); border-radius: 10px; }
+
+  /* Stage table */
+  .section-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; margin-top: 24px; color: #1a1a2e; }
+  .stage-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .stage-table th { text-align: left; padding: 11px 16px; font-size: 11px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; background: #f9f9fb; border-bottom: 1px solid #f2f2f7; }
+  .stage-table td { padding: 12px 16px; border-bottom: 1px solid #f2f2f7; font-size: 13px; vertical-align: middle; }
+  .stage-table tr:last-child td { border-bottom: none; }
+  .stage-table tr:hover td { background: #f9f9fb; }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge-green  { background: #e8faf0; color: #1a7a3c; }
+  .badge-amber  { background: #fff4e6; color: #b35900; }
+  .badge-red    { background: #fff0f0; color: #c0392b; }
+  .badge-grey   { background: #f2f2f7; color: #8e8e93; }
+
+  .sig-thumb { width: 60px; height: 24px; object-fit: contain; border: 1px solid #e5e5ea; border-radius: 4px; }
+  .review-link { color: #007aff; text-decoration: none; font-weight: 600; font-size: 12px; }
+  .review-link:hover { text-decoration: underline; }
+
+  /* Group rows */
+  .group-row td { background: #f2f2f7 !important; font-size: 11px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; padding: 7px 16px; }
+
+  /* Print */
+  @media print {
+    .screen-header, .screen-actions, .no-print { display: none !important; }
+    body { background: white; font-size: 11px; }
+    .container { margin: 0; padding: 10px; max-width: 100%; }
+    .print-header { display: block !important; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #1a1a2e; }
+    .summary-grid { grid-template-columns: repeat(5,1fr); gap: 8px; }
+    .summary-card { padding: 10px; border: 1px solid #e5e5ea; box-shadow: none; }
+    .summary-card .n { font-size: 20px; }
+    .stage-table { box-shadow: none; border: 1px solid #e5e5ea; font-size: 11px; }
+    .stage-table th, .stage-table td { padding: 7px 10px; }
+    a { color: inherit !important; text-decoration: none !important; }
+  }
+  .print-header { display: none; }
+</style>
+</head>
+<body>
+
+<div class="screen-header">
+  <div>
+    <h1>Plot {{ plot.plot_number }} — Full Report</h1>
+    <p>{{ site.name }}{% if site.address %} · {{ site.address }}{% endif %}</p>
+  </div>
+  <div class="screen-actions">
+    <a href="/pd/admin?key={{ admin_key }}" class="btn btn-ghost">← Admin</a>
+    <a href="/pd/admin/plot/{{ plot.id }}/report/pdf?key={{ admin_key }}" class="btn btn-blue">⬇ Export PDF</a>
+    <button class="btn btn-gold" onclick="window.print()">🖨 Print</button>
+  </div>
+</div>
+
+<!-- Print header -->
+<div class="print-header">
+  <h1 style="font-size:18px;font-weight:800">Perfect Delivery — Plot Report</h1>
+  <p style="margin-top:4px;font-size:13px;color:#8e8e93">{{ site.name }} · Plot {{ plot.plot_number }} · Generated {{ now }}</p>
+</div>
+
+<div class="container">
+
+  <!-- Summary -->
+  <div class="summary-grid">
+    <div class="summary-card"><div class="n n-dark">37</div><div class="l">Total Stages</div></div>
+    <div class="summary-card"><div class="n n-green">{{ approved_count }}</div><div class="l">Approved</div></div>
+    <div class="summary-card"><div class="n n-amber">{{ pending_count }}</div><div class="l">Pending</div></div>
+    <div class="summary-card"><div class="n n-red">{{ rejected_count }}</div><div class="l">Rejected</div></div>
+    <div class="summary-card"><div class="n n-grey">{{ not_started }}</div><div class="l">Not Started</div></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-card">
+    <div class="progress-label">
+      <span>Build Completion</span>
+      <span>{{ approved_count }} of 37 stages approved ({{ pct }}%)</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" style="width:{{ pct }}%"></div>
+    </div>
+  </div>
+
+  <!-- Stage audit table -->
+  <div class="section-title">Stage Audit Trail</div>
+  <table class="stage-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Stage</th>
+        <th>Trade</th>
+        <th>Status</th>
+        <th>Submitted by</th>
+        <th>Date</th>
+        <th>Reviewed by</th>
+        <th>Signature</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set current_group = namespace(name='') %}
+      {% for row in stage_rows %}
+        {% if row.group != current_group.name %}
+          {% set current_group.name = row.group %}
+          <tr class="group-row"><td colspan="9">{{ row.group }}</td></tr>
+        {% endif %}
+        <tr>
+          <td style="color:#8e8e93;font-weight:700">{{ '%02d' | format(row.stage_number) }}</td>
+          <td style="font-weight:600">{{ row.stage_name }}</td>
+          <td style="color:#8e8e93;font-size:12px">{{ row.applies_to }}</td>
+          <td>
+            {% if row.status == 'approved' %}
+              <span class="badge badge-green">✓ Approved</span>
+            {% elif row.status == 'pending' %}
+              <span class="badge badge-amber">⏳ Pending</span>
+            {% elif row.status == 'rejected' %}
+              <span class="badge badge-red">✗ Rejected</span>
+            {% else %}
+              <span class="badge badge-grey">— Not started</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.submitted_by %}
+            <span>{{ row.submitted_by }}</span><br>
+            <span style="font-size:11px;color:#8e8e93">{{ row.company }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:12px;color:#8e8e93;white-space:nowrap">{{ row.date or '—' }}</td>
+          <td style="font-size:12px;color:#8e8e93">{{ row.reviewed_by or '—' }}</td>
+          <td>
+            {% if row.signature_url %}
+            <img src="{{ row.signature_url }}" class="sig-thumb" alt="Sig">
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if row.review_token %}
+            <a href="/pd/review/{{ row.review_token }}" target="_blank" class="review-link">View →</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Part L summary -->
+  {% if part_l_rows %}
+  <div class="section-title">Part L Compliance Record</div>
+  <table class="stage-table">
+    <thead>
+      <tr><th>Stage</th><th>Item</th><th>Status</th><th>Photo</th><th>Date</th></tr>
+    </thead>
+    <tbody>
+      {% for r in part_l_rows %}
+      <tr>
+        <td style="font-size:12px;color:#8e8e93">{{ r.stage_name }}</td>
+        <td style="font-size:13px">{{ r.item_text }}</td>
+        <td>
+          {% if r.answer == 'yes' %}<span class="badge badge-green">✓ Pass</span>
+          {% elif r.answer == 'no' %}<span class="badge badge-red">✗ Fail</span>
+          {% elif r.answer == 'n/a' %}<span class="badge badge-grey">N/A</span>
+          {% else %}<span class="badge badge-grey">—</span>{% endif %}
+        </td>
+        <td>
+          {% if r.photo_url %}
+          <img src="{{ r.photo_url }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #e5e5ea">
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size:12px;color:#8e8e93">{{ r.date or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+</div>
+</body>
+</html>
