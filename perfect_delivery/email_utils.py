@@ -12,21 +12,26 @@ FROM_NAME = os.environ.get("FROM_NAME", "Pennyfarthing Perfect Delivery")
 BASE_URL = os.environ.get("PD_BASE_URL", "http://localhost:5000")
 
 
-def _send(to_email: str, subject: str, html: str):
-    """Send email via Resend HTTP API."""
-    import requests
+def _send(to_email: str, subject: str, html: str, pdf_bytes: bytes = None, pdf_filename: str = None):
+    """Send email via Resend HTTP API, optionally with PDF attachment."""
+    import requests, base64
     payload = {
         "from": f"{FROM_NAME} <{FROM_EMAIL}>",
         "to": [to_email],
         "subject": subject,
         "html": html,
     }
+    if pdf_bytes and pdf_filename:
+        payload["attachments"] = [{
+            "filename": pdf_filename,
+            "content":  base64.b64encode(pdf_bytes).decode("utf-8"),
+        }]
     headers = {
         "Authorization": f"Bearer {RESEND_API_KEY}",
         "Content-Type": "application/json",
     }
     try:
-        r = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=15)
+        r = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=30)
         if r.status_code not in (200, 201):
             print(f"Resend API error {r.status_code}: {r.text}")
         else:
@@ -99,7 +104,7 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}}
     _send(site.get("manager_email", ""), subject, html)
 
 
-def send_decision_to_subcontractor(submission: dict, plot: dict, site: dict, decision: str, manager_notes: str, flagged_items: dict = None, resubmit_url: str = None):
+def send_decision_to_subcontractor(submission: dict, plot: dict, site: dict, decision: str, manager_notes: str, flagged_items: dict = None, resubmit_url: str = None, pdf_bytes: bytes = None):
     is_approved = decision == "approved"
     stage_name  = submission.get("stage_name", "")
     plot_number = plot.get("plot_number", "")
@@ -182,4 +187,10 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0}}
 <div class="ft">Pennyfarthing Perfect Delivery · Auto-generated</div>
 </div></body></html>"""
 
-    _send(sub_email, subject, html)
+    pdf_filename = None
+    if pdf_bytes and is_approved:
+        site_slug = (site.get("name") or "site").replace(" ","_")[:20]
+        plot_num  = plot.get("plot_number","")
+        stage_num = submission.get("stage_number","")
+        pdf_filename = f"PD_Approved_{site_slug}_Plot{plot_num}_Stage{stage_num}.pdf"
+    _send(sub_email, subject, html, pdf_bytes if is_approved else None, pdf_filename)
