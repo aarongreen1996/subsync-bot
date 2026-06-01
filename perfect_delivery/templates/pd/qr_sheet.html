@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Sheet — {{ site.name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #f2f2f7; }
+
+  .screen-header { background: #1a1a2e; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .screen-header h1 { color: #C5962A; font-size: 17px; font-weight: 700; }
+  .screen-header p { color: #9ca3af; font-size: 13px; margin-top: 2px; }
+  .screen-actions { display: flex; gap: 10px; }
+  .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; }
+  .btn-gold { background: #C5962A; color: #1a1a2e; }
+  .btn-ghost { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
+
+  .container { max-width: 900px; margin: 24px auto; padding: 0 16px 40px; }
+  .site-title { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+  .site-sub { font-size: 14px; color: #8e8e93; margin-bottom: 24px; }
+
+  /* QR grid */
+  .qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+
+  .qr-card {
+    background: white; border-radius: 16px; padding: 20px 16px;
+    text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    break-inside: avoid;
+  }
+  .qr-card img { width: 160px; height: 160px; display: block; margin: 0 auto 12px; }
+  .qr-plot { font-size: 18px; font-weight: 800; color: #1a1a2e; letter-spacing: -0.3px; }
+  .qr-site { font-size: 12px; color: #8e8e93; margin-top: 3px; }
+  .qr-url { font-size: 9px; color: #c7c7cc; margin-top: 6px; word-break: break-all; }
+  .qr-status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #e8f5e9; color: #2e7d32; }
+
+  /* Print styles */
+  @media print {
+    .screen-header, .screen-actions, .site-sub, .no-print { display: none !important; }
+    body { background: white; }
+    .container { margin: 0; padding: 10px; max-width: 100%; }
+    .qr-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .qr-card { box-shadow: none; border: 1px solid #e5e5ea; padding: 14px 10px; border-radius: 10px; }
+    .qr-card img { width: 130px; height: 130px; }
+    .site-title { font-size: 16px; margin-bottom: 12px; display: block !important; }
+    .print-header { display: block !important; text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #1a1a2e; }
+    .print-header h1 { font-size: 18px; font-weight: 800; color: #1a1a2e; }
+    .print-header p { font-size: 12px; color: #8e8e93; margin-top: 4px; }
+  }
+  .print-header { display: none; }
+
+  .loading { text-align: center; padding: 60px; color: #8e8e93; font-size: 14px; }
+  .empty { text-align: center; padding: 60px; color: #8e8e93; }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="screen-header">
+  <div>
+    <h1>QR Code Sheet — {{ site.name }}</h1>
+    <p>{{ plots | length }} plot{{ 's' if plots | length != 1 else '' }} · Print and laminate for site use</p>
+  </div>
+  <div class="screen-actions">
+    <a href="/pd/admin?key={{ admin_key }}" class="btn btn-ghost">← Admin</a>
+    <button class="btn btn-gold" onclick="window.print()">🖨 Print Sheet</button>
+  </div>
+</div>
+
+<!-- Print-only header -->
+<div class="print-header">
+  <h1>Perfect Delivery — QR Codes</h1>
+  <p>{{ site.name }}{% if site.address %} · {{ site.address }}{% endif %} · Printed {{ now }}</p>
+</div>
+
+<div class="container">
+  <div class="site-title">{{ site.name }}</div>
+  {% if site.address %}<div class="site-sub">{{ site.address }}</div>{% endif %}
+
+  {% if plots %}
+  <div class="qr-grid" id="qrGrid">
+    {% for plot in plots %}
+    <div class="qr-card">
+      <img src="/pd/admin/qr/{{ plot.id }}?key={{ admin_key }}&inline=1" alt="QR Plot {{ plot.plot_number }}" loading="lazy">
+      <div class="qr-plot">Plot {{ plot.plot_number }}</div>
+      <div class="qr-site">{{ site.name }}</div>
+      <div class="qr-status">{{ plot.status | capitalize }}</div>
+      <div class="qr-url">{{ base_url }}/pd/{{ plot.access_token }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">
+    <div class="empty-icon">📋</div>
+    <p style="font-weight:600">No plots found for this site</p>
+    <p style="font-size:13px;margin-top:8px">Add plots in the admin panel first</p>
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>
