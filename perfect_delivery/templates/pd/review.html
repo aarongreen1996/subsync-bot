@@ -61,6 +61,37 @@
   .notes-display { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px 16px; border-radius: 0 8px 8px 0; font-size: 14px; color: #374151; white-space: pre-wrap; }
   .notes-display strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #92400e; margin-bottom: 6px; }
   @media(min-width:600px) { .meta-grid { grid-template-columns: repeat(3,1fr); } }
+  /* ── Photo flagging ── */
+  .photo-item-wrap { position: relative; display: inline-block; }
+  .photo-flag-btn {
+    position: absolute; top: -6px; right: -6px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: white; border: 2px solid #e5e7eb;
+    cursor: pointer; font-size: 12px; display: flex;
+    align-items: center; justify-content: center;
+    transition: all 0.15s; z-index: 2;
+  }
+  .photo-flag-btn:hover { border-color: #dc2626; background: #fee2e2; }
+  .photo-flag-btn.flagged { background: #dc2626; border-color: #dc2626; color: white; }
+  .photo-flagged-overlay {
+    position: absolute; inset: 0; border: 3px solid #dc2626;
+    border-radius: 8px; background: rgba(220,38,38,0.15);
+    pointer-events: none;
+  }
+  .flag-comment-box {
+    margin-top: 8px; padding: 8px 10px;
+    border: 1.5px solid #dc2626; border-radius: 8px;
+    background: #fff5f5; font-size: 13px; width: 100%;
+    color: #1a1a2e; resize: none; min-height: 60px;
+    display: none;
+  }
+  .flag-comment-box.show { display: block; }
+  .flag-label { font-size: 11px; font-weight: 700; color: #dc2626; margin-top: 6px; display: none; }
+  .flag-label.show { display: block; }
+  .flagged-summary { background: #fff5f5; border-left: 3px solid #dc2626; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px; }
+  .flagged-summary h4 { color: #dc2626; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .flagged-summary ul { margin: 0; padding-left: 16px; font-size: 13px; color: #374151; }
+
   @media print {
     .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .decide-card { display: none; }
@@ -77,6 +108,9 @@
     {% elif sub.status == 'approved' %}✓ Approved
     {% else %}✗ Rejected{% endif %}
   </span>
+  {% if sub.revision_number and sub.revision_number > 1 %}
+  <span class="badge" style="background:#eff6ff;color:#1e40af;margin-left:8px">Revision {{ sub.revision_number }}</span>
+  {% endif %}
   <div style="margin-top:10px;display:flex;gap:8px">
     <a href="/pd/review/{{ sub.review_token }}/pdf" target="_blank"
        style="background:#C5962A;color:#1a1a2e;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">
@@ -194,11 +228,18 @@ function renderAnswers() {
 
     const photos = PHOTOS_BY_ITEM[item.id] || [];
     if (photos.length) {
-      inner += '<div class="photo-grid">';
-      photos.forEach(url => {
-        inner += `<a href="${url}" target="_blank"><img src="${url}" alt="Photo" loading="lazy"></a>`;
+      inner += '<div class="photo-grid" style="flex-wrap:wrap;gap:10px;display:flex;margin-top:8px">';
+      photos.forEach((url, pi) => {
+        const flagId = `flag_${item.id}_${pi}`;
+        inner += `
+          <div class="photo-item-wrap" id="wrap_${flagId}">
+            <img src="${url}" alt="Photo" loading="lazy" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:2px solid #e5e7eb;cursor:pointer" onclick="window.open('${url}','_blank')">
+            <button class="photo-flag-btn" id="btn_${flagId}" onclick="toggleFlag('${item.id}','${url}','${flagId}')" title="Flag this photo">🚩</button>
+          </div>`;
       });
       inner += '</div>';
+      inner += `<div class="flag-label" id="lbl_${item.id}">⚠ Flagged for resubmission</div>`;
+      inner += `<textarea class="flag-comment-box" id="comment_${item.id}" placeholder="Describe the issue with this photo…" oninput="updateFlag('${item.id}')"></textarea>`;
     }
 
     div.innerHTML = inner;
@@ -212,6 +253,71 @@ function renderAnswers() {
 }
 
 renderAnswers();
+
+// ── Photo flagging ──────────────────────────────────────────────────────────
+const flaggedItems = {}; // { item_id: { photos: [url], comment: '' } }
+
+function toggleFlag(itemId, photoUrl, flagId) {
+  const btn  = document.getElementById('btn_' + flagId);
+  const wrap = document.getElementById('wrap_' + flagId);
+  const lbl  = document.getElementById('lbl_' + itemId);
+  const box  = document.getElementById('comment_' + itemId);
+
+  if (!flaggedItems[itemId]) flaggedItems[itemId] = { photos: [], comment: '' };
+  const fi = flaggedItems[itemId];
+
+  if (fi.photos.includes(photoUrl)) {
+    // Unflag
+    fi.photos = fi.photos.filter(u => u !== photoUrl);
+    btn.classList.remove('flagged');
+    btn.textContent = '🚩';
+    // Remove overlay
+    const overlay = wrap.querySelector('.photo-flagged-overlay');
+    if (overlay) overlay.remove();
+    if (!fi.photos.length) {
+      delete flaggedItems[itemId];
+      lbl.classList.remove('show');
+      box.classList.remove('show');
+    }
+  } else {
+    // Flag
+    fi.photos.push(photoUrl);
+    btn.classList.add('flagged');
+    btn.textContent = '✕';
+    const overlay = document.createElement('div');
+    overlay.className = 'photo-flagged-overlay';
+    wrap.appendChild(overlay);
+    lbl.classList.add('show');
+    box.classList.add('show');
+    box.focus();
+  }
+  updateFlaggedSummary();
+}
+
+function updateFlag(itemId) {
+  const box = document.getElementById('comment_' + itemId);
+  if (flaggedItems[itemId]) flaggedItems[itemId].comment = box.value;
+  updateFlaggedSummary();
+}
+
+function updateFlaggedSummary() {
+  const count = Object.keys(flaggedItems).length;
+  const existing = document.getElementById('flaggedSummaryBox');
+  if (existing) existing.remove();
+
+  if (count > 0) {
+    const dec = document.querySelector('.decide-card');
+    if (!dec) return;
+    const box = document.createElement('div');
+    box.id = 'flaggedSummaryBox';
+    box.className = 'flagged-summary';
+    box.innerHTML = `<h4>🚩 ${count} item(s) flagged for resubmission</h4>
+      <ul>${Object.entries(flaggedItems).map(([id, f]) =>
+        `<li>${id.replace(/_/g,' ')}: ${f.comment || 'No comment yet'}</li>`
+      ).join('')}</ul>`;
+    dec.insertBefore(box, dec.firstChild);
+  }
+}
 
 let chosenDecision = '';
 function selectDecision(d, btn) {
@@ -229,8 +335,15 @@ document.getElementById('decideForm')?.addEventListener('submit', function(e) {
   if (!chosenDecision) { e.preventDefault(); alert('Please select Approve or Reject.'); return; }
   if (chosenDecision === 'rejected') {
     const notes = document.querySelector('[name=manager_notes]').value.trim();
-    if (!notes) { e.preventDefault(); alert('Please add notes explaining the rejection.'); return; }
+    if (!notes && !Object.keys(flaggedItems).length) {
+      e.preventDefault(); alert('Please add notes or flag specific photos explaining the rejection.'); return;
+    }
   }
+  // Add flagged items as hidden input
+  const fi = document.createElement('input');
+  fi.type = 'hidden'; fi.name = 'flagged_items';
+  fi.value = JSON.stringify(flaggedItems);
+  this.appendChild(fi);
 });
 </script>
 </body>
