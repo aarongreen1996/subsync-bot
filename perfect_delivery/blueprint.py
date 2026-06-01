@@ -104,6 +104,18 @@ def submit(token: str):
     submission_id = str(uuid.uuid4())
     review_token = uuid.uuid4().hex + uuid.uuid4().hex[:8]
 
+    parent_id = data.get("parent_submission_id") or None
+    revision  = 1
+    if parent_id:
+        try:
+            parent_res = supabase.table("pd_submissions").select("revision_number").eq("id", parent_id).single().execute()
+            if parent_res.data:
+                revision = (parent_res.data.get("revision_number") or 1) + 1
+            # Invalidate old resubmit token
+            supabase.table("pd_submissions").update({"resubmit_token": None}).eq("id", parent_id).execute()
+        except Exception:
+            pass
+
     sub_record = {
         "id": submission_id,
         "plot_id": plot_row["id"],
@@ -116,6 +128,8 @@ def submit(token: str):
         "additional_notes": data.get("additional_notes", ""),
         "status": "pending",
         "review_token": review_token,
+        "revision_number": revision,
+        "parent_submission_id": parent_id,
     }
     supabase.table("pd_submissions").insert(sub_record).execute()
 
@@ -202,17 +216,35 @@ def decide(review_token: str):
     if decision not in ("approved", "rejected"):
         return jsonify({"ok": False, "error": "Invalid decision"}), 400
 
-    supabase.table("pd_submissions").update({
+    flagged_items = {}
+    if decision == "rejected":
+        try:
+            flagged_items = json.loads(request.form.get("flagged_items", "{}"))
+        except Exception:
+            flagged_items = {}
+
+    # Generate resubmit token for rejections
+    resubmit_token = None
+    if decision == "rejected":
+        resubmit_token = uuid.uuid4().hex + uuid.uuid4().hex[:8]
+
+    updates = {
         "status": decision,
         "manager_notes": manager_notes,
         "reviewed_by": reviewed_by,
         "reviewed_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", sub["id"]).execute()
+        "flagged_items": flagged_items,
+    }
+    if resubmit_token:
+        updates["resubmit_token"] = resubmit_token
+
+    supabase.table("pd_submissions").update(updates).eq("id", sub["id"]).execute()
 
     plot = sub["pd_plots"]
     site = plot["pd_sites"]
+    resubmit_url = f"{BASE_URL}/pd/resubmit/{resubmit_token}" if resubmit_token else None
     try:
-        send_decision_to_subcontractor(sub, plot, site, decision, manager_notes)
+        send_decision_to_subcontractor(sub, plot, site, decision, manager_notes, flagged_items, resubmit_url)
     except Exception as e:
         print(f"Subcontractor email error: {e}")
 
@@ -223,6 +255,47 @@ def decide(review_token: str):
 def review_done(review_token: str):
     sub = _get_submission_by_review_token(review_token)
     return render_template("pd/review_done.html", sub=sub, plot=sub["pd_plots"], site=sub["pd_plots"]["pd_sites"])
+
+
+
+
+# ── Resubmission flow ─────────────────────────────────────────────────────────
+
+@pd_bp.route("/resubmit/<resubmit_token>", methods=["GET"])
+def resubmit_form(resubmit_token: str):
+    """Load the form pre-filled with previous answers, flagged items highlighted."""
+    res = supabase.table("pd_submissions").select(
+        "*, pd_plots(*, pd_sites(*))"
+    ).eq("resubmit_token", resubmit_token).single().execute()
+    if not res.data:
+        abort(404)
+
+    sub  = res.data
+    plot_row = sub["pd_plots"]
+    plot = {"id": plot_row["id"], "plot_number": plot_row["plot_number"], "token": plot_row["access_token"]}
+    site = {"name": plot_row["pd_sites"]["name"], "address": plot_row["pd_sites"].get("address", "")}
+
+    stages_json    = json.dumps(STAGES, ensure_ascii=False)
+    stages_by_group = get_stages_by_group()
+
+    # Pass previous answers and flagged items to form
+    previous_answers = json.dumps(sub.get("answers") or {})
+    flagged_items    = json.dumps(sub.get("flagged_items") or {})
+
+    return render_template(
+        "pd/form.html",
+        plot=plot,
+        site=site,
+        stages_by_group=stages_by_group,
+        stages_json=stages_json,
+        previous_answers=previous_answers,
+        flagged_items=flagged_items,
+        preselected_stage=sub.get("stage_number"),
+        parent_submission_id=sub.get("id"),
+        resubmit_token=resubmit_token,
+        is_resubmit=True,
+        manager_notes=sub.get("manager_notes", ""),
+    )
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
