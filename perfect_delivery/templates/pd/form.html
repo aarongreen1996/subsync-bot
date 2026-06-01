@@ -120,6 +120,13 @@
 
 <!-- Step 1 — Details + Stage -->
 <div class="step active" id="step1">
+  {% if is_resubmit %}
+  <div style="background:#fff5f5;border-left:4px solid #dc2626;padding:14px 16px;border-radius:0 10px 10px 0;margin-bottom:16px">
+    <p style="font-weight:700;color:#dc2626;font-size:14px">Resubmission Required</p>
+    <p style="font-size:13px;color:#374151;margin-top:4px">{{ manager_notes }}</p>
+    <p style="font-size:12px;color:#6b7280;margin-top:6px">Your previous answers are pre-filled. Only flagged items (shown in red) need updating.</p>
+  </div>
+  {% endif %}
   <div style="padding-top:4px">
     <p class="section-title">Your Details</p>
     <p class="section-sub">Enter your details and select the build stage to sign off.</p>
@@ -209,6 +216,12 @@
 <script>
 const STAGES = {{ stages_json | safe }};
 const PLOT_TOKEN = "{{ plot.token }}";
+const IS_RESUBMIT = {{ 'true' if is_resubmit else 'false' }};
+const PREVIOUS_ANSWERS = {{ previous_answers | default('{}') | safe }};
+const FLAGGED_ITEMS = {{ flagged_items | default('{}') | safe }};
+const PRESELECTED_STAGE = {{ preselected_stage | default('null') }};
+const PARENT_SUBMISSION_ID = "{{ parent_submission_id | default('') }}";
+const MANAGER_NOTES = "{{ manager_notes | default('') | replace('"', '\"') }}";
 
 let selectedStage = null;
 let answers = {};
@@ -238,6 +251,59 @@ function initGeo() {
   );
 }
 initGeo();
+
+// ── Resubmission setup ───────────────────────────────────────────────────────
+if (IS_RESUBMIT && PRESELECTED_STAGE) {
+  setTimeout(() => {
+    const btn = document.getElementById('stageBtnWrapper' + PRESELECTED_STAGE);
+    if (btn) { selectStage(PRESELECTED_STAGE); btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }, 300);
+}
+
+const _origBuildChecklist = buildChecklist;
+buildChecklist = function() {
+  _origBuildChecklist();
+  if (!IS_RESUBMIT) return;
+  const stage = STAGES[selectedStage];
+  if (!stage) return;
+  stage.items.forEach(item => {
+    const prev    = PREVIOUS_ANSWERS[item.id];
+    const flagged = FLAGGED_ITEMS[item.id];
+    const itemEl  = document.getElementById('item_' + item.id);
+    if (!itemEl) return;
+    // Restore previous answer
+    if (prev && prev.value) {
+      const val = prev.value;
+      itemEl.querySelectorAll('.yn-btn').forEach(btn => {
+        if (btn.classList.contains(val === 'n/a' ? 'na' : val)) btn.classList.add('active');
+      });
+      itemEl.className = 'checklist-item answered-' + val.replace('/','');
+      answers[item.id] = { value: val, text: prev.text || '' };
+      const textInput = document.getElementById('textval_' + item.id);
+      if (textInput && prev.text) textInput.value = prev.text;
+    }
+    if (flagged) {
+      // Flagged — red highlight, show comment, leave editable
+      itemEl.style.borderLeftColor = '#dc2626';
+      itemEl.style.background = '#fff5f5';
+      const note = document.createElement('div');
+      note.style.cssText = 'background:#fee2e2;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#991b1b;font-weight:600';
+      note.textContent = 'Flagged: ' + (flagged.comment || 'Please review and update this item');
+      itemEl.insertBefore(note, itemEl.firstChild);
+    } else if (prev && prev.value) {
+      // Not flagged + already answered — lock it
+      itemEl.querySelectorAll('.yn-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed'; });
+      const ti = document.getElementById('textval_' + item.id);
+      if (ti) { ti.disabled = true; ti.style.opacity = '0.6'; }
+      const tick = document.createElement('div');
+      tick.style.cssText = 'background:#dcfce7;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12px;color:#166534;font-weight:600';
+      tick.textContent = 'Previously accepted — no change needed';
+      itemEl.appendChild(tick);
+      const pz = itemEl.querySelector('.photo-zone');
+      if (pz) { pz.style.opacity = '0.5'; pz.style.pointerEvents = 'none'; }
+    }
+  });
+};
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 function setProgress(pct) { document.getElementById('progressFill').style.width = pct + '%'; }
