@@ -390,18 +390,7 @@ def admin_create_plot():
     return jsonify({"ok": True, "plot": res.data[0]})
 
 
-@pd_bp.route("/admin/qr/<plot_id>")
-def admin_qr(plot_id: str):
-    _require_admin()
-    res = supabase.table("pd_plots").select("*, pd_sites(name)").eq("id", plot_id).single().execute()
-    if not res.data:
-        abort(404)
-    plot = res.data
-    png_bytes = generate_qr_png(plot["access_token"], plot["plot_number"], plot["pd_sites"]["name"])
-    return send_file(
-        io.BytesIO(png_bytes), mimetype="image/png",
-        as_attachment=True, download_name=f"QR_Plot_{plot['plot_number']}.png",
-    )
+
 
 
 @pd_bp.route("/admin/submissions")
