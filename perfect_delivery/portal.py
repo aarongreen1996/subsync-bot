@@ -332,6 +332,81 @@ def plot_report(user, plot_id):
     )
 
 
+
+
+@portal_bp.route("/site/<site_id>/qr-sheet")
+@_require_login
+def qr_sheet(user, site_id):
+    site_res = supabase.table("pd_sites").select("*").eq("id", site_id).single().execute()
+    if not site_res.data:
+        abort(404)
+    site = site_res.data
+
+    # Check access
+    if user.get("role") != "tenant_admin":
+        site_ids = user.get("site_ids") or []
+        if isinstance(site_ids, str):
+            try: site_ids = json.loads(site_ids)
+            except: site_ids = []
+        if site_id not in site_ids:
+            abort(403)
+
+    from flask import send_file as _send_file
+    import io as _io
+    from .qr_utils import generate_qr_png
+    from .checklist_data import STAGES
+
+    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).order("plot_number").execute()
+    plots = plots_res.data or []
+
+    from datetime import date as _date
+    from flask import render_template as _rt
+    from os import environ as _env
+    return _rt(
+        "pd/qr_sheet.html",
+        site=site, plots=plots,
+        admin_key=ADMIN_KEY,
+        base_url=_env.get("PD_BASE_URL",""),
+        now=_date.today().strftime("%d %b %Y"),
+    )
+
+
+@portal_bp.route("/plot/<plot_id>/report/pdf")
+@_require_login
+def plot_report_pdf(user, plot_id):
+    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+    site = plot["pd_sites"]
+
+    if user.get("role") != "tenant_admin":
+        site_ids = user.get("site_ids") or []
+        if isinstance(site_ids, str):
+            try: site_ids = json.loads(site_ids)
+            except: site_ids = []
+        if plot["site_id"] not in site_ids:
+            abort(403)
+
+    from .checklist_data import STAGES, STAGE_GROUPS
+    from .pdf_generator import generate_plot_report_pdf
+    from flask import send_file as _sf
+    import io as _io
+
+    subs_res = supabase.table("pd_submissions").select("*").eq("plot_id", plot_id).order("submitted_at", desc=True).execute()
+    subs = subs_res.data or []
+    stage_map = {}
+    for s in reversed(subs):
+        stage_map[s["stage_number"]] = s
+
+    stage_to_group = {n: gn for gn, nums in STAGE_GROUPS.items() for n in nums}
+    tenant = _get_tenant()
+
+    pdf_bytes = generate_plot_report_pdf(plot, site, stage_map, STAGES, stage_to_group, tenant, supabase)
+    filename = f"PD_Report_{(site.get('name') or '').replace(' ','_')}_Plot{plot.get('plot_number','')}.pdf"
+    return _sf(_io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+
 # ── API routes ────────────────────────────────────────────────────────────────
 
 @portal_bp.route("/api/sites")
