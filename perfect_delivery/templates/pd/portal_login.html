@@ -133,7 +133,30 @@
 
   <button class="btn-sign-in" id="signInBtn" onclick="signIn()">Sign In</button>
 
+  <div style="text-align:center;margin-top:14px">
+    <button onclick="showForgot()" style="background:none;border:none;color:#636366;font-size:13px;cursor:pointer;text-decoration:underline">Forgot your password?</button>
+  </div>
+
   <div class="footer">Perfect Delivery · {{ tenant.name if tenant else 'Pennyfarthing Homes' }}</div>
+</div>
+
+<!-- Forgot password modal -->
+<div id="forgotOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)hideForgot()">
+  <div style="background:#fff;border-radius:16px;padding:28px 32px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.18)">
+    <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Reset your password</h3>
+    <p style="font-size:13px;color:#636366;margin-bottom:20px">Enter your email and we'll send you a reset link valid for 1 hour.</p>
+    <input type="email" id="forgotEmail" placeholder="you@company.com" autocomplete="email"
+      style="width:100%;padding:11px 14px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:15px;outline:none;margin-bottom:14px"
+      onkeydown="if(event.key==='Enter')sendReset()">
+    <div id="forgotErr" style="font-size:13px;color:#c0392b;margin-bottom:10px;display:none"></div>
+    <div id="forgotOk" style="font-size:13px;color:#166534;background:#f0fdf4;padding:10px 14px;border-radius:8px;margin-bottom:10px;display:none">
+      ✓ If that email exists, a reset link is on its way. Check your inbox.
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="hideForgot()" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:14px;cursor:pointer">Cancel</button>
+      <button onclick="sendReset()" id="forgotBtn" style="flex:1;padding:11px;background:#1a1a2e;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">Send link</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -173,6 +196,54 @@ async function signIn() {
     err.classList.add('show');
     btn.disabled = false;
     btn.textContent = 'Sign In';
+  }
+}
+
+function showForgot() {
+  document.getElementById('forgotOverlay').style.display = 'flex';
+  document.getElementById('forgotEmail').value = document.getElementById('email').value || '';
+  document.getElementById('forgotErr').style.display = 'none';
+  document.getElementById('forgotOk').style.display = 'none';
+  document.getElementById('forgotBtn').disabled = false;
+  document.getElementById('forgotBtn').textContent = 'Send link';
+  setTimeout(() => document.getElementById('forgotEmail').focus(), 50);
+}
+
+function hideForgot() {
+  document.getElementById('forgotOverlay').style.display = 'none';
+}
+
+async function sendReset() {
+  const email = document.getElementById('forgotEmail').value.trim();
+  const err   = document.getElementById('forgotErr');
+  const ok    = document.getElementById('forgotOk');
+  const btn   = document.getElementById('forgotBtn');
+
+  err.style.display = 'none';
+  ok.style.display  = 'none';
+
+  if (!email) {
+    err.textContent = 'Please enter your email address.';
+    err.style.display = 'block'; return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    await fetch('/pd/portal/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    // Always show success (don't leak if email exists)
+    ok.style.display = 'block';
+    btn.textContent = 'Sent';
+  } catch(e) {
+    err.textContent = 'Network error. Please try again.';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send link';
   }
 }
 </script>
