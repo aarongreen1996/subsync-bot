@@ -84,7 +84,7 @@
   </div>
   <div class="header-right">
     <p>Admin Panel</p>
-    <p style="margin-top:3px;color:#6b7280">key: {{ admin_key[:4] }}…</p>
+
   </div>
 </div>
 
@@ -92,7 +92,7 @@
   <div class="tabs">
     <button class="tab active" onclick="switchTab('sites', this)">🏗 Sites</button>
     <button class="tab" onclick="switchTab('plots', this)">📋 Plots & QRs</button>
-    <button class="tab" onclick="switchTab('submissions', this)">📥 Submissions</button>
+    <button class="tab" onclick="switchTab('submissions', this); loadSubmissions()">📥 Submissions</button>
     <button class="tab" onclick="switchTab('settings', this)">⚙️ Settings</button>
     <a href="/pd/admin/checklist-editor?key={{ admin_key }}" class="tab" style="text-decoration:none">📝 Checklist</a>
   </div>
@@ -176,13 +176,11 @@
                 <td>{{ p.pd_sites.name }}</td>
                 <td><span class="status status-{{ p.status }}">{{ p.status | capitalize }}</span></td>
                 <td style="display:flex;gap:6px;flex-wrap:wrap">
-                  <a href="/pd/admin/qr/{{ p.id }}?key={{ admin_key }}" class="btn btn-qr btn-sm" download>⬇ QR</a>
+                  <a href="/pd/admin/qr/{{ p.id }}?key={{ admin_key }}" class="btn btn-qr btn-sm" download>View QR</a>
                   <a href="/pd/admin/plot/{{ p.id }}/progress?key={{ admin_key }}" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">📊 Progress</a>
                   <a href="/pd/admin/plot/{{ p.id }}/report?key={{ admin_key }}" target="_blank" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
                 </td>
-                <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                  /pd/{{ p.access_token[:12] }}…
-                </td>
+                <td style="font-size:12px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">                </td>
               </tr>
               {% endfor %}
             {% else %}
@@ -294,6 +292,12 @@
     <div class="card" style="padding:16px 20px">
       <div style="display:flex;gap:12px;align-items:center">
         <div class="field" style="flex:1;margin:0">
+          <select id="filterStatus" onchange="loadSubmissions()" style="padding:10px 14px;width:100%;margin-bottom:8px">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
           <select id="filterPlot" onchange="loadSubmissions()" style="padding:10px 14px;width:100%">
             <option value="">— All plots —</option>
             {% for p in plots %}
@@ -394,11 +398,11 @@ async function createPlot() {
       <td>${siteName}</td>
       <td><span class="status status-active">Active</span></td>
       <td style="display:flex;gap:6px">
-        <a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>⬇ QR</a>
+        <a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>View QR</a>
         <a href="/pd/admin/plot/${p.id}/progress?key=${ADMIN_KEY}" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">📊 Progress</a>
         <a href="/pd/admin/plot/${p.id}/report?key=${ADMIN_KEY}" target="_blank" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
       </td>
-      <td style="font-size:12px;color:#6b7280">/pd/${p.access_token.slice(0,12)}…</td>`;
+`;
     const emptyRow = tbody.querySelector('td[colspan]');
     if (emptyRow) emptyRow.parentElement.remove();
     tbody.insertBefore(tr, tbody.firstChild);
@@ -412,10 +416,12 @@ async function createPlot() {
 
 // ── Load Submissions ─────────────────────────────────────────
 async function loadSubmissions() {
-  const plotId = document.getElementById('filterPlot').value;
+  const plotId  = document.getElementById('filterPlot').value;
+  const statusF = document.getElementById('filterStatus')?.value || '';
   document.getElementById('loadingIndicator').style.display = 'block';
   let url = '/pd/admin/submissions?key=' + ADMIN_KEY;
-  if (plotId) url += '&plot_id=' + plotId;
+  if (plotId)  url += '&plot_id=' + plotId;
+  if (statusF) url += '&status=' + statusF;
   const res = await fetch(url);
   const subs = await res.json();
   document.getElementById('loadingIndicator').style.display = 'none';
