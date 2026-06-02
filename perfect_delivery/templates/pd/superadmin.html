@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super Admin — Perfect Delivery</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0f0; min-height: 100vh; }
+.navbar { background: #12121f; border-bottom: 1px solid #2a2a45; padding: 0 32px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.brand { font-size: 16px; font-weight: 700; color: #C5962A; }
+.brand span { color: #6b6b8a; font-weight: 400; font-size: 13px; margin-left: 12px; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.btn-logout { background: none; border: 1px solid #2a2a45; color: #6b6b8a; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: border-color .15s; }
+.btn-logout:hover { border-color: #C5962A; color: #C5962A; }
+.main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+.page-title { font-size: 22px; font-weight: 700; color: #e0e0f0; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: #6b6b8a; margin-bottom: 28px; }
+.btn-primary { background: #C5962A; color: #12121f; border: none; padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+.btn-primary:hover { opacity: .88; }
+.btn-ghost { background: none; border: 1px solid #2a2a45; color: #a0a0c0; padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: border-color .15s; }
+.btn-ghost:hover { border-color: #C5962A; color: #C5962A; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-danger { background: none; border: 1px solid #3a1a1a; color: #f87171; padding: 5px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.btn-impersonate { background: #1a2a3a; border: 1px solid #1e3a5a; color: #60a5fa; padding: 5px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.tenant-card { background: #1a1a2e; border: 1px solid #2a2a45; border-radius: 14px; margin-bottom: 20px; overflow: hidden; }
+.tenant-header { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #2a2a45; }
+.tenant-name { font-size: 17px; font-weight: 700; color: #e0e0f0; }
+.tenant-email { font-size: 13px; color: #6b6b8a; margin-top: 2px; }
+.tenant-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stats { display: flex; gap: 24px; padding: 14px 24px; background: #12121f; border-bottom: 1px solid #2a2a45; }
+.stat { text-align: center; }
+.stat-n { font-size: 20px; font-weight: 700; color: #C5962A; }
+.stat-l { font-size: 11px; color: #6b6b8a; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+.users-section { padding: 16px 24px; }
+.users-title { font-size: 12px; font-weight: 600; color: #6b6b8a; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
+.user-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1e1e38; }
+.user-row:last-child { border-bottom: none; }
+.user-avatar { width: 30px; height: 30px; background: #2a2a45; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #C5962A; flex-shrink: 0; }
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 13px; color: #e0e0f0; font-weight: 500; }
+.user-email { font-size: 12px; color: #6b6b8a; }
+.role-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.role-admin { background: #2a1a0a; color: #C5962A; }
+.role-manager { background: #0a1a2a; color: #60a5fa; }
+.add-user-row { padding: 12px 24px; background: #12121f; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.show { display: flex; }
+.modal { background: #1a1a2e; border: 1px solid #2a2a45; border-radius: 16px; width: 100%; max-width: 440px; padding: 28px 32px; }
+.modal h3 { font-size: 18px; font-weight: 700; color: #e0e0f0; margin-bottom: 20px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: #8e8e9a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.field input, .field select { width: 100%; padding: 10px 14px; background: #12121f; border: 1.5px solid #2a2a45; border-radius: 10px; font-size: 14px; color: #e0e0f0; outline: none; }
+.field input:focus, .field select:focus { border-color: #C5962A; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.modal-actions button { flex: 1; }
+.err-inline { font-size: 12px; color: #f87171; margin-top: 8px; display: none; }
+.toast { position: fixed; bottom: 24px; right: 24px; background: #C5962A; color: #12121f; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 999; opacity: 0; transform: translateY(8px); transition: all .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.empty-state { text-align: center; padding: 60px 20px; color: #6b6b8a; }
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="brand">Perfect Delivery <span>Super Admin</span></div>
+  <div class="nav-right">
+    <span style="font-size:13px;color:#6b6b8a">{{ tenants|length }} tenant{{ 's' if tenants|length != 1 else '' }}</span>
+    <button class="btn-logout" onclick="doLogout()">Sign out</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="page-title">Tenants</div>
+  <div class="page-sub">All companies using Perfect Delivery</div>
+
+  <div style="margin-bottom:24px">
+    <button class="btn-primary" onclick="showCreateTenant()">+ New Tenant</button>
+  </div>
+
+  {% if not tenants %}
+  <div class="empty-state">
+    <div class="icon">🏗</div>
+    <p>No tenants yet. Create the first one above.</p>
+  </div>
+  {% endif %}
+
+  {% for t in tenants %}
+  <div class="tenant-card" id="tc-{{ t.id }}">
+    <div class="tenant-header">
+      <div>
+        <div class="tenant-name">{{ t.name }}</div>
+        <div class="tenant-email">{{ t.contact_email or '—' }}</div>
+      </div>
+      <div class="tenant-actions">
+        <button class="btn-impersonate" onclick="impersonate('{{ t.id }}')">↗ Log in as this tenant</button>
+        <button class="btn-ghost btn-sm" onclick="showEditTenant('{{ t.id }}','{{ t.name }}','{{ t.contact_email or '' }}')">Edit</button>
+        <button class="btn-ghost btn-sm" onclick="showAddUser('{{ t.id }}','{{ t.name }}')">+ Add user</button>
+        <button class="btn-danger" onclick="deleteTenant('{{ t.id }}','{{ t.name }}')">Deactivate</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-n">{{ t.stats.sites }}</div>
+        <div class="stat-l">Sites</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n">{{ t.stats.plots }}</div>
+        <div class="stat-l">Plots</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n">{{ t.stats.submissions }}</div>
+        <div class="stat-l">Submissions</div>
+      </div>
+    </div>
+
+    {% if t.users %}
+    <div class="users-section">
+      <div class="users-title">Users</div>
+      {% for u in t.users %}
+      <div class="user-row">
+        <div class="user-avatar">{{ u.name[0].upper() }}</div>
+        <div class="user-info">
+          <div class="user-name">{{ u.name }}</div>
+          <div class="user-email">{{ u.email }}</div>
+        </div>
+        <span class="role-badge {{ 'role-admin' if u.role == 'tenant_admin' else 'role-manager' }}">
+          {{ u.role.replace('_',' ').title() }}
+        </span>
+        <button class="btn-ghost btn-sm" onclick="resetUserPw('{{ u.id }}','{{ u.name }}')">Reset pw</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding:16px 24px;color:#6b6b8a;font-size:13px">No users yet — add one above.</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Create Tenant Modal -->
+<div class="modal-overlay" id="createModal" onclick="if(event.target===this)closeModal('createModal')">
+  <div class="modal">
+    <h3>New Tenant</h3>
+    <div class="field"><label>Company name</label><input type="text" id="cName" placeholder="Acme Homes Ltd"></div>
+    <div class="field"><label>Admin full name</label><input type="text" id="cAdminName" placeholder="John Smith"></div>
+    <div class="field"><label>Admin email</label><input type="email" id="cEmail" placeholder="john@acmehomes.co.uk"></div>
+    <div class="field"><label>Admin password</label><input type="password" id="cPw" placeholder="Min 8 characters"></div>
+    <div class="err-inline" id="cErr"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('createModal')">Cancel</button>
+      <button class="btn-primary" onclick="createTenant()">Create tenant</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Tenant Modal -->
+<div class="modal-overlay" id="editModal" onclick="if(event.target===this)closeModal('editModal')">
+  <div class="modal">
+    <h3>Edit Tenant</h3>
+    <input type="hidden" id="eTenantId">
+    <div class="field"><label>Company name</label><input type="text" id="eName" placeholder="Company name"></div>
+    <div class="field"><label>Contact email</label><input type="email" id="eEmail" placeholder="contact@company.co.uk"></div>
+    <div class="err-inline" id="eErr"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveTenant()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-overlay" id="addUserModal" onclick="if(event.target===this)closeModal('addUserModal')">
+  <div class="modal">
+    <h3>Add User to <span id="auTenantName"></span></h3>
+    <input type="hidden" id="auTenantId">
+    <div class="field"><label>Full name</label><input type="text" id="auName" placeholder="Jane Smith"></div>
+    <div class="field"><label>Email</label><input type="email" id="auEmail" placeholder="jane@company.co.uk"></div>
+    <div class="field"><label>Password</label><input type="password" id="auPw" placeholder="Min 8 characters"></div>
+    <div class="field">
+      <label>Role</label>
+      <select id="auRole">
+        <option value="tenant_admin">Tenant Admin (full access)</option>
+        <option value="site_manager">Site Manager (assigned sites only)</option>
+      </select>
+    </div>
+    <div class="err-inline" id="auErr"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('addUserModal')">Cancel</button>
+      <button class="btn-primary" onclick="addUser()">Add user</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function showToast(msg, isErr=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isErr ? '#7f1d1d' : '#C5962A';
+  t.style.color = isErr ? '#fca5a5' : '#12121f';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function showCreateTenant() {
+  ['cName','cAdminName','cEmail','cPw'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cErr').style.display = 'none';
+  document.getElementById('createModal').classList.add('show');
+  document.getElementById('cName').focus();
+}
+
+function showEditTenant(id, name, email) {
+  document.getElementById('eTenantId').value = id;
+  document.getElementById('eName').value = name;
+  document.getElementById('eEmail').value = email;
+  document.getElementById('eErr').style.display = 'none';
+  document.getElementById('editModal').classList.add('show');
+  document.getElementById('eName').focus();
+}
+
+function showAddUser(tenantId, tenantName) {
+  document.getElementById('auTenantId').value = tenantId;
+  document.getElementById('auTenantName').textContent = tenantName;
+  ['auName','auEmail','auPw'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('auErr').style.display = 'none';
+  document.getElementById('addUserModal').classList.add('show');
+  document.getElementById('auName').focus();
+}
+
+async function createTenant() {
+  const err = document.getElementById('cErr');
+  err.style.display = 'none';
+  const payload = {
+    name:           document.getElementById('cName').value.trim(),
+    admin_name:     document.getElementById('cAdminName').value.trim(),
+    admin_email:    document.getElementById('cEmail').value.trim(),
+    admin_password: document.getElementById('cPw').value,
+  };
+  const res  = await fetch('/pd/superadmin/api/tenants', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    closeModal('createModal');
+    showToast('Tenant created — reloading…');
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    err.textContent = data.error || 'Error creating tenant';
+    err.style.display = 'block';
+  }
+}
+
+async function saveTenant() {
+  const id  = document.getElementById('eTenantId').value;
+  const err = document.getElementById('eErr');
+  err.style.display = 'none';
+  const res  = await fetch(`/pd/superadmin/api/tenants/${id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name:          document.getElementById('eName').value.trim(),
+      contact_email: document.getElementById('eEmail').value.trim(),
+    }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    closeModal('editModal');
+    showToast('Tenant updated — reloading…');
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    err.textContent = data.error || 'Error updating tenant';
+    err.style.display = 'block';
+  }
+}
+
+async function deleteTenant(id, name) {
+  if (!confirm(`Deactivate "${name}"?\n\nThis will disable their access. Data is preserved.`)) return;
+  const res  = await fetch(`/pd/superadmin/api/tenants/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    showToast('Tenant deactivated');
+    document.getElementById('tc-' + id)?.remove();
+  } else {
+    showToast('Error: ' + (data.error||'unknown'), true);
+  }
+}
+
+async function addUser() {
+  const tenantId = document.getElementById('auTenantId').value;
+  const err = document.getElementById('auErr');
+  err.style.display = 'none';
+  const res = await fetch(`/pd/superadmin/api/tenants/${tenantId}/users`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name:     document.getElementById('auName').value.trim(),
+      email:    document.getElementById('auEmail').value.trim(),
+      password: document.getElementById('auPw').value,
+      role:     document.getElementById('auRole').value,
+    }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    closeModal('addUserModal');
+    showToast('User added — reloading…');
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    err.textContent = data.error || 'Error adding user';
+    err.style.display = 'block';
+  }
+}
+
+async function resetUserPw(userId, name) {
+  const pw = prompt(`Set new password for ${name}:\n(min 8 characters)`);
+  if (!pw) return;
+  if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+  const res  = await fetch(`/pd/superadmin/api/users/${userId}/reset`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ password: pw }),
+  });
+  const data = await res.json();
+  if (data.ok) showToast('Password updated for ' + name);
+  else showToast('Error: ' + (data.error||'unknown'), true);
+}
+
+async function impersonate(tenantId) {
+  const res  = await fetch(`/pd/superadmin/api/tenants/${tenantId}/impersonate`, { method: 'POST' });
+  const data = await res.json();
+  if (data.ok) {
+    showToast('Opening tenant portal…');
+    setTimeout(() => { window.location.href = data.redirect; }, 500);
+  } else {
+    showToast('Error: ' + (data.error||'unknown'), true);
+  }
+}
+
+async function doLogout() {
+  await fetch('/pd/superadmin/logout', { method: 'POST' });
+  window.location.href = '/pd/superadmin/login';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.show').forEach(m => m.classList.remove('show'));
+});
+</script>
+</body>
+</html>
