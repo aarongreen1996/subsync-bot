@@ -29,12 +29,22 @@ def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+_tenant_cache: dict = {}
+_tenant_cache_ts: float = 0.0
+
 def _get_tenant() -> dict:
+    """Get tenant with 60-second in-memory cache to avoid repeated DB hits."""
+    import time
+    global _tenant_cache, _tenant_cache_ts
+    if _tenant_cache and (time.time() - _tenant_cache_ts) < 60:
+        return _tenant_cache
     try:
         res = supabase.table("pd_tenants").select("*").limit(1).execute()
-        return res.data[0] if res.data else {}
+        _tenant_cache = res.data[0] if res.data else {}
+        _tenant_cache_ts = time.time()
+        return _tenant_cache
     except Exception:
-        return {}
+        return _tenant_cache or {}
 
 
 def _get_current_user():
@@ -776,14 +786,27 @@ def plot_report(user, plot_id):
     not_started = 37 - approved_count - pending_count - rejected_count
     pct = round((approved_count / 37) * 100)
 
+    # Batch all photos for Part L in one query
+    approved_sub_ids = [s["id"] for s in stage_map.values() if s.get("status") == "approved"]
+    all_photos_map = {}
+    if approved_sub_ids:
+        try:
+            all_photos_res = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
+            for p in (all_photos_res.data or []):
+                sid = p["submission_id"]
+                if sid not in all_photos_map:
+                    all_photos_map[sid] = {}
+                all_photos_map[sid][p["item_id"]] = p["public_url"]
+        except Exception:
+            pass
+
     part_l_rows = []
     for sub in stage_map.values():
         if sub.get("status") != "approved":
             continue
         stage   = STAGES.get(sub["stage_number"], {})
         answers = sub.get("answers") or {}
-        photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
-        photos_map = {p["item_id"]: p["public_url"] for p in (photos_res.data or [])}
+        photos_map = all_photos_map.get(sub["id"], {})
         for item in stage.get("items", []):
             if "PART L" not in item.get("text", ""):
                 continue
@@ -900,13 +923,19 @@ def api_sites(user):
             res = supabase.table("pd_sites").select("*").in_("id", site_ids).execute()
         sites = res.data or []
 
-        # Add plot count per site
-        for site in sites:
+        # Batch plot counts — one query instead of N
+        if sites:
+            site_ids_list = [s["id"] for s in sites]
             try:
-                plots_res = supabase.table("pd_plots").select("id", count="exact").eq("site_id", site["id"]).execute()
-                site["plot_count"] = plots_res.count or 0
+                all_plots = supabase.table("pd_plots").select("site_id").in_("site_id", site_ids_list).execute()
+                plot_counts = {}
+                for p in (all_plots.data or []):
+                    plot_counts[p["site_id"]] = plot_counts.get(p["site_id"], 0) + 1
+                for site in sites:
+                    site["plot_count"] = plot_counts.get(site["id"], 0)
             except Exception:
-                site["plot_count"] = 0
+                for site in sites:
+                    site["plot_count"] = 0
 
         return jsonify(sites)
     except Exception as e:
@@ -932,13 +961,22 @@ def api_plots(user):
             except: return (1, str(p.get("plot_number","")))
         plots.sort(key=plot_sort_key)
 
-        # Add approved stage count per plot
-        for plot in plots:
+        # Batch approved counts — one query instead of N
+        if plots:
+            plot_ids = [p["id"] for p in plots]
             try:
-                subs_res = supabase.table("pd_submissions").select("stage_number, status").eq("plot_id", plot["id"]).eq("status", "approved").execute()
-                plot["approved_count"] = len(set(s["stage_number"] for s in (subs_res.data or [])))
+                subs_res = supabase.table("pd_submissions").select("plot_id, stage_number").in_("plot_id", plot_ids).eq("status", "approved").execute()
+                approved_map = {}
+                for s in (subs_res.data or []):
+                    pid = s["plot_id"]
+                    if pid not in approved_map:
+                        approved_map[pid] = set()
+                    approved_map[pid].add(s["stage_number"])
+                for plot in plots:
+                    plot["approved_count"] = len(approved_map.get(plot["id"], set()))
             except Exception:
-                plot["approved_count"] = 0
+                for plot in plots:
+                    plot["approved_count"] = 0
 
         return jsonify(plots)
     except Exception as e:
@@ -950,11 +988,12 @@ def api_plots(user):
 @_require_login
 def api_submissions(user):
     status = request.args.get("status")
-    limit  = int(request.args.get("limit", 50))
+    limit  = min(int(request.args.get("limit", 50)), 100)
+    offset = int(request.args.get("offset", 0))
 
     query = supabase.table("pd_submissions").select(
         "*, pd_plots(plot_number, site_id, pd_sites(name))"
-    ).order("submitted_at", desc=True).limit(limit)
+    ).order("submitted_at", desc=True).range(offset, offset + limit - 1)
 
     if status:
         query = query.eq("status", status)
@@ -978,7 +1017,8 @@ def api_submissions(user):
 def api_photos(user):
     site_id      = request.args.get("site_id")
     stage_number = request.args.get("stage_number")
-    limit        = int(request.args.get("limit", 200))
+    limit        = min(int(request.args.get("limit", 60)), 120)
+    offset       = int(request.args.get("offset", 0))
 
     # Get submissions filtered by access
     subs_query = supabase.table("pd_submissions").select(
@@ -1006,8 +1046,10 @@ def api_photos(user):
         return jsonify([])
 
     sub_ids = [s["id"] for s in subs]
-    # Batch fetch photos
-    photos_res = supabase.table("pd_photos").select("*").in_("submission_id", sub_ids).limit(limit).execute()
+    # Batch fetch photos with pagination
+    photos_res = supabase.table("pd_photos").select("submission_id, item_id, item_label, public_url").in_(
+        "submission_id", sub_ids
+    ).range(offset, offset + limit - 1).execute()
     photos = photos_res.data or []
 
     # Enrich photos with submission metadata
@@ -1047,12 +1089,10 @@ def api_checklist_save(user, stage_number):
     tenant_id = tenant.get("id")
     if not tenant_id:
         return jsonify({"ok": False, "error": "No tenant"}), 400
-
     items = request.get_json() or []
     if not isinstance(items, list):
         items = [items]
-
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone as _tz
     for item in items:
         item_id = item.get("item_id")
         if not item_id:
@@ -1061,17 +1101,14 @@ def api_checklist_save(user, stage_number):
             "tenant_id":    tenant_id,
             "stage_number": stage_number,
             "item_id":      item_id,
-            "updated_at":   datetime.now(timezone.utc).isoformat(),
+            "updated_at":   datetime.now(_tz.utc).isoformat(),
         }
-        if "text"           in item: record["text"]           = item["text"]
-        if "photo_required" in item: record["photo_required"] = item["photo_required"]
-        if "enabled"        in item: record["enabled"]        = item["enabled"]
-        if "sort_order"     in item: record["sort_order"]     = item["sort_order"]
-
+        for f in ["text","photo_required","enabled","sort_order"]:
+            if f in item:
+                record[f] = item[f]
         supabase.table("pd_checklist_overrides").upsert(
             record, on_conflict="tenant_id,stage_number,item_id"
         ).execute()
-
     return jsonify({"ok": True})
 
 
