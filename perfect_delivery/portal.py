@@ -243,6 +243,38 @@ def plot_progress(user, plot_id):
 
 
 
+
+
+@portal_bp.route("/qr/<plot_id>")
+@_require_login
+def portal_qr(user, plot_id):
+    """Serve QR code PNG for portal users."""
+    res = supabase.table("pd_plots").select("*, pd_sites(name)").eq("id", plot_id).single().execute()
+    if not res.data:
+        abort(404)
+    plot = res.data
+
+    # Check site access
+    if user.get("role") != "tenant_admin":
+        site_ids = user.get("site_ids") or []
+        if isinstance(site_ids, str):
+            try: site_ids = json.loads(site_ids)
+            except: site_ids = []
+        if plot.get("site_id") not in site_ids:
+            abort(403)
+
+    from .qr_utils import generate_qr_png
+    from flask import send_file as _sf
+    import io as _io
+    inline = request.args.get("inline") == "1"
+    png_bytes = generate_qr_png(plot["access_token"], plot["plot_number"], plot["pd_sites"]["name"])
+    return _sf(
+        _io.BytesIO(png_bytes), mimetype="image/png",
+        as_attachment=not inline,
+        download_name=f"QR_Plot_{plot['plot_number']}.png",
+    )
+
+
 # ── Site & Plot management (tenant admin) ────────────────────────────────────
 
 @portal_bp.route("/api/sites", methods=["POST"])
@@ -799,7 +831,7 @@ def qr_sheet(user, site_id):
     return _rt(
         "pd/qr_sheet.html",
         site=site, plots=plots,
-        admin_key=ADMIN_KEY,
+        admin_key=None,
         base_url=_env.get("PD_BASE_URL",""),
         now=_date.today().strftime("%d %b %Y"),
     )
