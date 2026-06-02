@@ -388,29 +388,26 @@
     </div>
   </div>
 
-
   <!-- Checklist Editor (tenant_admin only) -->
   <div class="page" id="page-checklist">
     <div class="page-title">Checklist Editor</div>
-    <div class="page-sub">Customise stage checklist items for your company. Changes apply to all future submissions.</div>
-
+    <div class="page-sub">Customise stage checklist items. Changes apply to your company only and take effect immediately.</div>
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <select id="clStageSelect" onchange="loadChecklistStage()" style="padding:8px 14px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:240px">
-        <option value="">Select a stage…</option>
+      <select id="clStageSelect" onchange="loadChecklistStage()" style="padding:8px 14px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:260px">
+        <option value="">Select a stage to edit…</option>
       </select>
-      <button class="btn btn-ghost btn-sm" onclick="resetStage()" id="clResetBtn" style="display:none">↩ Reset to default</button>
+      <button class="btn btn-ghost btn-sm" onclick="clResetStage()" id="clResetBtn" style="display:none">↩ Reset to default</button>
     </div>
-
     <div id="clEditor" style="display:none">
       <div class="card">
         <div class="card-header">
           <span class="card-title" id="clStageName"></span>
-          <button class="btn btn-primary btn-sm" onclick="saveChecklist()">Save changes</button>
+          <button class="btn btn-primary btn-sm" onclick="clSave()">Save changes</button>
         </div>
         <div class="card-body">
           <div id="clItems"></div>
           <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f2f2f7">
-            <button class="btn btn-ghost btn-sm" onclick="addChecklistItem()">+ Add item</button>
+            <button class="btn btn-ghost btn-sm" onclick="clAddItem()">+ Add item</button>
           </div>
         </div>
       </div>
@@ -728,46 +725,61 @@ async function signOut() {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 async function loadOverview() {
-  const [sitesRes, subsRes] = await Promise.all([
-    fetch('/pd/portal/api/sites'),
-    fetch('/pd/portal/api/submissions?limit=8'),
-  ]);
-  const sites = await sitesRes.json();
-  allSitesList = sites; // store for plot modal dropdown
-  const subs  = await subsRes.json();
+  try {
+    const [sitesRes, subsRes] = await Promise.all([
+      fetch('/pd/portal/api/sites'),
+      fetch('/pd/portal/api/submissions?limit=8'),
+    ]);
+    if (!sitesRes.ok || !subsRes.ok) throw new Error('API error');
+    const sites = await sitesRes.json();
+    allSitesList = sites;
+    const subs  = await subsRes.json();
 
-  document.getElementById('statSites').textContent    = sites.length;
-  const plots = sites.reduce((a,s) => a + (s.plot_count||0), 0);
-  document.getElementById('statPlots').textContent    = plots;
-  document.getElementById('statApproved').textContent = subs.filter(s=>s.status==='approved').length;
-  document.getElementById('statPending').textContent  = subs.filter(s=>s.status==='pending').length;
-  document.getElementById('statRejected').textContent = subs.filter(s=>s.status==='rejected').length;
+    document.getElementById('statSites').textContent    = sites.length;
+    const plots = sites.reduce((a,s) => a + (s.plot_count||0), 0);
+    document.getElementById('statPlots').textContent    = plots;
+    document.getElementById('statApproved').textContent = subs.filter(s=>s.status==='approved').length;
+    document.getElementById('statPending').textContent  = subs.filter(s=>s.status==='pending').length;
+    document.getElementById('statRejected').textContent = subs.filter(s=>s.status==='rejected').length;
 
-  const tbody = document.getElementById('recentSubmissions');
-  if (!subs.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div>No submissions yet</div></td></tr>'; return; }
-  tbody.innerHTML = subs.slice(0,8).map(s => `
-    <tr>
-      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
-      <td style="font-size:13px">${s.stage_name}</td>
-      <td style="font-size:13px">${s.submitted_by_name}</td>
-      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
-      <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
-    </tr>`).join('');
+    const tbody = document.getElementById('recentSubmissions');
+    if (!subs.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div>No submissions yet</div></td></tr>'; return; }
+    tbody.innerHTML = subs.slice(0,8).map(s => `
+      <tr>
+        <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
+        <td style="font-size:13px">${s.stage_name}</td>
+        <td style="font-size:13px">${s.submitted_by_name}</td>
+        <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+        <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
+      </tr>`).join('');
+  } catch(e) {
+    console.error('loadOverview error:', e);
+  }
 }
 
 // ── Sites ────────────────────────────────────────────────────────────────────
 let allSitesList = [];
 
 async function loadSites() {
-  const res   = await fetch('/pd/portal/api/sites');
-  const sites = await res.json();
-  const el    = document.getElementById('sitesList');
-  if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
+  const el = document.getElementById('sitesList');
+  el.innerHTML = '<div style="padding:20px;color:#8e8e93;font-size:14px">Loading sites…</div>';
+  try {
+    const res = await fetch('/pd/portal/api/sites');
+    if (!res.ok) throw new Error('Failed to load sites');
+    const sites = await res.json();
+    allSitesList = sites;
+    if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
+
+    // Fetch all plots for all sites in parallel — not sequential
+    const plotResults = await Promise.all(
+      sites.map(site => fetch('/pd/portal/api/plots?site_id=' + site.id).then(r => r.json()).catch(() => []))
+    );
+    const plotsBySite = {};
+    sites.forEach((site, i) => { plotsBySite[site.id] = plotResults[i] || []; });
 
   el.innerHTML = '';
   for (const site of sites) {
-    const plotsRes = await fetch('/pd/portal/api/plots?site_id=' + site.id);
-    const plots    = await plotsRes.json();
+    const plots = plotsBySite[site.id] || [];
     const isAdmin = USER_ROLE === 'tenant_admin';
     const card = document.createElement('div');
     card.className = 'card';
@@ -809,31 +821,80 @@ async function loadSites() {
       </div>`;
     el.appendChild(card);
   }
+  } catch(e) {
+    el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>Error loading sites. Please refresh.</div></div>';
+    console.error('loadSites error:', e);
+  }
 }
 
 // ── Submissions ───────────────────────────────────────────────────────────────
-async function loadSubmissions() {
+let subsOffset = 0;
+const SUBS_PAGE = 50;
+
+async function loadSubmissions(append=false) {
   const status = document.getElementById('filterStatus').value;
-  let url = '/pd/portal/api/submissions?limit=200';
+  if (!append) { subsOffset = 0; subsData = []; }
+  let url = `/pd/portal/api/submissions?limit=${SUBS_PAGE}&offset=${subsOffset}`;
   if (status) url += '&status=' + status;
-  const res  = await fetch(url);
-  subsData   = await res.json();
-  renderSubmissions();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API error');
+    const newSubs = await res.json();
+    subsData = append ? [...subsData, ...newSubs] : newSubs;
+    subsOffset += newSubs.length;
+    renderSubmissions();
+    // Show/hide load more button
+    let moreBtn = document.getElementById('subsLoadMore');
+    if (!moreBtn) {
+      moreBtn = document.createElement('div');
+      moreBtn.id = 'subsLoadMore';
+      moreBtn.style.cssText = 'text-align:center;padding:16px';
+      document.getElementById('subsTable').closest('.card').appendChild(moreBtn);
+    }
+    moreBtn.innerHTML = newSubs.length === SUBS_PAGE
+      ? `<button class="btn btn-ghost btn-sm" onclick="loadSubmissions(true)">Load more</button>`
+      : '';
+  } catch(e) {
+    console.error('loadSubmissions error:', e);
+  }
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────────
-async function loadPhotos() {
+let photosOffset = 0;
+const PHOTOS_PAGE = 60;
+
+async function loadPhotos(append=false) {
   const siteId  = document.getElementById('photoFilterSite').value;
   const stageId = document.getElementById('photoFilterStage').value;
 
-  let url = '/pd/portal/api/photos?limit=200';
+  if (!append) { photosOffset = 0; photosData = []; }
+  let url = `/pd/portal/api/photos?limit=${PHOTOS_PAGE}&offset=${photosOffset}`;
   if (siteId)  url += '&site_id=' + siteId;
   if (stageId) url += '&stage_number=' + stageId;
 
-  const res = await fetch(url);
-  allPhotos = await res.json();
-  filteredPhotos = [...allPhotos];
-  renderPhotos();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API error');
+    const newPhotos = await res.json();
+    photosData = append ? [...photosData, ...newPhotos] : newPhotos;
+    photosOffset += newPhotos.length;
+    allPhotos = photosData;
+    filteredPhotos = [...allPhotos];
+    renderPhotos();
+    // Load more button
+    let moreBtn = document.getElementById('photosLoadMore');
+    if (!moreBtn) {
+      moreBtn = document.createElement('div');
+      moreBtn.id = 'photosLoadMore';
+      moreBtn.style.cssText = 'text-align:center;padding:16px';
+      document.getElementById('photoGrid').after(moreBtn);
+    }
+    moreBtn.innerHTML = newPhotos.length === PHOTOS_PAGE
+      ? `<button class="btn btn-ghost btn-sm" onclick="loadPhotos(true)">Load more photos</button>`
+      : '';
+  } catch(e) {
+    console.error('loadPhotos error:', e);
+  }
 }
 
 function filterPhotosByKeyword() {
@@ -1317,15 +1378,13 @@ document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVis
 let clCurrentStage = null;
 let clItems = [];
 
-function initChecklistStageSelect() {
+function clInitStageSelect() {
   const sel = document.getElementById('clStageSelect');
   if (!sel) return;
-  const stages = STAGES_FULL;
-  window._clStages = stages;
-  Object.entries(stages).forEach(([num, s]) => {
+  Object.entries(STAGES_FULL).forEach(([num, s]) => {
     const opt = document.createElement('option');
     opt.value = num;
-    opt.textContent = String(num).padStart(2,'0') + ' — ' + s.name;
+    opt.textContent = String(num).padStart(2,'0') + ' — ' + s.name + ' (' + s.applies_to + ')';
     sel.appendChild(opt);
   });
 }
@@ -1336,49 +1395,47 @@ async function loadChecklistStage() {
   clCurrentStage = parseInt(num);
   document.getElementById('clEditor').style.display = 'none';
   document.getElementById('clEmpty').style.display = 'block';
-  document.getElementById('clEmpty').textContent = 'Loading...';
+  document.getElementById('clEmpty').textContent = 'Loading…';
 
-  const res = await fetch('/pd/portal/api/checklist/' + num);
-  const data = await res.json();
-  const overrides = {};
-  (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
+  try {
+    const res = await fetch('/pd/portal/api/checklist/' + num);
+    const data = await res.json();
+    const overrides = {};
+    (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
 
-  const base = window._clStages[num] || {};
-  clItems = (base.items || []).map((item, idx) => {
-    const ov = overrides[item.id] || {};
-    return {
-      item_id:        item.id,
-      text:           ov.text           !== undefined ? ov.text           : item.text,
-      photo_required: ov.photo_required !== undefined ? ov.photo_required : (item.photo !== false),
-      enabled:        ov.enabled        !== undefined ? ov.enabled        : true,
-      sort_order:     ov.sort_order     !== undefined ? ov.sort_order     : idx,
-    };
-  });
+    const base = STAGES_FULL[num] || {};
+    clItems = (base.items || []).map((item, idx) => {
+      const ov = overrides[item.id] || {};
+      return {
+        item_id:        item.id,
+        text:           ov.text           !== undefined ? ov.text           : item.text,
+        photo_required: ov.photo_required !== undefined ? ov.photo_required : (item.photo !== false),
+        enabled:        ov.enabled        !== undefined ? ov.enabled        : true,
+        sort_order:     ov.sort_order     !== undefined ? ov.sort_order     : idx,
+      };
+    });
 
-  // Custom items added via overrides
-  const baseIds = new Set((base.items||[]).map(i => i.id));
-  Object.values(overrides).forEach(ov => {
-    if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_')) {
-      clItems.push({
-        item_id: ov.item_id,
-        text: ov.text || '',
-        photo_required: ov.photo_required !== false,
-        enabled: ov.enabled !== false,
-        sort_order: ov.sort_order || 999,
-      });
-    }
-  });
-  clItems.sort((a,b) => a.sort_order - b.sort_order);
+    // Include any custom items from overrides
+    const baseIds = new Set((base.items||[]).map(i => i.id));
+    Object.values(overrides).forEach(ov => {
+      if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_')) {
+        clItems.push({ item_id: ov.item_id, text: ov.text||'', photo_required: ov.photo_required!==false, enabled: ov.enabled!==false, sort_order: ov.sort_order||999 });
+      }
+    });
+    clItems.sort((a,b) => a.sort_order - b.sort_order);
 
-  document.getElementById('clStageName').textContent =
-    String(num).padStart(2,'0') + ' — ' + (base.name||'') + ' (' + (base.applies_to||'') + ')';
-  document.getElementById('clResetBtn').style.display = 'inline-flex';
-  renderChecklistItems();
-  document.getElementById('clEditor').style.display = 'block';
-  document.getElementById('clEmpty').style.display = 'none';
+    document.getElementById('clStageName').textContent = String(num).padStart(2,'0') + ' — ' + (base.name||'') + ' (' + (base.applies_to||'') + ')';
+    document.getElementById('clResetBtn').style.display = 'inline-flex';
+    clRender();
+    document.getElementById('clEditor').style.display = 'block';
+    document.getElementById('clEmpty').style.display = 'none';
+  } catch(e) {
+    document.getElementById('clEmpty').textContent = 'Error loading stage. Please try again.';
+    console.error('loadChecklistStage error:', e);
+  }
 }
 
-function renderChecklistItems() {
+function clRender() {
   const container = document.getElementById('clItems');
   container.innerHTML = '';
   clItems.forEach((item, idx) => {
@@ -1387,10 +1444,8 @@ function renderChecklistItems() {
     row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7';
 
     const enabledCb = document.createElement('input');
-    enabledCb.type = 'checkbox';
-    enabledCb.checked = item.enabled;
-    enabledCb.title = 'Enabled';
-    enabledCb.style.cssText = 'width:16px;height:16px;cursor:pointer;margin-top:6px;flex-shrink:0';
+    enabledCb.type = 'checkbox'; enabledCb.checked = item.enabled; enabledCb.title = 'Enabled';
+    enabledCb.style.cssText = 'width:16px;height:16px;cursor:pointer;margin-top:8px;flex-shrink:0';
     enabledCb.addEventListener('change', function() {
       clItems[idx].enabled = this.checked;
       textInput.style.color = this.checked ? '#1c1c1e' : '#8e8e93';
@@ -1398,14 +1453,12 @@ function renderChecklistItems() {
     });
 
     const textInput = document.createElement('input');
-    textInput.type = 'text';
-    textInput.value = item.text;
+    textInput.type = 'text'; textInput.value = item.text;
     textInput.style.cssText = 'width:100%;padding:7px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:' + (item.enabled?'#fff':'#f9f9fb') + ';color:' + (item.enabled?'#1c1c1e':'#8e8e93');
     textInput.addEventListener('input', function() { clItems[idx].text = this.value; });
 
     const photoCb = document.createElement('input');
-    photoCb.type = 'checkbox';
-    photoCb.checked = item.photo_required;
+    photoCb.type = 'checkbox'; photoCb.checked = item.photo_required;
     photoCb.addEventListener('change', function() { clItems[idx].photo_required = this.checked; });
 
     const photoLabel = document.createElement('label');
@@ -1419,9 +1472,8 @@ function renderChecklistItems() {
 
     if (isCustom) {
       const removeBtn = document.createElement('button');
-      removeBtn.textContent = 'Remove';
-      removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
-      removeBtn.addEventListener('click', function() { clItems.splice(idx,1); renderChecklistItems(); });
+      removeBtn.textContent = '✕ Remove'; removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
+      removeBtn.addEventListener('click', function() { clItems.splice(idx,1); clRender(); });
       meta.appendChild(removeBtn);
     }
 
@@ -1436,42 +1488,35 @@ function renderChecklistItems() {
   });
 }
 
-function addChecklistItem() {
+function clAddItem() {
   if (!clCurrentStage) return;
-  const newId = 'custom_' + clCurrentStage + '_' + Date.now();
-  clItems.push({ item_id: newId, text: '', photo_required: true, enabled: true, sort_order: clItems.length });
-  renderChecklistItems();
+  clItems.push({ item_id: 'custom_' + clCurrentStage + '_' + Date.now(), text: '', photo_required: true, enabled: true, sort_order: clItems.length });
+  clRender();
   const inputs = document.getElementById('clItems').querySelectorAll('input[type=text]');
   if (inputs.length) inputs[inputs.length-1].focus();
 }
 
-async function saveChecklist() {
+async function clSave() {
   if (!clCurrentStage) return;
-  const payload = clItems.map((item, idx) => ({
-    item_id:        item.item_id,
-    text:           item.text,
-    photo_required: item.photo_required,
-    enabled:        item.enabled,
-    sort_order:     idx,
-  }));
-  const res = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (data.ok) { showToast('Checklist saved'); }
-  else { showToast('Error: ' + (data.error || 'unknown'), true); }
+  try {
+    const res = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(clItems.map((item,idx) => ({ ...item, sort_order: idx }))),
+    });
+    const data = await res.json();
+    if (data.ok) showToast('Checklist saved');
+    else showToast('Error: ' + (data.error||'unknown'), true);
+  } catch(e) { showToast('Save failed', true); }
 }
 
-async function resetStage() {
-  if (!clCurrentStage) return;
-  if (!confirm('Reset Stage ' + clCurrentStage + ' to default? All custom changes will be lost.')) return;
+async function clResetStage() {
+  if (!clCurrentStage || !confirm('Reset Stage ' + clCurrentStage + ' to default? All custom changes will be lost.')) return;
   await fetch('/pd/portal/api/checklist/' + clCurrentStage + '/reset', { method: 'DELETE' });
   showToast('Stage reset to default');
   loadChecklistStage();
 }
 
-document.addEventListener('DOMContentLoaded', initChecklistStageSelect);
+document.addEventListener('DOMContentLoaded', clInitStageSelect);
 </script>
 </body>
 </html>
