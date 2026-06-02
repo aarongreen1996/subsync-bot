@@ -2860,3 +2860,5 @@ def send_reminder_message(from_number, log_id, description):
                   "\n\nReply done if sorted, or snooze to remind you tomorrow."))
     except Exception as e:
         print("Reminder send error:", e)
+from perfect_delivery import pd_bp, portal_bp, superadmin_bp
+app.register_blueprint(superadmin_bp)
