@@ -81,7 +81,11 @@
   <div class="qr-grid" id="qrGrid">
     {% for plot in plots %}
     <div class="qr-card">
+      {% if admin_key %}
       <img src="/pd/admin/qr/{{ plot.id }}?key={{ admin_key }}&inline=1" alt="QR Plot {{ plot.plot_number }}" loading="lazy">
+      {% else %}
+      <img src="/pd/portal/qr/{{ plot.id }}?inline=1" alt="QR Plot {{ plot.plot_number }}" loading="lazy">
+      {% endif %}
       <div class="qr-plot">Plot {{ plot.plot_number }}</div>
       <div class="qr-site">{{ site.name }}</div>
       <div class="qr-status">{{ plot.status | capitalize }}</div>
