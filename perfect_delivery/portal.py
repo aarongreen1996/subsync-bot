@@ -31,7 +31,6 @@ def _hash_password(password: str) -> str:
 
 _tenant_cache: dict = {}
 _tenant_cache_ts: float = 0.0
-
 def _get_tenant() -> dict:
     import time
     global _tenant_cache, _tenant_cache_ts
@@ -175,6 +174,27 @@ def signout():
 
 
 
+@portal_bp.route("/api/plots/<plot_id>/status", methods=["PUT"])
+@_require_admin_role
+def api_plot_status(user, plot_id):
+    """Update plot lifecycle status."""
+    data   = request.get_json() or {}
+    status = data.get("status", "")
+    valid  = ["active", "snagged", "complete", "handed-over", "on-hold"]
+    if status not in valid:
+        return jsonify({"ok": False, "error": f"Status must be one of: {', '.join(valid)}"}), 400
+    tenant = _get_tenant()
+    try:
+        res = supabase.table("pd_plots").select("id, pd_sites(tenant_id)").eq("id", plot_id).single().execute()
+        if not res.data or res.data.get("pd_sites", {}).get("tenant_id") != tenant.get("id"):
+            return jsonify({"ok": False, "error": "Not found"}), 404
+    except Exception:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    supabase.table("pd_plots").update({"status": status}).eq("id", plot_id).execute()
+    return jsonify({"ok": True})
+
+
+
 # ── Password Reset ────────────────────────────────────────────────────────────
 
 @portal_bp.route("/forgot-password", methods=["POST"])
@@ -207,7 +227,6 @@ def forgot_password():
 @portal_bp.route("/forgot-password/link", methods=["POST"])
 @_require_admin_role
 def forgot_password_admin_link(user):
-    """Admin-only: generate a reset link without sending email."""
     data  = request.get_json() or {}
     email = (data.get("email") or "").strip().lower()
     if not email:
@@ -289,7 +308,7 @@ def api_admin_reset_password(user, user_id):
     return jsonify({"ok": True})
 
 
-# ── Checklist Editor API (tenant_admin only) ──────────────────────────────────
+# ── Checklist Editor API ──────────────────────────────────────────────────────
 
 @portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
 @_require_admin_role
@@ -950,9 +969,7 @@ def plot_report(user, plot_id):
         try:
             apr = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
             for p in (apr.data or []):
-                sid = p["submission_id"]
-                if sid not in all_photos_map: all_photos_map[sid] = {}
-                all_photos_map[sid][p["item_id"]] = p["public_url"]
+                all_photos_map.setdefault(p["submission_id"], {})[p["item_id"]] = p["public_url"]
         except Exception:
             pass
 
@@ -1080,17 +1097,15 @@ def api_sites(user):
         sites = res.data or []
 
         if sites:
-            site_ids_list = [s["id"] for s in sites]
             try:
-                all_plots = supabase.table("pd_plots").select("site_id").in_("site_id", site_ids_list).execute()
+                all_plots = supabase.table("pd_plots").select("site_id").in_("site_id", [s["id"] for s in sites]).execute()
                 plot_counts = {}
                 for p in (all_plots.data or []):
                     plot_counts[p["site_id"]] = plot_counts.get(p["site_id"], 0) + 1
                 for site in sites:
                     site["plot_count"] = plot_counts.get(site["id"], 0)
             except Exception:
-                for site in sites:
-                    site["plot_count"] = 0
+                for site in sites: site["plot_count"] = 0
         return jsonify(sites)
     except Exception as e:
         print(f"api_sites error: {e}")
@@ -1116,19 +1131,15 @@ def api_plots(user):
         plots.sort(key=plot_sort_key)
 
         if plots:
-            plot_ids = [p["id"] for p in plots]
             try:
-                subs_res = supabase.table("pd_submissions").select("plot_id, stage_number").in_("plot_id", plot_ids).eq("status", "approved").execute()
+                subs_res = supabase.table("pd_submissions").select("plot_id, stage_number").in_("plot_id", [p["id"] for p in plots]).eq("status", "approved").execute()
                 approved_map = {}
                 for s in (subs_res.data or []):
-                    pid = s["plot_id"]
-                    if pid not in approved_map: approved_map[pid] = set()
-                    approved_map[pid].add(s["stage_number"])
+                    approved_map.setdefault(s["plot_id"], set()).add(s["stage_number"])
                 for plot in plots:
                     plot["approved_count"] = len(approved_map.get(plot["id"], set()))
             except Exception:
-                for plot in plots:
-                    plot["approved_count"] = 0
+                for plot in plots: plot["approved_count"] = 0
         return jsonify(plots)
     except Exception as e:
         print(f"api_plots error: {e}")
@@ -1159,6 +1170,11 @@ def api_submissions(user):
             try: site_ids = json.loads(site_ids)
             except: site_ids = []
         subs = [s for s in subs if s.get("pd_plots", {}).get("site_id") in site_ids]
+
+    # Optional site filter from UI
+    site_id_filter = request.args.get("site_id")
+    if site_id_filter:
+        subs = [s for s in subs if s.get("pd_plots", {}).get("site_id") == site_id_filter]
 
     return jsonify(subs)
 
