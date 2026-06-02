@@ -197,7 +197,6 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0}}
 
 
 def send_password_reset(to_email: str, user_name: str, reset_url: str):
-    """Send password reset email."""
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1c1c1e">
       <div style="background:#1a1a2e;padding:28px 32px;border-radius:12px 12px 0 0">
@@ -206,17 +205,13 @@ def send_password_reset(to_email: str, user_name: str, reset_url: str):
       </div>
       <div style="background:#f9f9fb;padding:28px 32px;border-radius:0 0 12px 12px;border:1px solid #e5e5ea;border-top:none">
         <p style="margin:0 0 16px">Hi {user_name},</p>
-        <p style="margin:0 0 24px;color:#636366">A password reset was requested for your account. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+        <p style="margin:0 0 24px;color:#636366">A password reset was requested. Click below to set a new password. This link expires in <strong>1 hour</strong>.</p>
         <div style="text-align:center;margin:28px 0">
-          <a href="{reset_url}" style="background:#1a1a2e;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">
-            Reset My Password
-          </a>
+          <a href="{reset_url}" style="background:#1a1a2e;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Reset My Password</a>
         </div>
-        <p style="margin:24px 0 0;font-size:13px;color:#8e8e93">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+        <p style="margin:24px 0 0;font-size:13px;color:#8e8e93">If you didn't request this, ignore this email.</p>
         <hr style="border:none;border-top:1px solid #e5e5ea;margin:20px 0">
-        <p style="margin:0;font-size:12px;color:#c7c7cc">If the button doesn't work, copy this link:<br>
-        <a href="{reset_url}" style="color:#636366;word-break:break-all">{reset_url}</a></p>
+        <p style="margin:0;font-size:12px;color:#c7c7cc">Or copy: <a href="{reset_url}" style="color:#636366;word-break:break-all">{reset_url}</a></p>
       </div>
-    </div>
-    """
+    </div>"""
     _send(to_email, "Reset your Perfect Delivery password", html)
