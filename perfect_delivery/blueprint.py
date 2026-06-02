@@ -353,10 +353,8 @@ def resubmit_form(resubmit_token: str):
 
 @pd_bp.route("/admin")
 def admin():
-    _require_admin()
-    sites = supabase.table("pd_sites").select("*").order("name").execute().data or []
-    plots = supabase.table("pd_plots").select("*, pd_sites(name)").order("created_at", desc=True).execute().data or []
-    return render_template("pd/admin.html", sites=sites, plots=plots, admin_key=ADMIN_KEY)
+    """Legacy admin URL — redirect to secure portal."""
+    return redirect("/pd/portal", code=302)
 
 
 @pd_bp.route("/admin/sites", methods=["POST"])
