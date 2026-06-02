@@ -84,7 +84,7 @@
   </div>
   <div class="header-right">
     <p>Admin Panel</p>
-
+    
   </div>
 </div>
 
@@ -166,7 +166,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Plot</th><th>Site</th><th>Status</th><th>QR Code</th><th>Form Link</th></tr>
+            <tr><th>Plot</th><th>Site</th><th>Status</th><th>QR Code</th></tr>
           </thead>
           <tbody id="plotsTableBody">
             {% if plots %}
@@ -401,8 +401,7 @@ async function createPlot() {
         <a href="/pd/admin/qr/${p.id}?key=${ADMIN_KEY}" class="btn btn-qr btn-sm" download>View QR</a>
         <a href="/pd/admin/plot/${p.id}/progress?key=${ADMIN_KEY}" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">📊 Progress</a>
         <a href="/pd/admin/plot/${p.id}/report?key=${ADMIN_KEY}" target="_blank" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
-      </td>
-`;
+      </td>`;
     const emptyRow = tbody.querySelector('td[colspan]');
     if (emptyRow) emptyRow.parentElement.remove();
     tbody.insertBefore(tr, tbody.firstChild);
@@ -416,12 +415,10 @@ async function createPlot() {
 
 // ── Load Submissions ─────────────────────────────────────────
 async function loadSubmissions() {
-  const plotId  = document.getElementById('filterPlot').value;
-  const statusF = document.getElementById('filterStatus')?.value || '';
+  const plotId = document.getElementById('filterPlot').value;
   document.getElementById('loadingIndicator').style.display = 'block';
   let url = '/pd/admin/submissions?key=' + ADMIN_KEY;
-  if (plotId)  url += '&plot_id=' + plotId;
-  if (statusF) url += '&status=' + statusF;
+  if (plotId) url += '&plot_id=' + plotId;
   const res = await fetch(url);
   const subs = await res.json();
   document.getElementById('loadingIndicator').style.display = 'none';
