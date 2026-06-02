@@ -189,6 +189,14 @@ def dashboard(user):
         str(k): {"name": v["name"]}
         for k, v in STAGES.items()
     })
+    stages_full_json = json.dumps({
+        str(k): {
+            "name": v["name"],
+            "applies_to": v.get("applies_to", ""),
+            "items": [{"id": i["id"], "text": i["text"], "photo": i.get("photo", True)} for i in v.get("items", [])]
+        }
+        for k, v in STAGES.items()
+    })
 
     return render_template(
         "pd/portal_dashboard.html",
@@ -197,6 +205,7 @@ def dashboard(user):
         sites=sites,
         sites_json=sites_json,
         stages_json=stages_json,
+        stages_full_json=stages_full_json,
         admin_key=ADMIN_KEY,
     )
 
@@ -1013,6 +1022,69 @@ def api_photos(user):
 
     photos.sort(key=lambda p: (p.get("stage_number", 0), p.get("submitted_at", "")))
     return jsonify(photos)
+
+
+
+# ── Checklist Editor API (tenant_admin only) ─────────────────────────────────
+
+@portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
+@_require_admin_role
+def api_checklist_get(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"overrides": []})
+    res = supabase.table("pd_checklist_overrides").select("*").eq(
+        "tenant_id", tenant_id
+    ).eq("stage_number", stage_number).execute()
+    return jsonify({"overrides": res.data or []})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>", methods=["POST"])
+@_require_admin_role
+def api_checklist_save(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"ok": False, "error": "No tenant"}), 400
+
+    items = request.get_json() or []
+    if not isinstance(items, list):
+        items = [items]
+
+    from datetime import datetime, timezone
+    for item in items:
+        item_id = item.get("item_id")
+        if not item_id:
+            continue
+        record = {
+            "tenant_id":    tenant_id,
+            "stage_number": stage_number,
+            "item_id":      item_id,
+            "updated_at":   datetime.now(timezone.utc).isoformat(),
+        }
+        if "text"           in item: record["text"]           = item["text"]
+        if "photo_required" in item: record["photo_required"] = item["photo_required"]
+        if "enabled"        in item: record["enabled"]        = item["enabled"]
+        if "sort_order"     in item: record["sort_order"]     = item["sort_order"]
+
+        supabase.table("pd_checklist_overrides").upsert(
+            record, on_conflict="tenant_id,stage_number,item_id"
+        ).execute()
+
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>/reset", methods=["DELETE"])
+@_require_admin_role
+def api_checklist_reset(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if tenant_id:
+        supabase.table("pd_checklist_overrides").delete().eq(
+            "tenant_id", tenant_id
+        ).eq("stage_number", stage_number).execute()
+    return jsonify({"ok": True})
 
 
 # ── User management API ───────────────────────────────────────────────────────
