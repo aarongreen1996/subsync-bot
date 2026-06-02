@@ -262,6 +262,9 @@
     <a class="nav-item" onclick="showPage('users', this)">
       <span class="nav-icon">👥</span> Users
     </a>
+    <a class="nav-item" onclick="showPage('checklist', this)">
+      <span class="nav-icon">📋</span> Checklist Editor
+    </a>
     <a class="nav-item" onclick="showPage('settings', this)">
       <span class="nav-icon">⚙️</span> Settings
     </a>
@@ -383,6 +386,36 @@
         </table>
       </div>
     </div>
+  </div>
+
+
+  <!-- Checklist Editor (tenant_admin only) -->
+  <div class="page" id="page-checklist">
+    <div class="page-title">Checklist Editor</div>
+    <div class="page-sub">Customise stage checklist items for your company. Changes apply to all future submissions.</div>
+
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <select id="clStageSelect" onchange="loadChecklistStage()" style="padding:8px 14px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:240px">
+        <option value="">Select a stage…</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="resetStage()" id="clResetBtn" style="display:none">↩ Reset to default</button>
+    </div>
+
+    <div id="clEditor" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" id="clStageName"></span>
+          <button class="btn btn-primary btn-sm" onclick="saveChecklist()">Save changes</button>
+        </div>
+        <div class="card-body">
+          <div id="clItems"></div>
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f2f2f7">
+            <button class="btn btn-ghost btn-sm" onclick="addChecklistItem()">+ Add item</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="clEmpty" style="color:#8e8e93;font-size:14px;padding:20px 0">Select a stage above to edit its checklist items.</div>
   </div>
 
   <!-- Settings -->
@@ -998,6 +1031,7 @@ function initPhotoFilters() {
   });
   const stageSelect = document.getElementById('photoFilterStage');
   const STAGE_NAMES = {{ stages_json | safe }};
+  const STAGES_FULL = {{ stages_full_json | safe }};
   Object.entries(STAGE_NAMES).forEach(([num, stage]) => {
     const o = document.createElement('option');
     o.value = num;
@@ -1278,6 +1312,166 @@ function updateSiteAssignVisibility() {
 }
 
 document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVisibility);
+
+// ── Checklist Editor ─────────────────────────────────────────────────────────
+let clCurrentStage = null;
+let clItems = [];
+
+function initChecklistStageSelect() {
+  const sel = document.getElementById('clStageSelect');
+  if (!sel) return;
+  const stages = STAGES_FULL;
+  window._clStages = stages;
+  Object.entries(stages).forEach(([num, s]) => {
+    const opt = document.createElement('option');
+    opt.value = num;
+    opt.textContent = String(num).padStart(2,'0') + ' — ' + s.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadChecklistStage() {
+  const num = document.getElementById('clStageSelect').value;
+  if (!num) return;
+  clCurrentStage = parseInt(num);
+  document.getElementById('clEditor').style.display = 'none';
+  document.getElementById('clEmpty').style.display = 'block';
+  document.getElementById('clEmpty').textContent = 'Loading...';
+
+  const res = await fetch('/pd/portal/api/checklist/' + num);
+  const data = await res.json();
+  const overrides = {};
+  (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
+
+  const base = window._clStages[num] || {};
+  clItems = (base.items || []).map((item, idx) => {
+    const ov = overrides[item.id] || {};
+    return {
+      item_id:        item.id,
+      text:           ov.text           !== undefined ? ov.text           : item.text,
+      photo_required: ov.photo_required !== undefined ? ov.photo_required : (item.photo !== false),
+      enabled:        ov.enabled        !== undefined ? ov.enabled        : true,
+      sort_order:     ov.sort_order     !== undefined ? ov.sort_order     : idx,
+    };
+  });
+
+  // Custom items added via overrides
+  const baseIds = new Set((base.items||[]).map(i => i.id));
+  Object.values(overrides).forEach(ov => {
+    if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_')) {
+      clItems.push({
+        item_id: ov.item_id,
+        text: ov.text || '',
+        photo_required: ov.photo_required !== false,
+        enabled: ov.enabled !== false,
+        sort_order: ov.sort_order || 999,
+      });
+    }
+  });
+  clItems.sort((a,b) => a.sort_order - b.sort_order);
+
+  document.getElementById('clStageName').textContent =
+    String(num).padStart(2,'0') + ' — ' + (base.name||'') + ' (' + (base.applies_to||'') + ')';
+  document.getElementById('clResetBtn').style.display = 'inline-flex';
+  renderChecklistItems();
+  document.getElementById('clEditor').style.display = 'block';
+  document.getElementById('clEmpty').style.display = 'none';
+}
+
+function renderChecklistItems() {
+  const container = document.getElementById('clItems');
+  container.innerHTML = '';
+  clItems.forEach((item, idx) => {
+    const isCustom = item.item_id.startsWith('custom_');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7';
+
+    const enabledCb = document.createElement('input');
+    enabledCb.type = 'checkbox';
+    enabledCb.checked = item.enabled;
+    enabledCb.title = 'Enabled';
+    enabledCb.style.cssText = 'width:16px;height:16px;cursor:pointer;margin-top:6px;flex-shrink:0';
+    enabledCb.addEventListener('change', function() {
+      clItems[idx].enabled = this.checked;
+      textInput.style.color = this.checked ? '#1c1c1e' : '#8e8e93';
+      textInput.style.background = this.checked ? '#fff' : '#f9f9fb';
+    });
+
+    const textInput = document.createElement('input');
+    textInput.type = 'text';
+    textInput.value = item.text;
+    textInput.style.cssText = 'width:100%;padding:7px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:' + (item.enabled?'#fff':'#f9f9fb') + ';color:' + (item.enabled?'#1c1c1e':'#8e8e93');
+    textInput.addEventListener('input', function() { clItems[idx].text = this.value; });
+
+    const photoCb = document.createElement('input');
+    photoCb.type = 'checkbox';
+    photoCb.checked = item.photo_required;
+    photoCb.addEventListener('change', function() { clItems[idx].photo_required = this.checked; });
+
+    const photoLabel = document.createElement('label');
+    photoLabel.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;color:#636366;cursor:pointer';
+    photoLabel.appendChild(photoCb);
+    photoLabel.appendChild(document.createTextNode('Photo required'));
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'display:flex;gap:12px;margin-top:6px;align-items:center';
+    meta.appendChild(photoLabel);
+
+    if (isCustom) {
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = 'Remove';
+      removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
+      removeBtn.addEventListener('click', function() { clItems.splice(idx,1); renderChecklistItems(); });
+      meta.appendChild(removeBtn);
+    }
+
+    const right = document.createElement('div');
+    right.style.flex = '1';
+    right.appendChild(textInput);
+    right.appendChild(meta);
+
+    row.appendChild(enabledCb);
+    row.appendChild(right);
+    container.appendChild(row);
+  });
+}
+
+function addChecklistItem() {
+  if (!clCurrentStage) return;
+  const newId = 'custom_' + clCurrentStage + '_' + Date.now();
+  clItems.push({ item_id: newId, text: '', photo_required: true, enabled: true, sort_order: clItems.length });
+  renderChecklistItems();
+  const inputs = document.getElementById('clItems').querySelectorAll('input[type=text]');
+  if (inputs.length) inputs[inputs.length-1].focus();
+}
+
+async function saveChecklist() {
+  if (!clCurrentStage) return;
+  const payload = clItems.map((item, idx) => ({
+    item_id:        item.item_id,
+    text:           item.text,
+    photo_required: item.photo_required,
+    enabled:        item.enabled,
+    sort_order:     idx,
+  }));
+  const res = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (data.ok) { showToast('Checklist saved'); }
+  else { showToast('Error: ' + (data.error || 'unknown'), true); }
+}
+
+async function resetStage() {
+  if (!clCurrentStage) return;
+  if (!confirm('Reset Stage ' + clCurrentStage + ' to default? All custom changes will be lost.')) return;
+  await fetch('/pd/portal/api/checklist/' + clCurrentStage + '/reset', { method: 'DELETE' });
+  showToast('Stage reset to default');
+  loadChecklistStage();
+}
+
+document.addEventListener('DOMContentLoaded', initChecklistStageSelect);
 </script>
 </body>
 </html>
