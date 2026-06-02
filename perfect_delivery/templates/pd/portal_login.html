@@ -141,7 +141,7 @@
 </div>
 
 <!-- Forgot password modal -->
-<div id="forgotOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)hideForgot()">
+<div id="forgotOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)hideForgot()">
   <div style="background:#fff;border-radius:16px;padding:28px 32px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.18)">
     <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Reset your password</h3>
     <p style="font-size:13px;color:#636366;margin-bottom:20px">Enter your email and we'll send you a reset link valid for 1 hour.</p>
@@ -149,8 +149,8 @@
       style="width:100%;padding:11px 14px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:15px;outline:none;margin-bottom:14px"
       onkeydown="if(event.key==='Enter')sendReset()">
     <div id="forgotErr" style="font-size:13px;color:#c0392b;margin-bottom:10px;display:none"></div>
-    <div id="forgotOk" style="font-size:13px;color:#166534;background:#f0fdf4;padding:10px 14px;border-radius:8px;margin-bottom:10px;display:none">
-      ✓ If that email exists, a reset link is on its way. Check your inbox.
+    <div id="forgotOk" style="font-size:13px;color:#166534;background:#f0fdf4;padding:10px 14px;border-radius:8px;margin-bottom:14px;display:none">
+      &#10003; If that email exists, a reset link is on its way. Check your inbox.
     </div>
     <div style="display:flex;gap:10px">
       <button onclick="hideForgot()" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:14px;cursor:pointer">Cancel</button>
@@ -200,7 +200,8 @@ async function signIn() {
 }
 
 function showForgot() {
-  document.getElementById('forgotOverlay').style.display = 'flex';
+  const ov = document.getElementById('forgotOverlay');
+  ov.style.display = 'flex';
   document.getElementById('forgotEmail').value = document.getElementById('email').value || '';
   document.getElementById('forgotErr').style.display = 'none';
   document.getElementById('forgotOk').style.display = 'none';
@@ -218,32 +219,20 @@ async function sendReset() {
   const err   = document.getElementById('forgotErr');
   const ok    = document.getElementById('forgotOk');
   const btn   = document.getElementById('forgotBtn');
-
-  err.style.display = 'none';
-  ok.style.display  = 'none';
-
-  if (!email) {
-    err.textContent = 'Please enter your email address.';
-    err.style.display = 'block'; return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-
+  err.style.display = 'none'; ok.style.display = 'none';
+  if (!email) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
   try {
     await fetch('/pd/portal/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ email }),
     });
-    // Always show success (don't leak if email exists)
     ok.style.display = 'block';
     btn.textContent = 'Sent';
   } catch(e) {
     err.textContent = 'Network error. Please try again.';
     err.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Send link';
+    btn.disabled = false; btn.textContent = 'Send link';
   }
 }
 </script>
