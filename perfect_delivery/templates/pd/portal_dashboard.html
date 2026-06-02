@@ -328,6 +328,9 @@
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
+          <select id="filterSite" onchange="loadSubmissions()" style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb">
+            <option value="">All sites</option>
+          </select>
         </div>
       </div>
       <div class="table-wrap">
@@ -391,7 +394,7 @@
   <!-- Checklist Editor -->
   <div class="page" id="page-checklist">
     <div class="page-title">Checklist Editor</div>
-    <div class="page-sub">Customise stage checklist items. Changes apply to your company only and take effect immediately.</div>
+    <div class="page-sub">Customise stage checklist items. Changes apply to your company only.</div>
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
       <select id="clStageSelect" onchange="loadChecklistStage()" style="padding:8px 14px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:260px">
         <option value="">Select a stage to edit…</option>
@@ -706,7 +709,7 @@ function showPage(name, el) {
   if (el) el.classList.add('active');
   if (name === 'overview')    loadOverview();
   if (name === 'sites')       loadSites();
-  if (name === 'submissions') loadSubmissions();
+  if (name === 'submissions') { populateSubsSiteFilter(); loadSubmissions(); }
   if (name === 'photos')      loadPhotos();
   if (name === 'users')       loadUsers();
 }
@@ -751,9 +754,7 @@ async function loadOverview() {
         <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
         <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
       </tr>`).join('');
-  } catch(e) {
-    console.error('loadOverview error:', e);
-  }
+  } catch(e) { console.error('loadOverview:', e); }
 }
 
 // ── Sites ────────────────────────────────────────────────────────────────────
@@ -761,15 +762,14 @@ let allSitesList = [];
 
 async function loadSites() {
   const el = document.getElementById('sitesList');
-  el.innerHTML = '<div style="padding:24px;color:#8e8e93;font-size:14px;text-align:center">Loading sites…</div>';
+  el.innerHTML = '<div style="padding:24px;color:#8e8e93;font-size:14px;text-align:center">Loading…</div>';
   try {
     const res = await fetch('/pd/portal/api/sites');
-    if (!res.ok) throw new Error('Failed to load sites');
+    if (!res.ok) throw new Error('Failed');
     const sites = await res.json();
     allSitesList = sites;
     if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
 
-    // Fetch all plots in parallel — not one by one
     const plotResults = await Promise.all(
       sites.map(site => fetch('/pd/portal/api/plots?site_id=' + site.id)
         .then(r => r.ok ? r.json() : []).catch(() => []))
@@ -806,6 +806,13 @@ async function loadSites() {
               <p>${p.approved_count||0} of 37 stages approved</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select onchange="updatePlotStatus('${p.id}',this.value)" style="font-size:11px;padding:3px 6px;border:1px solid #e5e5ea;border-radius:6px;background:#f9f9fb;cursor:pointer" title="Plot status">
+                <option value="active" ${(p.status||'active')==='active'?'selected':''}>Active</option>
+                <option value="snagged" ${p.status==='snagged'?'selected':''}>Snagged</option>
+                <option value="complete" ${p.status==='complete'?'selected':''}>Complete</option>
+                <option value="handed-over" ${p.status==='handed-over'?'selected':''}>Handed over</option>
+                <option value="on-hold" ${p.status==='on-hold'?'selected':''}>On hold</option>
+              </select>
               <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
               <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
               <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
@@ -822,8 +829,8 @@ async function loadSites() {
     el.appendChild(card);
   }
   } catch(e) {
-    el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>Error loading sites. <button class="btn btn-ghost btn-sm" onclick="loadSites()">Retry</button></div></div>';
-    console.error('loadSites error:', e);
+    document.getElementById('sitesList').innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>Error loading. <button class="btn btn-ghost btn-sm" onclick="loadSites()">Retry</button></div></div>';
+    console.error('loadSites:', e);
   }
 }
 
@@ -831,11 +838,23 @@ async function loadSites() {
 let subsOffset = 0;
 const SUBS_PAGE = 50;
 
+function populateSubsSiteFilter() {
+  const sel = document.getElementById('filterSite');
+  if (!sel || sel.options.length > 1) return;
+  (allSitesList || []).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+}
+
 async function loadSubmissions(append=false) {
   const status = document.getElementById('filterStatus').value;
+  const siteId = document.getElementById('filterSite')?.value || '';
   if (!append) { subsOffset = 0; subsData = []; }
   let url = `/pd/portal/api/submissions?limit=${SUBS_PAGE}&offset=${subsOffset}`;
   if (status) url += '&status=' + status;
+  if (siteId) url += '&site_id=' + siteId;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('API error');
@@ -852,7 +871,7 @@ async function loadSubmissions(append=false) {
     }
     moreBtn.innerHTML = newSubs.length === SUBS_PAGE
       ? `<button class="btn btn-ghost btn-sm" onclick="loadSubmissions(true)">Load more</button>` : '';
-  } catch(e) { console.error('loadSubmissions error:', e); }
+  } catch(e) { console.error('loadSubmissions:', e); }
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────────
@@ -862,12 +881,10 @@ const PHOTOS_PAGE = 60;
 async function loadPhotos(append=false) {
   const siteId  = document.getElementById('photoFilterSite').value;
   const stageId = document.getElementById('photoFilterStage').value;
-
   if (!append) { photosOffset = 0; allPhotos = []; }
   let url = `/pd/portal/api/photos?limit=${PHOTOS_PAGE}&offset=${photosOffset}`;
   if (siteId)  url += '&site_id=' + siteId;
   if (stageId) url += '&stage_number=' + stageId;
-
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('API error');
@@ -885,7 +902,7 @@ async function loadPhotos(append=false) {
     }
     moreBtn.innerHTML = newPhotos.length === PHOTOS_PAGE
       ? `<button class="btn btn-ghost btn-sm" onclick="loadPhotos(true)">Load more photos</button>` : '';
-  } catch(e) { console.error('loadPhotos error:', e); }
+  } catch(e) { console.error('loadPhotos:', e); }
 }
 
 function filterPhotosByKeyword() {
@@ -948,7 +965,7 @@ async function loadUsers() {
       <td style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick='editUser(${JSON.stringify(u)})'>Edit</button>
         <button class="btn btn-ghost btn-sm" onclick="adminResetPassword('${u.id}','${u.name}')">&#128273; Reset pw</button>
-        <button class="btn btn-ghost btn-sm" onclick="adminCopyResetLink('${u.email}','${u.name}')">&#128279; Reset link</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminCopyResetLink('${u.email}','${u.name}')">&#128279; Copy link</button>
         <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteUser('${u.id}','${u.name}')">Delete</button>
       </td>
     </tr>`).join('');
@@ -1367,6 +1384,19 @@ function updateSiteAssignVisibility() {
 
 document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVisibility);
 
+// ── Plot status update ────────────────────────────────────────────────────────
+async function updatePlotStatus(plotId, status) {
+  try {
+    const res = await fetch(`/pd/portal/api/plots/${plotId}/status`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status }),
+    });
+    const data = await res.json();
+    if (data.ok) showToast('Plot status updated');
+    else showToast('Error: ' + (data.error||'unknown'), true);
+  } catch(e) { showToast('Update failed', true); }
+}
+
 // ── Admin password management ─────────────────────────────────────────────────
 async function adminResetPassword(id, name) {
   const pw = prompt(`Set a new password for ${name}:\n(minimum 8 characters)`);
@@ -1390,13 +1420,9 @@ async function adminCopyResetLink(email, name) {
     const data = await res.json();
     if (data.ok) {
       await navigator.clipboard.writeText(data.url);
-      showToast(`Reset link copied for ${name} — send it to them directly`);
-    } else {
-      showToast('Error: ' + (data.error||'unknown'), true);
-    }
-  } catch(e) {
-    showToast('Could not copy link', true);
-  }
+      showToast(`Reset link copied for ${name} — paste it to them directly`);
+    } else { showToast('Error: ' + (data.error||'unknown'), true); }
+  } catch(e) { showToast('Could not copy link', true); }
 }
 
 // ── Checklist Editor ─────────────────────────────────────────────────────────
@@ -1420,14 +1446,12 @@ async function loadChecklistStage() {
   clCurrentStage = parseInt(num);
   document.getElementById('clEditor').style.display = 'none';
   document.getElementById('clEmpty').style.display = 'block';
-  document.getElementById('clEmpty').textContent = 'Loading\u2026';
-
+  document.getElementById('clEmpty').textContent = 'Loading…';
   try {
-    const res = await fetch('/pd/portal/api/checklist/' + num);
+    const res  = await fetch('/pd/portal/api/checklist/' + num);
     const data = await res.json();
     const overrides = {};
     (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
-
     const base = STAGES_FULL[num] || {};
     clItems = (base.items || []).map((item, idx) => {
       const ov = overrides[item.id] || {};
@@ -1439,23 +1463,20 @@ async function loadChecklistStage() {
         sort_order:     ov.sort_order     !== undefined ? ov.sort_order     : idx,
       };
     });
-
     const baseIds = new Set((base.items||[]).map(i => i.id));
     Object.values(overrides).forEach(ov => {
-      if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_')) {
+      if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_'))
         clItems.push({ item_id: ov.item_id, text: ov.text||'', photo_required: ov.photo_required!==false, enabled: ov.enabled!==false, sort_order: ov.sort_order||999 });
-      }
     });
     clItems.sort((a,b) => a.sort_order - b.sort_order);
-
     document.getElementById('clStageName').textContent = String(num).padStart(2,'0') + ' — ' + (base.name||'');
     document.getElementById('clResetBtn').style.display = 'inline-flex';
     clRender();
     document.getElementById('clEditor').style.display = 'block';
     document.getElementById('clEmpty').style.display = 'none';
   } catch(e) {
-    document.getElementById('clEmpty').textContent = 'Error loading stage. Please try again.';
-    console.error('loadChecklistStage error:', e);
+    document.getElementById('clEmpty').textContent = 'Error loading. Please try again.';
+    console.error('loadChecklistStage:', e);
   }
 }
 
@@ -1466,43 +1487,35 @@ function clRender() {
     const isCustom = item.item_id.startsWith('custom_');
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7';
-
     const enabledCb = document.createElement('input');
     enabledCb.type = 'checkbox'; enabledCb.checked = item.enabled;
     enabledCb.style.cssText = 'width:16px;height:16px;cursor:pointer;margin-top:8px;flex-shrink:0';
-
     const textInput = document.createElement('input');
     textInput.type = 'text'; textInput.value = item.text;
     textInput.style.cssText = 'width:100%;padding:7px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:' + (item.enabled?'#fff':'#f9f9fb') + ';color:' + (item.enabled?'#1c1c1e':'#8e8e93');
     textInput.addEventListener('input', function() { clItems[idx].text = this.value; });
-
     enabledCb.addEventListener('change', function() {
       clItems[idx].enabled = this.checked;
       textInput.style.color = this.checked ? '#1c1c1e' : '#8e8e93';
       textInput.style.background = this.checked ? '#fff' : '#f9f9fb';
     });
-
     const photoCb = document.createElement('input');
     photoCb.type = 'checkbox'; photoCb.checked = item.photo_required;
     photoCb.addEventListener('change', function() { clItems[idx].photo_required = this.checked; });
-
     const photoLabel = document.createElement('label');
     photoLabel.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;color:#636366;cursor:pointer';
     photoLabel.appendChild(photoCb);
     photoLabel.appendChild(document.createTextNode('Photo required'));
-
     const meta = document.createElement('div');
     meta.style.cssText = 'display:flex;gap:12px;margin-top:6px;align-items:center';
     meta.appendChild(photoLabel);
-
     if (isCustom) {
       const removeBtn = document.createElement('button');
-      removeBtn.textContent = '\u2715 Remove';
+      removeBtn.textContent = '✕ Remove';
       removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
       removeBtn.addEventListener('click', function() { clItems.splice(idx,1); clRender(); });
       meta.appendChild(removeBtn);
     }
-
     const right = document.createElement('div');
     right.style.flex = '1';
     right.appendChild(textInput);
