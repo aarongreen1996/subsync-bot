@@ -846,42 +846,63 @@ def plot_report_pdf(user, plot_id):
 @portal_bp.route("/api/sites")
 @_require_login
 def api_sites(user):
-    if user.get("role") == "tenant_admin":
-        res = supabase.table("pd_sites").select("*").order("name").execute()
-    else:
-        site_ids = user.get("site_ids") or []
-        if isinstance(site_ids, str):
-            try: site_ids = json.loads(site_ids)
-            except: site_ids = []
-        if not site_ids:
-            return jsonify([])
-        res = supabase.table("pd_sites").select("*").in_("id", site_ids).execute()
-    sites = res.data or []
+    try:
+        if user.get("role") == "tenant_admin":
+            res = supabase.table("pd_sites").select("*").order("name").execute()
+        else:
+            site_ids = user.get("site_ids") or []
+            if isinstance(site_ids, str):
+                try: site_ids = json.loads(site_ids)
+                except: site_ids = []
+            if not site_ids:
+                return jsonify([])
+            res = supabase.table("pd_sites").select("*").in_("id", site_ids).execute()
+        sites = res.data or []
 
-    # Add plot count per site
-    for site in sites:
-        plots_res = supabase.table("pd_plots").select("id", count="exact").eq("site_id", site["id"]).execute()
-        site["plot_count"] = plots_res.count or 0
+        # Add plot count per site
+        for site in sites:
+            try:
+                plots_res = supabase.table("pd_plots").select("id", count="exact").eq("site_id", site["id"]).execute()
+                site["plot_count"] = plots_res.count or 0
+            except Exception:
+                site["plot_count"] = 0
 
-    return jsonify(sites)
+        return jsonify(sites)
+    except Exception as e:
+        print(f"api_sites error: {e}")
+        return jsonify([])
 
 
 @portal_bp.route("/api/plots")
 @_require_login
 def api_plots(user):
-    site_id = request.args.get("site_id")
-    query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail").order("plot_number")
-    if site_id:
-        query = query.eq("site_id", site_id)
-    res = query.execute()
-    plots = res.data or []
+    try:
+        site_id = request.args.get("site_id")
+        # Sort numerically where possible
+        query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail")
+        if site_id:
+            query = query.eq("site_id", site_id)
+        res = query.execute()
+        plots = res.data or []
 
-    # Add approved stage count per plot
-    for plot in plots:
-        subs_res = supabase.table("pd_submissions").select("stage_number, status").eq("plot_id", plot["id"]).eq("status", "approved").execute()
-        plot["approved_count"] = len(set(s["stage_number"] for s in (subs_res.data or [])))
+        # Sort numerically
+        def plot_sort_key(p):
+            try: return (0, int(p.get("plot_number","0")))
+            except: return (1, str(p.get("plot_number","")))
+        plots.sort(key=plot_sort_key)
 
-    return jsonify(plots)
+        # Add approved stage count per plot
+        for plot in plots:
+            try:
+                subs_res = supabase.table("pd_submissions").select("stage_number, status").eq("plot_id", plot["id"]).eq("status", "approved").execute()
+                plot["approved_count"] = len(set(s["stage_number"] for s in (subs_res.data or [])))
+            except Exception:
+                plot["approved_count"] = 0
+
+        return jsonify(plots)
+    except Exception as e:
+        print(f"api_plots error: {e}")
+        return jsonify([])
 
 
 @portal_bp.route("/api/submissions")
