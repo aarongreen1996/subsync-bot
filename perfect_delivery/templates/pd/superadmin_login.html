@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super Admin — Perfect Delivery</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.card { background: #1a1a2e; border: 1px solid #2a2a45; border-radius: 16px; width: 100%; max-width: 380px; overflow: hidden; }
+.card-top { background: #12121f; padding: 28px 32px; border-bottom: 1px solid #2a2a45; }
+.card-top h1 { color: #C5962A; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.card-top p { color: #6b6b8a; font-size: 13px; }
+.card-body { padding: 28px 32px; }
+label { display: block; font-size: 12px; font-weight: 600; color: #8e8e9a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+input[type=password] { width: 100%; padding: 12px 14px; background: #12121f; border: 1.5px solid #2a2a45; border-radius: 10px; font-size: 15px; color: #e0e0f0; outline: none; transition: border-color .15s; }
+input:focus { border-color: #C5962A; }
+.btn { width: 100%; padding: 13px; background: #C5962A; color: #12121f; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 20px; transition: opacity .15s; }
+.btn:hover { opacity: .88; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.err { margin-top: 14px; padding: 10px 14px; background: #3a1a1a; border-radius: 8px; color: #f87171; font-size: 13px; display: none; }
+.badge { display: inline-block; background: #2a2a45; color: #6b6b8a; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-top">
+    <h1>Perfect Delivery</h1>
+    <p>Super admin access</p>
+  </div>
+  <div class="card-body">
+    <div style="margin-bottom:20px">
+      <label>Access key</label>
+      <input type="password" id="key" placeholder="Enter super admin key" onkeydown="if(event.key==='Enter')signIn()">
+    </div>
+    <button class="btn" id="btn" onclick="signIn()">Sign in</button>
+    <div class="err" id="err"></div>
+    <div style="text-align:center">
+      <span class="badge">Internal use only</span>
+    </div>
+  </div>
+</div>
+<script>
+async function signIn() {
+  const key = document.getElementById('key').value;
+  const btn = document.getElementById('btn');
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  if (!key) { err.textContent = 'Please enter the access key.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const res  = await fetch('/pd/superadmin/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = '/pd/superadmin';
+    } else {
+      err.textContent = data.error || 'Invalid key.';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  } catch(e) {
+    err.textContent = 'Connection error. Try again.';
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sign in';
+  }
+}
+</script>
+</body>
+</html>
