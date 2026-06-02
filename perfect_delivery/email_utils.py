@@ -209,9 +209,9 @@ def send_password_reset(to_email: str, user_name: str, reset_url: str):
         <div style="text-align:center;margin:28px 0">
           <a href="{reset_url}" style="background:#1a1a2e;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Reset My Password</a>
         </div>
-        <p style="margin:24px 0 0;font-size:13px;color:#8e8e93">If you didn't request this, ignore this email.</p>
+        <p style="margin:24px 0 0;font-size:13px;color:#8e8e93">If you didn't request this, ignore this email. Your password won't change.</p>
         <hr style="border:none;border-top:1px solid #e5e5ea;margin:20px 0">
-        <p style="margin:0;font-size:12px;color:#c7c7cc">Or copy: <a href="{reset_url}" style="color:#636366;word-break:break-all">{reset_url}</a></p>
+        <p style="margin:0;font-size:12px;color:#c7c7cc">Or copy this link:<br><a href="{reset_url}" style="color:#636366;word-break:break-all">{reset_url}</a></p>
       </div>
     </div>"""
     _send(to_email, "Reset your Perfect Delivery password", html)
