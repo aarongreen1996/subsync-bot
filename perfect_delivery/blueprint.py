@@ -547,16 +547,14 @@ def plot_report(plot_id: str):
     pct = round((approved_count / 37) * 100)
 
     # Part L compliance rows
-    # Batch all photos in one query instead of one per approved stage
     approved_sub_ids = [s["id"] for s in stage_map.values() if s.get("status") == "approved"]
     all_photos_map = {}
     if approved_sub_ids:
         try:
-            all_photos_res = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
-            for p in (all_photos_res.data or []):
+            apr = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
+            for p in (apr.data or []):
                 sid = p["submission_id"]
-                if sid not in all_photos_map:
-                    all_photos_map[sid] = {}
+                if sid not in all_photos_map: all_photos_map[sid] = {}
                 all_photos_map[sid][p["item_id"]] = p["public_url"]
         except Exception:
             pass
@@ -565,8 +563,8 @@ def plot_report(plot_id: str):
     for sub in stage_map.values():
         if sub.get("status") != "approved":
             continue
-        stage   = STAGES.get(sub["stage_number"], {})
-        answers = sub.get("answers") or {}
+        stage      = STAGES.get(sub["stage_number"], {})
+        answers    = sub.get("answers") or {}
         photos_map = all_photos_map.get(sub["id"], {})
         for item in stage.get("items", []):
             if "PART L" not in item.get("text", ""):
