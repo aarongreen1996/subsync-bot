@@ -553,12 +553,9 @@ def plot_report(plot_id: str):
         try:
             apr = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
             for p in (apr.data or []):
-                sid = p["submission_id"]
-                if sid not in all_photos_map: all_photos_map[sid] = {}
-                all_photos_map[sid][p["item_id"]] = p["public_url"]
+                all_photos_map.setdefault(p["submission_id"], {})[p["item_id"]] = p["public_url"]
         except Exception:
             pass
-
     part_l_rows = []
     for sub in stage_map.values():
         if sub.get("status") != "approved":
