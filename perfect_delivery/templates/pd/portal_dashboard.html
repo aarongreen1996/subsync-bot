@@ -1404,7 +1404,7 @@ function clRenderEditor(stageNum) {
 
 function clBuildCard(item, num, isCustom) {
   const ov       = clOverrides[item.id] || {};
-  const text     = (ov.text !== undefined && ov.text !== null) ? ov.text : item.text;
+  const text     = (ov.text !== undefined && ov.text !== null) ? ov.text : (item.text || '');
   const photoReq = (ov.photo_required !== undefined && ov.photo_required !== null) ? ov.photo_required : (item.photo || false);
   const enabled  = (ov.enabled !== undefined && ov.enabled !== null) ? ov.enabled : true;
   const exPhoto  = ov.example_photo_url || '';
@@ -1415,53 +1415,170 @@ function clBuildCard(item, num, isCustom) {
   card.id = 'clcard_' + item.id;
   card.style.cssText = 'background:#fff;border-radius:12px;padding:16px;margin-bottom:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06);border-left:3px solid ' + (hasOv ? '#C5962A' : '#e5e5ea') + ';' + (!enabled ? 'opacity:0.5;' : '');
 
-  const safeId = item.id.replace(/[^a-z0-9_]/gi, '_');
+  const sid = item.id.replace(/[^a-z0-9_]/gi, '_');
 
-  card.innerHTML =
-    '<div style="display:flex;align-items:flex-start;gap:10px">' +
-      '<span style="color:#c7c7cc;font-size:16px;padding-top:2px">⠿</span>' +
-      '<span style="font-size:11px;font-weight:700;color:#8e8e93;min-width:24px">' + String(num).padStart(2,'0') + '</span>' +
-      '<span style="flex:1;font-size:14px;color:#1a1a2e;line-height:1.5;cursor:pointer" onclick="clToggleEdit('' + safeId + '')">' + (text||'<em style=\"color:#c7c7cc\">No text</em>') + '</span>' +
-      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
-        '<label style="position:relative;width:40px;height:22px;display:inline-block">' +
-          '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="clMark('' + item.id + '','enabled',this.checked)" style="opacity:0;width:0;height:0">' +
-          '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:' + (enabled ? '#34c759' : '#e5e5ea') + ';border-radius:22px;cursor:pointer;transition:0.2s"><span style="position:absolute;width:18px;height:18px;' + (enabled ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%;transition:0.2s"></span></span>' +
-        '</label>' +
-        '<button class="btn btn-ghost btn-sm" onclick="clToggleEdit('' + safeId + '')">Edit</button>' +
-      '</div>' +
-    '</div>' +
-    '<div id="cledit_' + safeId + '" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #f2f2f7">' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-        '<div style="grid-column:1/-1">' +
-          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Question Text</label>' +
-          '<textarea id="cltxt_' + safeId + '" oninput="clMark('' + item.id + '','text',this.value)" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none">' + (text||'') + '</textarea>' +
-        '</div>' +
-        '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:8px 0">' +
-          '<div><div style="font-size:13px;font-weight:600">📷 Require Photo</div><div style="font-size:12px;color:#8e8e93">Subcontractor must upload a photo</div></div>' +
-          '<label style="position:relative;width:40px;height:22px;display:inline-block">' +
-            '<input type="checkbox" id="clphoto_' + safeId + '" ' + (photoReq ? 'checked' : '') + ' onchange="clMark('' + item.id + '','photo_required',this.checked)" style="opacity:0;width:0;height:0">' +
-            '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:' + (photoReq ? '#34c759' : '#e5e5ea') + ';border-radius:22px;cursor:pointer"><span style="position:absolute;width:18px;height:18px;' + (photoReq ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%"></span></span>' +
-          '</label>' +
-        '</div>' +
-        '<div>' +
-          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Example Photo</label>' +
-          '<div onclick="document.getElementById('clexfile_' + safeId + '').click()" style="border:2px dashed #e5e5ea;border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#f9f9fb">' +
-            (exPhoto ? '<img src="' + exPhoto + '" id="cleximg_' + safeId + '" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px">' : '<div id="cleximg_' + safeId + '"></div>') +
-            '<div style="font-size:12px;color:#8e8e93">Tap to upload example photo</div>' +
-          '</div>' +
-          '<input type="file" id="clexfile_' + safeId + '" accept="image/*" style="display:none" onchange="clUploadPhoto('' + item.id + '','' + safeId + '',this)">' +
-        '</div>' +
-        '<div>' +
-          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Guidance Text</label>' +
-          '<textarea id="clguide_' + safeId + '" placeholder="Describe what the photo should show…" oninput="clMark('' + item.id + '','example_guidance',this.value)" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none">' + exGuide + '</textarea>' +
-        '</div>' +
-      '</div>' +
-      '<div style="margin-top:12px;display:flex;gap:8px">' +
-        '<button class="btn btn-ghost btn-sm" onclick="clToggleEdit('' + safeId + '')">Collapse</button>' +
-        (hasOv || isCustom ? '<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="clResetItem('' + item.id + '')">Reset to default</button>' : '') +
-      '</div>' +
-    '</div>';
+  // Build top row
+  const topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;align-items:flex-start;gap:10px';
 
+  const dragEl = document.createElement('span');
+  dragEl.style.cssText = 'color:#c7c7cc;font-size:16px;padding-top:2px';
+  dragEl.textContent = '⠿';
+
+  const numEl = document.createElement('span');
+  numEl.style.cssText = 'font-size:11px;font-weight:700;color:#8e8e93;min-width:24px';
+  numEl.textContent = String(num).padStart(2, '0');
+
+  const textEl = document.createElement('span');
+  textEl.style.cssText = 'flex:1;font-size:14px;color:#1a1a2e;line-height:1.5;cursor:pointer';
+  textEl.innerHTML = text || '<em style="color:#c7c7cc">No text</em>';
+  textEl.onclick = () => clToggleEdit(sid);
+
+  // Toggle switch for enabled
+  const toggleLabel = document.createElement('label');
+  toggleLabel.style.cssText = 'position:relative;width:40px;height:22px;display:inline-block;cursor:pointer';
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.checked = enabled;
+  toggleInput.style.cssText = 'opacity:0;width:0;height:0';
+  toggleInput.addEventListener('change', function() { clMark(item.id, 'enabled', this.checked); });
+  const toggleSlider = document.createElement('span');
+  toggleSlider.style.cssText = 'position:absolute;inset:0;background:' + (enabled ? '#34c759' : '#e5e5ea') + ';border-radius:22px;transition:0.2s';
+  const toggleKnob = document.createElement('span');
+  toggleKnob.style.cssText = 'position:absolute;width:18px;height:18px;' + (enabled ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%;transition:0.2s';
+  toggleSlider.appendChild(toggleKnob);
+  toggleLabel.appendChild(toggleInput);
+  toggleLabel.appendChild(toggleSlider);
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn btn-ghost btn-sm';
+  editBtn.textContent = 'Edit';
+  editBtn.onclick = () => clToggleEdit(sid);
+
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0';
+  controls.appendChild(toggleLabel);
+  controls.appendChild(editBtn);
+
+  topRow.appendChild(dragEl);
+  topRow.appendChild(numEl);
+  topRow.appendChild(textEl);
+  topRow.appendChild(controls);
+
+  // Edit panel
+  const editPanel = document.createElement('div');
+  editPanel.id = 'cledit_' + sid;
+  editPanel.style.cssText = 'display:none;margin-top:14px;padding-top:14px;border-top:1px solid #f2f2f7';
+
+  // Question text
+  const txtLabel = document.createElement('label');
+  txtLabel.style.cssText = 'display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px';
+  txtLabel.textContent = 'Question Text';
+  const txtArea = document.createElement('textarea');
+  txtArea.style.cssText = 'width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none;margin-bottom:12px';
+  txtArea.value = text;
+  txtArea.addEventListener('input', function() { clMark(item.id, 'text', this.value); });
+
+  // Photo required
+  const photoRow = document.createElement('div');
+  photoRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:12px;border-bottom:1px solid #f2f2f7';
+  const photoInfo = document.createElement('div');
+  photoInfo.innerHTML = '<div style="font-size:13px;font-weight:600">📷 Require Photo</div><div style="font-size:12px;color:#8e8e93">Subcontractor must upload a photo</div>';
+  const photoToggle = document.createElement('label');
+  photoToggle.style.cssText = 'position:relative;width:40px;height:22px;display:inline-block;cursor:pointer';
+  const photoInput = document.createElement('input');
+  photoInput.type = 'checkbox';
+  photoInput.checked = photoReq;
+  photoInput.style.cssText = 'opacity:0;width:0;height:0';
+  photoInput.addEventListener('change', function() { clMark(item.id, 'photo_required', this.checked); });
+  const photoSlider = document.createElement('span');
+  photoSlider.style.cssText = 'position:absolute;inset:0;background:' + (photoReq ? '#34c759' : '#e5e5ea') + ';border-radius:22px';
+  const photoKnob = document.createElement('span');
+  photoKnob.style.cssText = 'position:absolute;width:18px;height:18px;' + (photoReq ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%';
+  photoSlider.appendChild(photoKnob);
+  photoToggle.appendChild(photoInput);
+  photoToggle.appendChild(photoSlider);
+  photoRow.appendChild(photoInfo);
+  photoRow.appendChild(photoToggle);
+
+  // Two column grid for photo upload + guidance
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px';
+
+  // Example photo
+  const photoDiv = document.createElement('div');
+  const photoLbl = document.createElement('label');
+  photoLbl.style.cssText = 'display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px';
+  photoLbl.textContent = 'Example Photo';
+  const photoArea = document.createElement('div');
+  photoArea.style.cssText = 'border:2px dashed #e5e5ea;border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#f9f9fb';
+  photoArea.onclick = () => document.getElementById('clexfile_' + sid).click();
+  if (exPhoto) {
+    const img = document.createElement('img');
+    img.src = exPhoto;
+    img.id = 'cleximg_' + sid;
+    img.style.cssText = 'width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px';
+    photoArea.appendChild(img);
+  } else {
+    const imgPlaceholder = document.createElement('div');
+    imgPlaceholder.id = 'cleximg_' + sid;
+    photoArea.appendChild(imgPlaceholder);
+  }
+  const photoHint = document.createElement('div');
+  photoHint.style.cssText = 'font-size:12px;color:#8e8e93';
+  photoHint.textContent = 'Tap to upload example photo';
+  photoArea.appendChild(photoHint);
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.id = 'clexfile_' + sid;
+  fileInput.accept = 'image/*';
+  fileInput.style.display = 'none';
+  fileInput.addEventListener('change', function() { clUploadPhoto(item.id, sid, this); });
+  photoDiv.appendChild(photoLbl);
+  photoDiv.appendChild(photoArea);
+  photoDiv.appendChild(fileInput);
+
+  // Guidance text
+  const guideDiv = document.createElement('div');
+  const guideLbl = document.createElement('label');
+  guideLbl.style.cssText = 'display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px';
+  guideLbl.textContent = 'Guidance Text';
+  const guideArea = document.createElement('textarea');
+  guideArea.style.cssText = 'width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none';
+  guideArea.placeholder = 'Describe what the photo should show…';
+  guideArea.value = exGuide;
+  guideArea.addEventListener('input', function() { clMark(item.id, 'example_guidance', this.value); });
+  guideDiv.appendChild(guideLbl);
+  guideDiv.appendChild(guideArea);
+
+  grid.appendChild(photoDiv);
+  grid.appendChild(guideDiv);
+
+  // Action buttons
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;margin-top:4px';
+  const collapseBtn = document.createElement('button');
+  collapseBtn.className = 'btn btn-ghost btn-sm';
+  collapseBtn.textContent = 'Collapse';
+  collapseBtn.onclick = () => clToggleEdit(sid);
+  actions.appendChild(collapseBtn);
+  if (hasOv || isCustom) {
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn btn-sm';
+    resetBtn.style.cssText = 'background:#fff0f0;color:#c0392b';
+    resetBtn.textContent = 'Reset to default';
+    resetBtn.onclick = () => clResetItem(item.id);
+    actions.appendChild(resetBtn);
+  }
+
+  editPanel.appendChild(txtLabel);
+  editPanel.appendChild(txtArea);
+  editPanel.appendChild(photoRow);
+  editPanel.appendChild(grid);
+  editPanel.appendChild(actions);
+
+  card.appendChild(topRow);
+  card.appendChild(editPanel);
   return card;
 }
 
@@ -1519,23 +1636,67 @@ async function clUploadPhoto(itemId, safeId, input) {
 function clShowAddItem() {
   const area = document.getElementById('clAddArea');
   if (!area) return;
-  if (area.innerHTML) { area.innerHTML = ''; return; }
-  area.innerHTML = '<div style="background:#f9f9fb;border:2px dashed #e5e5ea;border-radius:12px;padding:16px;margin-bottom:10px">' +
-    '<div style="font-size:14px;font-weight:700;margin-bottom:12px">Add New Item</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div style="grid-column:1/-1"><label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase">Question Text</label>' +
-      '<textarea id="clNewText" placeholder="Enter the checklist question…" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none"></textarea></div>' +
-      '<div><div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0"><div style="font-size:13px;font-weight:600">Require Photo</div>' +
-      '<label style="position:relative;width:40px;height:22px;display:inline-block"><input type="checkbox" id="clNewPhoto" checked style="opacity:0;width:0;height:0">' +
-      '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:#34c759;border-radius:22px;cursor:pointer"><span style="position:absolute;width:18px;height:18px;left:20px;bottom:2px;background:#fff;border-radius:50%"></span></span></label></div></div>' +
-      '<div><label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase">Guidance Text</label>' +
-      '<textarea id="clNewGuide" placeholder="What should the photo show?" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none"></textarea></div>' +
-    '</div>' +
-    '<div style="margin-top:12px;display:flex;gap:8px">' +
-      '<button class="btn btn-primary btn-sm" onclick="clAddItem()">Add Item</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="document.getElementById('clAddArea').innerHTML=''">Cancel</button>' +
-    '</div></div>';
+  if (area.children.length) { area.innerHTML = ''; return; }
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'background:#f9f9fb;border:2px dashed #e5e5ea;border-radius:12px;padding:16px;margin-bottom:10px';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:700;margin-bottom:12px';
+  title.textContent = 'Add New Item';
+
+  const txtLbl = document.createElement('label');
+  txtLbl.style.cssText = 'display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase';
+  txtLbl.textContent = 'Question Text';
+  const txtArea = document.createElement('textarea');
+  txtArea.id = 'clNewText';
+  txtArea.placeholder = 'Enter the checklist question…';
+  txtArea.style.cssText = 'width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none;margin-bottom:12px';
+
+  const photoRow = document.createElement('div');
+  photoRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:12px';
+  photoRow.innerHTML = '<div style="font-size:13px;font-weight:600">Require Photo</div>';
+  const photoToggle = document.createElement('label');
+  photoToggle.style.cssText = 'position:relative;width:40px;height:22px;display:inline-block;cursor:pointer';
+  const photoInput = document.createElement('input');
+  photoInput.type = 'checkbox'; photoInput.id = 'clNewPhoto'; photoInput.checked = true;
+  photoInput.style.cssText = 'opacity:0;width:0;height:0';
+  const photoSlider = document.createElement('span');
+  photoSlider.style.cssText = 'position:absolute;inset:0;background:#34c759;border-radius:22px';
+  const photoKnob = document.createElement('span');
+  photoKnob.style.cssText = 'position:absolute;width:18px;height:18px;left:20px;bottom:2px;background:#fff;border-radius:50%';
+  photoSlider.appendChild(photoKnob);
+  photoToggle.appendChild(photoInput); photoToggle.appendChild(photoSlider);
+  photoRow.appendChild(photoToggle);
+
+  const guideLbl = document.createElement('label');
+  guideLbl.style.cssText = 'display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase';
+  guideLbl.textContent = 'Guidance Text';
+  const guideArea = document.createElement('textarea');
+  guideArea.id = 'clNewGuide';
+  guideArea.placeholder = 'What should the photo show?';
+  guideArea.style.cssText = 'width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none;margin-bottom:12px';
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn btn-primary btn-sm';
+  addBtn.textContent = 'Add Item';
+  addBtn.onclick = clAddItem;
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost btn-sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => { area.innerHTML = ''; };
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px';
+  btnRow.appendChild(addBtn); btnRow.appendChild(cancelBtn);
+
+  wrapper.appendChild(title);
+  wrapper.appendChild(txtLbl); wrapper.appendChild(txtArea);
+  wrapper.appendChild(photoRow);
+  wrapper.appendChild(guideLbl); wrapper.appendChild(guideArea);
+  wrapper.appendChild(btnRow);
+  area.appendChild(wrapper);
 }
+
 
 async function clAddItem() {
   const text  = document.getElementById('clNewText')?.value.trim();
