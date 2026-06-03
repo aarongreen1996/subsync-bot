@@ -328,9 +328,6 @@
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
-          <select id="filterSite" onchange="loadSubmissions()" style="padding:7px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb">
-            <option value="">All sites</option>
-          </select>
         </div>
       </div>
       <div class="table-wrap">
@@ -391,6 +388,7 @@
     </div>
   </div>
 
+  <!-- Settings -->
   <!-- Checklist Editor -->
   <div class="page" id="page-checklist">
     <div class="page-title">Checklist Editor</div>
@@ -418,7 +416,6 @@
     <div id="clEmpty" style="color:#8e8e93;font-size:14px;padding:20px 0">Select a stage above to edit its checklist items.</div>
   </div>
 
-  <!-- Settings -->
   <div class="page" id="page-settings">
     <div class="page-title">Settings</div>
     <div class="page-sub">Company branding and portal configuration</div>
@@ -709,7 +706,7 @@ function showPage(name, el) {
   if (el) el.classList.add('active');
   if (name === 'overview')    loadOverview();
   if (name === 'sites')       loadSites();
-  if (name === 'submissions') { populateSubsSiteFilter(); loadSubmissions(); }
+  if (name === 'submissions') loadSubmissions();
   if (name === 'photos')      loadPhotos();
   if (name === 'users')       loadUsers();
 }
@@ -728,58 +725,46 @@ async function signOut() {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 async function loadOverview() {
-  try {
-    const [sitesRes, subsRes] = await Promise.all([
-      fetch('/pd/portal/api/sites'),
-      fetch('/pd/portal/api/submissions?limit=8'),
-    ]);
-    const sites = await sitesRes.json();
-    allSitesList = sites;
-    const subs  = await subsRes.json();
+  const [sitesRes, subsRes] = await Promise.all([
+    fetch('/pd/portal/api/sites'),
+    fetch('/pd/portal/api/submissions?limit=8'),
+  ]);
+  const sites = await sitesRes.json();
+  allSitesList = sites; // store for plot modal dropdown
+  const subs  = await subsRes.json();
 
-    document.getElementById('statSites').textContent    = sites.length;
-    const plots = sites.reduce((a,s) => a + (s.plot_count||0), 0);
-    document.getElementById('statPlots').textContent    = plots;
-    document.getElementById('statApproved').textContent = subs.filter(s=>s.status==='approved').length;
-    document.getElementById('statPending').textContent  = subs.filter(s=>s.status==='pending').length;
-    document.getElementById('statRejected').textContent = subs.filter(s=>s.status==='rejected').length;
+  document.getElementById('statSites').textContent    = sites.length;
+  const plots = sites.reduce((a,s) => a + (s.plot_count||0), 0);
+  document.getElementById('statPlots').textContent    = plots;
+  document.getElementById('statApproved').textContent = subs.filter(s=>s.status==='approved').length;
+  document.getElementById('statPending').textContent  = subs.filter(s=>s.status==='pending').length;
+  document.getElementById('statRejected').textContent = subs.filter(s=>s.status==='rejected').length;
 
-    const tbody = document.getElementById('recentSubmissions');
-    if (!subs.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div>No submissions yet</div></td></tr>'; return; }
-    tbody.innerHTML = subs.slice(0,8).map(s => `
-      <tr>
-        <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
-        <td style="font-size:13px">${s.stage_name}</td>
-        <td style="font-size:13px">${s.submitted_by_name}</td>
-        <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
-        <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
-      </tr>`).join('');
-  } catch(e) { console.error('loadOverview:', e); }
+  const tbody = document.getElementById('recentSubmissions');
+  if (!subs.length) { tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div>No submissions yet</div></td></tr>'; return; }
+  tbody.innerHTML = subs.slice(0,8).map(s => `
+    <tr>
+      <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
+      <td style="font-size:13px">${s.stage_name}</td>
+      <td style="font-size:13px">${s.submitted_by_name}</td>
+      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
+    </tr>`).join('');
 }
 
 // ── Sites ────────────────────────────────────────────────────────────────────
 let allSitesList = [];
 
 async function loadSites() {
-  const el = document.getElementById('sitesList');
-  el.innerHTML = '<div style="padding:24px;color:#8e8e93;font-size:14px;text-align:center">Loading…</div>';
-  try {
-    const res = await fetch('/pd/portal/api/sites');
-    if (!res.ok) throw new Error('Failed');
-    const sites = await res.json();
-    allSitesList = sites;
-    if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
-
-    const plotResults = await Promise.all(
-      sites.map(site => fetch('/pd/portal/api/plots?site_id=' + site.id)
-        .then(r => r.ok ? r.json() : []).catch(() => []))
-    );
-    const plotsBySite = {};
-    sites.forEach((site, i) => { plotsBySite[site.id] = plotResults[i] || []; });
+  const res   = await fetch('/pd/portal/api/sites');
+  const sites = await res.json();
+  const el    = document.getElementById('sitesList');
+  if (!sites.length) { el.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">📍</div>No sites assigned</div></div>'; return; }
 
   el.innerHTML = '';
   for (const site of sites) {
-    const plots = plotsBySite[site.id] || [];
+    const plotsRes = await fetch('/pd/portal/api/plots?site_id=' + site.id);
+    const plots    = await plotsRes.json();
     const isAdmin = USER_ROLE === 'tenant_admin';
     const card = document.createElement('div');
     card.className = 'card';
@@ -806,13 +791,6 @@ async function loadSites() {
               <p>${p.approved_count||0} of 37 stages approved</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select onchange="updatePlotStatus('${p.id}',this.value)" style="font-size:11px;padding:3px 6px;border:1px solid #e5e5ea;border-radius:6px;background:#f9f9fb;cursor:pointer" title="Plot status">
-                <option value="active" ${(p.status||'active')==='active'?'selected':''}>Active</option>
-                <option value="snagged" ${p.status==='snagged'?'selected':''}>Snagged</option>
-                <option value="complete" ${p.status==='complete'?'selected':''}>Complete</option>
-                <option value="handed-over" ${p.status==='handed-over'?'selected':''}>Handed over</option>
-                <option value="on-hold" ${p.status==='on-hold'?'selected':''}>On hold</option>
-              </select>
               <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
               <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
               <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
@@ -828,81 +806,31 @@ async function loadSites() {
       </div>`;
     el.appendChild(card);
   }
-  } catch(e) {
-    document.getElementById('sitesList').innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>Error loading. <button class="btn btn-ghost btn-sm" onclick="loadSites()">Retry</button></div></div>';
-    console.error('loadSites:', e);
-  }
 }
 
 // ── Submissions ───────────────────────────────────────────────────────────────
-let subsOffset = 0;
-const SUBS_PAGE = 50;
-
-function populateSubsSiteFilter() {
-  const sel = document.getElementById('filterSite');
-  if (!sel || sel.options.length > 1) return;
-  (allSitesList || []).forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s.id; opt.textContent = s.name;
-    sel.appendChild(opt);
-  });
-}
-
-async function loadSubmissions(append=false) {
+async function loadSubmissions() {
   const status = document.getElementById('filterStatus').value;
-  const siteId = document.getElementById('filterSite')?.value || '';
-  if (!append) { subsOffset = 0; subsData = []; }
-  let url = `/pd/portal/api/submissions?limit=${SUBS_PAGE}&offset=${subsOffset}`;
+  let url = '/pd/portal/api/submissions?limit=200';
   if (status) url += '&status=' + status;
-  if (siteId) url += '&site_id=' + siteId;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('API error');
-    const newSubs = await res.json();
-    subsData = append ? [...subsData, ...newSubs] : newSubs;
-    subsOffset += newSubs.length;
-    renderSubmissions();
-    let moreBtn = document.getElementById('subsLoadMore');
-    if (!moreBtn) {
-      moreBtn = document.createElement('div');
-      moreBtn.id = 'subsLoadMore';
-      moreBtn.style.cssText = 'text-align:center;padding:16px 0';
-      document.getElementById('subsTable')?.closest('.card')?.appendChild(moreBtn);
-    }
-    moreBtn.innerHTML = newSubs.length === SUBS_PAGE
-      ? `<button class="btn btn-ghost btn-sm" onclick="loadSubmissions(true)">Load more</button>` : '';
-  } catch(e) { console.error('loadSubmissions:', e); }
+  const res  = await fetch(url);
+  subsData   = await res.json();
+  renderSubmissions();
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────────
-let photosOffset = 0;
-const PHOTOS_PAGE = 60;
-
-async function loadPhotos(append=false) {
+async function loadPhotos() {
   const siteId  = document.getElementById('photoFilterSite').value;
   const stageId = document.getElementById('photoFilterStage').value;
-  if (!append) { photosOffset = 0; allPhotos = []; }
-  let url = `/pd/portal/api/photos?limit=${PHOTOS_PAGE}&offset=${photosOffset}`;
+
+  let url = '/pd/portal/api/photos?limit=200';
   if (siteId)  url += '&site_id=' + siteId;
   if (stageId) url += '&stage_number=' + stageId;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('API error');
-    const newPhotos = await res.json();
-    allPhotos = append ? [...allPhotos, ...newPhotos] : newPhotos;
-    photosOffset += newPhotos.length;
-    filteredPhotos = [...allPhotos];
-    renderPhotos();
-    let moreBtn = document.getElementById('photosLoadMore');
-    if (!moreBtn) {
-      moreBtn = document.createElement('div');
-      moreBtn.id = 'photosLoadMore';
-      moreBtn.style.cssText = 'text-align:center;padding:16px 0';
-      document.getElementById('photoGrid')?.after(moreBtn);
-    }
-    moreBtn.innerHTML = newPhotos.length === PHOTOS_PAGE
-      ? `<button class="btn btn-ghost btn-sm" onclick="loadPhotos(true)">Load more photos</button>` : '';
-  } catch(e) { console.error('loadPhotos:', e); }
+
+  const res = await fetch(url);
+  allPhotos = await res.json();
+  filteredPhotos = [...allPhotos];
+  renderPhotos();
 }
 
 function filterPhotosByKeyword() {
@@ -964,8 +892,6 @@ async function loadUsers() {
       <td style="font-size:12px;color:#8e8e93">${u.role==='tenant_admin'?'All sites':(u.site_ids||[]).length+' site(s)'}</td>
       <td style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick='editUser(${JSON.stringify(u)})'>Edit</button>
-        <button class="btn btn-ghost btn-sm" onclick="adminResetPassword('${u.id}','${u.name}')">&#128273; Reset pw</button>
-        <button class="btn btn-ghost btn-sm" onclick="adminCopyResetLink('${u.email}','${u.name}')">&#128279; Copy link</button>
         <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteUser('${u.id}','${u.name}')">Delete</button>
       </td>
     </tr>`).join('');
@@ -1383,49 +1309,11 @@ function updateSiteAssignVisibility() {
 }
 
 document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVisibility);
-
-// ── Plot status update ────────────────────────────────────────────────────────
-async function updatePlotStatus(plotId, status) {
-  try {
-    const res = await fetch(`/pd/portal/api/plots/${plotId}/status`, {
-      method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (data.ok) showToast('Plot status updated');
-    else showToast('Error: ' + (data.error||'unknown'), true);
-  } catch(e) { showToast('Update failed', true); }
-}
-
-// ── Admin password management ─────────────────────────────────────────────────
-async function adminResetPassword(id, name) {
-  const pw = prompt(`Set a new password for ${name}:\n(minimum 8 characters)`);
-  if (!pw) return;
-  if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
-  const res = await fetch(`/pd/portal/api/users/${id}/reset-password`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ password: pw }),
-  });
-  const data = await res.json();
-  if (data.ok) showToast('Password updated for ' + name);
-  else showToast('Error: ' + (data.error||'unknown'), true);
-}
-
-async function adminCopyResetLink(email, name) {
-  try {
-    const res = await fetch('/pd/portal/forgot-password/link', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      await navigator.clipboard.writeText(data.url);
-      showToast(`Reset link copied for ${name} — paste it to them directly`);
-    } else { showToast('Error: ' + (data.error||'unknown'), true); }
-  } catch(e) { showToast('Could not copy link', true); }
-}
-
-// ── Checklist Editor ─────────────────────────────────────────────────────────
+</script>
+</body>
+</html>
+<script>
+// Checklist Editor — injected
 let clCurrentStage = null;
 let clItems = [];
 
@@ -1435,7 +1323,7 @@ function clInitStageSelect() {
   Object.entries(STAGES_FULL).forEach(([num, s]) => {
     const opt = document.createElement('option');
     opt.value = num;
-    opt.textContent = String(num).padStart(2,'0') + ' — ' + s.name + ' (' + (s.applies_to||'') + ')';
+    opt.textContent = String(num).padStart(2,'0') + ' \u2014 ' + s.name + ' (' + (s.applies_to||'') + ')';
     sel.appendChild(opt);
   });
 }
@@ -1446,7 +1334,7 @@ async function loadChecklistStage() {
   clCurrentStage = parseInt(num);
   document.getElementById('clEditor').style.display = 'none';
   document.getElementById('clEmpty').style.display = 'block';
-  document.getElementById('clEmpty').textContent = 'Loading…';
+  document.getElementById('clEmpty').textContent = 'Loading\u2026';
   try {
     const res  = await fetch('/pd/portal/api/checklist/' + num);
     const data = await res.json();
@@ -1469,14 +1357,13 @@ async function loadChecklistStage() {
         clItems.push({ item_id: ov.item_id, text: ov.text||'', photo_required: ov.photo_required!==false, enabled: ov.enabled!==false, sort_order: ov.sort_order||999 });
     });
     clItems.sort((a,b) => a.sort_order - b.sort_order);
-    document.getElementById('clStageName').textContent = String(num).padStart(2,'0') + ' — ' + (base.name||'');
+    document.getElementById('clStageName').textContent = String(num).padStart(2,'0') + ' \u2014 ' + (base.name||'');
     document.getElementById('clResetBtn').style.display = 'inline-flex';
     clRender();
     document.getElementById('clEditor').style.display = 'block';
     document.getElementById('clEmpty').style.display = 'none';
   } catch(e) {
     document.getElementById('clEmpty').textContent = 'Error loading. Please try again.';
-    console.error('loadChecklistStage:', e);
   }
 }
 
@@ -1511,7 +1398,7 @@ function clRender() {
     meta.appendChild(photoLabel);
     if (isCustom) {
       const removeBtn = document.createElement('button');
-      removeBtn.textContent = '✕ Remove';
+      removeBtn.textContent = '\u2715 Remove';
       removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
       removeBtn.addEventListener('click', function() { clItems.splice(idx,1); clRender(); });
       meta.appendChild(removeBtn);
@@ -1548,7 +1435,7 @@ async function clSave() {
 }
 
 async function clResetStage() {
-  if (!clCurrentStage || !confirm('Reset Stage ' + clCurrentStage + ' to default? All custom changes will be lost.')) return;
+  if (!clCurrentStage || !confirm('Reset Stage ' + clCurrentStage + ' to default?')) return;
   await fetch('/pd/portal/api/checklist/' + clCurrentStage + '/reset', { method: 'DELETE' });
   showToast('Stage reset to default');
   loadChecklistStage();
@@ -1556,5 +1443,3 @@ async function clResetStage() {
 
 document.addEventListener('DOMContentLoaded', clInitStageSelect);
 </script>
-</body>
-</html>
