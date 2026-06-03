@@ -713,6 +713,7 @@ function showPage(name, el) {
   if (name === 'submissions') loadSubmissions();
   if (name === 'photos')      loadPhotos();
   if (name === 'users')       loadUsers();
+  if (name === 'checklist')   clRenderSidebar();
 }
 
 function toast(msg, type='') {
@@ -1591,24 +1592,18 @@ async function clResetItem(itemId) {
   showToast('Item reset');
 }
 
-// Init sidebar when checklist page shown
-const _origShowPage = window.showPage;
-window.showPage = function(name, el) {
-  if (_origShowPage) _origShowPage(name, el);
-  if (name === 'checklist') {
-    clRenderSidebar();
-    // Adjust save bar left offset based on sidebar width
-    const sidebar = document.querySelector('.sidebar');
-    if (sidebar) {
-      const w = sidebar.offsetWidth;
-      const bar = document.getElementById('clSaveBar');
-      if (bar) bar.style.left = (w + 240) + 'px';
-    }
-  }
-};
-
+// Init sidebar when checklist page shown - patch into existing showPage
 document.addEventListener('DOMContentLoaded', () => {
-  if (typeof STAGES_FULL !== 'undefined') clRenderSidebar();
+  // Patch showPage to trigger sidebar render
+  const _origShowPage = window.showPage;
+  if (_origShowPage) {
+    window.showPage = function(name, el) {
+      _origShowPage(name, el);
+      if (name === 'checklist') {
+        setTimeout(() => clRenderSidebar(), 50);
+      }
+    };
+  }
 });
 </script>
 </body>
