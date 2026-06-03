@@ -89,7 +89,26 @@ def form(token: str):
     except Exception:
         drafts_by_stage = {}
 
-    drafts_json = json.dumps(drafts_by_stage, ensure_ascii=False)
+    # Load submission statuses per stage
+    try:
+        subs_res = supabase.table("pd_submissions").select(
+            "stage_number, status, submitted_by_name, submitted_at, review_token"
+        ).eq("plot_id", plot_row["id"]).order("submitted_at", desc=True).execute()
+        stage_statuses = {}
+        for s in (subs_res.data or []):
+            sn = s["stage_number"]
+            if sn not in stage_statuses:
+                stage_statuses[sn] = {
+                    "status":    s["status"],
+                    "name":      s["submitted_by_name"],
+                    "submitted": (s["submitted_at"] or "")[:10],
+                    "review_token": s["review_token"],
+                }
+    except Exception:
+        stage_statuses = {}
+
+    drafts_json       = json.dumps(drafts_by_stage, ensure_ascii=False)
+    stage_status_json = json.dumps(stage_statuses, ensure_ascii=False)
 
     return render_template(
         "pd/form.html",
@@ -98,6 +117,7 @@ def form(token: str):
         stages_by_group=stages_by_group,
         stages_json=stages_json,
         drafts_json=drafts_json,
+        stage_status_json=stage_status_json,
     )
 
 
