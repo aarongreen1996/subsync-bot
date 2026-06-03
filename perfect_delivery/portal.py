@@ -29,20 +29,12 @@ def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-_tenant_cache: dict = {}
-_tenant_cache_ts: float = 0.0
 def _get_tenant() -> dict:
-    import time
-    global _tenant_cache, _tenant_cache_ts
-    if _tenant_cache and (time.time() - _tenant_cache_ts) < 60:
-        return _tenant_cache
     try:
         res = supabase.table("pd_tenants").select("*").limit(1).execute()
-        _tenant_cache = res.data[0] if res.data else {}
-        _tenant_cache_ts = time.time()
-        return _tenant_cache
+        return res.data[0] if res.data else {}
     except Exception:
-        return _tenant_cache or {}
+        return {}
 
 
 def _get_current_user():
@@ -171,185 +163,6 @@ def signout():
     resp = make_response(jsonify({"ok": True}))
     resp.delete_cookie("pd_session")
     return resp
-
-
-
-@portal_bp.route("/api/plots/<plot_id>/status", methods=["PUT"])
-@_require_admin_role
-def api_plot_status(user, plot_id):
-    """Update plot lifecycle status."""
-    data   = request.get_json() or {}
-    status = data.get("status", "")
-    valid  = ["active", "snagged", "complete", "handed-over", "on-hold"]
-    if status not in valid:
-        return jsonify({"ok": False, "error": f"Status must be one of: {', '.join(valid)}"}), 400
-    tenant = _get_tenant()
-    try:
-        res = supabase.table("pd_plots").select("id, pd_sites(tenant_id)").eq("id", plot_id).single().execute()
-        if not res.data or res.data.get("pd_sites", {}).get("tenant_id") != tenant.get("id"):
-            return jsonify({"ok": False, "error": "Not found"}), 404
-    except Exception:
-        return jsonify({"ok": False, "error": "Not found"}), 404
-    supabase.table("pd_plots").update({"status": status}).eq("id", plot_id).execute()
-    return jsonify({"ok": True})
-
-
-
-# ── Password Reset ────────────────────────────────────────────────────────────
-
-@portal_bp.route("/forgot-password", methods=["POST"])
-def forgot_password():
-    data  = request.get_json() or {}
-    email = (data.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"ok": False, "error": "Email required"}), 400
-    try:
-        res = supabase.table("pd_users").select("id, name, email").eq("email", email).single().execute()
-        if res.data:
-            user       = res.data
-            token      = secrets.token_urlsafe(32)
-            expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-            supabase.table("pd_password_resets").insert({
-                "user_id": user["id"], "token": token, "expires_at": expires_at,
-            }).execute()
-            base_url  = os.environ.get("PD_BASE_URL", "")
-            reset_url = f"{base_url}/pd/portal/reset-password?token={token}"
-            try:
-                from .email_utils import send_password_reset
-                send_password_reset(user["email"], user["name"], reset_url)
-            except Exception as e:
-                print(f"Password reset email error: {e}")
-    except Exception as e:
-        print(f"forgot_password error: {e}")
-    return jsonify({"ok": True})
-
-
-@portal_bp.route("/forgot-password/link", methods=["POST"])
-@_require_admin_role
-def forgot_password_admin_link(user):
-    data  = request.get_json() or {}
-    email = (data.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"ok": False, "error": "Email required"}), 400
-    try:
-        res = supabase.table("pd_users").select("id, name, email").eq("email", email).single().execute()
-        if not res.data:
-            return jsonify({"ok": False, "error": "User not found"}), 404
-        target_user = res.data
-        token      = secrets.token_urlsafe(32)
-        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-        supabase.table("pd_password_resets").insert({
-            "user_id": target_user["id"], "token": token, "expires_at": expires_at,
-        }).execute()
-        base_url  = os.environ.get("PD_BASE_URL", "")
-        reset_url = f"{base_url}/pd/portal/reset-password?token={token}"
-        return jsonify({"ok": True, "url": reset_url, "name": target_user["name"]})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@portal_bp.route("/reset-password", methods=["GET"])
-def reset_password_page():
-    token = request.args.get("token", "")
-    if not token:
-        return redirect("/pd/portal")
-    try:
-        now = datetime.now(timezone.utc).isoformat()
-        res = supabase.table("pd_password_resets").select("*").eq("token", token).gt(
-            "expires_at", now).is_("used_at", "null").single().execute()
-        valid = bool(res.data)
-    except Exception:
-        valid = False
-    tenant = _get_tenant()
-    return render_template("pd/reset_password.html", token=token, valid=valid, tenant=tenant)
-
-
-@portal_bp.route("/reset-password", methods=["POST"])
-def reset_password_submit():
-    data     = request.get_json() or {}
-    token    = data.get("token", "")
-    password = data.get("password", "")
-    if not token or not password:
-        return jsonify({"ok": False, "error": "Token and password required"}), 400
-    if len(password) < 8:
-        return jsonify({"ok": False, "error": "Password must be at least 8 characters"}), 400
-    try:
-        now = datetime.now(timezone.utc).isoformat()
-        res = supabase.table("pd_password_resets").select("*").eq("token", token).gt(
-            "expires_at", now).is_("used_at", "null").single().execute()
-        if not res.data:
-            return jsonify({"ok": False, "error": "This reset link has expired or already been used"}), 400
-        reset = res.data
-        supabase.table("pd_users").update({"password_hash": _hash_password(password)}).eq("id", reset["user_id"]).execute()
-        supabase.table("pd_password_resets").update({"used_at": now}).eq("id", reset["id"]).execute()
-        supabase.table("pd_sessions").delete().eq("user_id", reset["user_id"]).execute()
-        return jsonify({"ok": True})
-    except Exception as e:
-        print(f"reset_password error: {e}")
-        return jsonify({"ok": False, "error": "Something went wrong"}), 500
-
-
-@portal_bp.route("/api/users/<user_id>/reset-password", methods=["POST"])
-@_require_admin_role
-def api_admin_reset_password(user, user_id):
-    data     = request.get_json() or {}
-    password = data.get("password", "")
-    if len(password) < 8:
-        return jsonify({"ok": False, "error": "Password must be at least 8 characters"}), 400
-    tenant = _get_tenant()
-    try:
-        res = supabase.table("pd_users").select("id, tenant_id").eq("id", user_id).single().execute()
-        if not res.data or res.data.get("tenant_id") != tenant.get("id"):
-            return jsonify({"ok": False, "error": "User not found"}), 404
-    except Exception:
-        return jsonify({"ok": False, "error": "User not found"}), 404
-    supabase.table("pd_users").update({"password_hash": _hash_password(password)}).eq("id", user_id).execute()
-    supabase.table("pd_sessions").delete().eq("user_id", user_id).execute()
-    return jsonify({"ok": True})
-
-
-# ── Checklist Editor API ──────────────────────────────────────────────────────
-
-@portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
-@_require_admin_role
-def api_checklist_get(user, stage_number):
-    tenant = _get_tenant()
-    tenant_id = tenant.get("id")
-    if not tenant_id:
-        return jsonify({"overrides": []})
-    res = supabase.table("pd_checklist_overrides").select("*").eq(
-        "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
-    return jsonify({"overrides": res.data or []})
-
-
-@portal_bp.route("/api/checklist/<int:stage_number>", methods=["POST"])
-@_require_admin_role
-def api_checklist_save(user, stage_number):
-    tenant = _get_tenant()
-    tenant_id = tenant.get("id")
-    if not tenant_id:
-        return jsonify({"ok": False, "error": "No tenant"}), 400
-    items = request.get_json() or []
-    if not isinstance(items, list): items = [items]
-    for item in items:
-        item_id = item.get("item_id")
-        if not item_id: continue
-        record = {"tenant_id": tenant_id, "stage_number": stage_number, "item_id": item_id,
-                  "updated_at": datetime.now(timezone.utc).isoformat()}
-        for f in ["text","photo_required","enabled","sort_order"]:
-            if f in item: record[f] = item[f]
-        supabase.table("pd_checklist_overrides").upsert(record, on_conflict="tenant_id,stage_number,item_id").execute()
-    return jsonify({"ok": True})
-
-
-@portal_bp.route("/api/checklist/<int:stage_number>/reset", methods=["DELETE"])
-@_require_admin_role
-def api_checklist_reset(user, stage_number):
-    tenant = _get_tenant()
-    tenant_id = tenant.get("id")
-    if tenant_id:
-        supabase.table("pd_checklist_overrides").delete().eq("tenant_id", tenant_id).eq("stage_number", stage_number).execute()
-    return jsonify({"ok": True})
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -963,23 +776,14 @@ def plot_report(user, plot_id):
     not_started = 37 - approved_count - pending_count - rejected_count
     pct = round((approved_count / 37) * 100)
 
-    approved_sub_ids = [s["id"] for s in stage_map.values() if s.get("status") == "approved"]
-    all_photos_map = {}
-    if approved_sub_ids:
-        try:
-            apr = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
-            for p in (apr.data or []):
-                all_photos_map.setdefault(p["submission_id"], {})[p["item_id"]] = p["public_url"]
-        except Exception:
-            pass
-
     part_l_rows = []
     for sub in stage_map.values():
         if sub.get("status") != "approved":
             continue
-        stage      = STAGES.get(sub["stage_number"], {})
-        answers    = sub.get("answers") or {}
-        photos_map = all_photos_map.get(sub["id"], {})
+        stage   = STAGES.get(sub["stage_number"], {})
+        answers = sub.get("answers") or {}
+        photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+        photos_map = {p["item_id"]: p["public_url"] for p in (photos_res.data or [])}
         for item in stage.get("items", []):
             if "PART L" not in item.get("text", ""):
                 continue
@@ -1096,16 +900,14 @@ def api_sites(user):
             res = supabase.table("pd_sites").select("*").in_("id", site_ids).execute()
         sites = res.data or []
 
-        if sites:
+        # Add plot count per site
+        for site in sites:
             try:
-                all_plots = supabase.table("pd_plots").select("site_id").in_("site_id", [s["id"] for s in sites]).execute()
-                plot_counts = {}
-                for p in (all_plots.data or []):
-                    plot_counts[p["site_id"]] = plot_counts.get(p["site_id"], 0) + 1
-                for site in sites:
-                    site["plot_count"] = plot_counts.get(site["id"], 0)
+                plots_res = supabase.table("pd_plots").select("id", count="exact").eq("site_id", site["id"]).execute()
+                site["plot_count"] = plots_res.count or 0
             except Exception:
-                for site in sites: site["plot_count"] = 0
+                site["plot_count"] = 0
+
         return jsonify(sites)
     except Exception as e:
         print(f"api_sites error: {e}")
@@ -1130,16 +932,14 @@ def api_plots(user):
             except: return (1, str(p.get("plot_number","")))
         plots.sort(key=plot_sort_key)
 
-        if plots:
+        # Add approved stage count per plot
+        for plot in plots:
             try:
-                subs_res = supabase.table("pd_submissions").select("plot_id, stage_number").in_("plot_id", [p["id"] for p in plots]).eq("status", "approved").execute()
-                approved_map = {}
-                for s in (subs_res.data or []):
-                    approved_map.setdefault(s["plot_id"], set()).add(s["stage_number"])
-                for plot in plots:
-                    plot["approved_count"] = len(approved_map.get(plot["id"], set()))
+                subs_res = supabase.table("pd_submissions").select("stage_number, status").eq("plot_id", plot["id"]).eq("status", "approved").execute()
+                plot["approved_count"] = len(set(s["stage_number"] for s in (subs_res.data or [])))
             except Exception:
-                for plot in plots: plot["approved_count"] = 0
+                plot["approved_count"] = 0
+
         return jsonify(plots)
     except Exception as e:
         print(f"api_plots error: {e}")
@@ -1150,12 +950,11 @@ def api_plots(user):
 @_require_login
 def api_submissions(user):
     status = request.args.get("status")
-    limit  = min(int(request.args.get("limit", 50)), 100)
-    offset = int(request.args.get("offset", 0))
+    limit  = int(request.args.get("limit", 50))
 
     query = supabase.table("pd_submissions").select(
         "*, pd_plots(plot_number, site_id, pd_sites(name))"
-    ).order("submitted_at", desc=True).range(offset, offset + limit - 1)
+    ).order("submitted_at", desc=True).limit(limit)
 
     if status:
         query = query.eq("status", status)
@@ -1171,11 +970,6 @@ def api_submissions(user):
             except: site_ids = []
         subs = [s for s in subs if s.get("pd_plots", {}).get("site_id") in site_ids]
 
-    # Optional site filter from UI
-    site_id_filter = request.args.get("site_id")
-    if site_id_filter:
-        subs = [s for s in subs if s.get("pd_plots", {}).get("site_id") == site_id_filter]
-
     return jsonify(subs)
 
 
@@ -1184,8 +978,7 @@ def api_submissions(user):
 def api_photos(user):
     site_id      = request.args.get("site_id")
     stage_number = request.args.get("stage_number")
-    limit        = min(int(request.args.get("limit", 60)), 120)
-    offset       = int(request.args.get("offset", 0))
+    limit        = int(request.args.get("limit", 200))
 
     # Get submissions filtered by access
     subs_query = supabase.table("pd_submissions").select(
@@ -1213,8 +1006,8 @@ def api_photos(user):
         return jsonify([])
 
     sub_ids = [s["id"] for s in subs]
-    photos_res = supabase.table("pd_photos").select("submission_id, item_id, item_label, public_url").in_(
-        "submission_id", sub_ids).range(offset, offset + limit - 1).execute()
+    # Batch fetch photos
+    photos_res = supabase.table("pd_photos").select("*").in_("submission_id", sub_ids).limit(limit).execute()
     photos = photos_res.data or []
 
     # Enrich photos with submission metadata
