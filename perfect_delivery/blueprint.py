@@ -81,13 +81,72 @@ def form(token: str):
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
     stages_by_group = get_stages_by_group()
+
+    # Load existing drafts for this plot so form can pre-fill
+    try:
+        drafts_res = supabase.table("pd_drafts").select("*").eq("plot_id", plot_row["id"]).execute()
+        drafts_by_stage = {d["stage_number"]: d for d in (drafts_res.data or [])}
+    except Exception:
+        drafts_by_stage = {}
+
+    drafts_json = json.dumps(drafts_by_stage, ensure_ascii=False)
+
     return render_template(
         "pd/form.html",
         plot=plot,
         site=site,
         stages_by_group=stages_by_group,
         stages_json=stages_json,
+        drafts_json=drafts_json,
     )
+
+
+
+@pd_bp.route("/<token>/draft", methods=["POST"])
+def save_draft(token: str):
+    """Save or update a draft for a plot+stage."""
+    plot_row = _get_plot(token)
+    try:
+        data = json.loads(request.form.get("data", "{}"))
+    except Exception:
+        return jsonify({"ok": False, "error": "Invalid data"}), 400
+
+    stage_number = int(data.get("stage_number", 0))
+    if stage_number not in STAGES:
+        return jsonify({"ok": False, "error": "Invalid stage"}), 400
+
+    record = {
+        "plot_id":             plot_row["id"],
+        "stage_number":        stage_number,
+        "device_id":           data.get("device_id", ""),
+        "submitted_by_name":   data.get("submitted_by_name", ""),
+        "submitted_by_company": data.get("submitted_by_company", ""),
+        "submitted_by_email":  data.get("submitted_by_email", ""),
+        "answers":             data.get("answers", {}),
+        "additional_notes":    data.get("additional_notes", ""),
+        "updated_at":          datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        supabase.table("pd_drafts").upsert(
+            record, on_conflict="plot_id,stage_number"
+        ).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@pd_bp.route("/<token>/draft/<int:stage_number>", methods=["DELETE"])
+def delete_draft(token: str, stage_number: int):
+    """Delete a draft after successful submission."""
+    plot_row = _get_plot(token)
+    try:
+        supabase.table("pd_drafts").delete().eq(
+            "plot_id", plot_row["id"]
+        ).eq("stage_number", stage_number).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @pd_bp.route("/<token>/submit", methods=["POST"])
@@ -190,6 +249,14 @@ def submit(token: str):
         send_manager_notification(sub_record, plot_row, site, review_url)
     except Exception as e:
         print(f"Manager email error: {e}")
+
+    # Delete draft now that submission is complete
+    try:
+        supabase.table("pd_drafts").delete().eq(
+            "plot_id", plot_row["id"]
+        ).eq("stage_number", stage_number).execute()
+    except Exception:
+        pass
 
     return jsonify({"ok": True, "submission_id": submission_id})
 
@@ -353,8 +420,10 @@ def resubmit_form(resubmit_token: str):
 
 @pd_bp.route("/admin")
 def admin():
-    """Legacy admin URL — redirect to secure portal."""
-    return redirect("/pd/portal", code=302)
+    _require_admin()
+    sites = supabase.table("pd_sites").select("*").order("name").execute().data or []
+    plots = supabase.table("pd_plots").select("*, pd_sites(name)").order("created_at", desc=True).execute().data or []
+    return render_template("pd/admin.html", sites=sites, plots=plots, admin_key=ADMIN_KEY)
 
 
 @pd_bp.route("/admin/sites", methods=["POST"])
@@ -545,22 +614,14 @@ def plot_report(plot_id: str):
     pct = round((approved_count / 37) * 100)
 
     # Part L compliance rows
-    approved_sub_ids = [s["id"] for s in stage_map.values() if s.get("status") == "approved"]
-    all_photos_map = {}
-    if approved_sub_ids:
-        try:
-            apr = supabase.table("pd_photos").select("submission_id, item_id, public_url").in_("submission_id", approved_sub_ids).execute()
-            for p in (apr.data or []):
-                all_photos_map.setdefault(p["submission_id"], {})[p["item_id"]] = p["public_url"]
-        except Exception:
-            pass
     part_l_rows = []
     for sub in stage_map.values():
         if sub.get("status") != "approved":
             continue
-        stage      = STAGES.get(sub["stage_number"], {})
-        answers    = sub.get("answers") or {}
-        photos_map = all_photos_map.get(sub["id"], {})
+        stage   = STAGES.get(sub["stage_number"], {})
+        answers = sub.get("answers") or {}
+        photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+        photos_map = {p["item_id"]: p["public_url"] for p in (photos_res.data or [])}
         for item in stage.get("items", []):
             if "PART L" not in item.get("text", ""):
                 continue
