@@ -186,6 +186,7 @@
           <div class="stage-name">{{ s.short_name }}</div>
           <div class="stage-trade">{{ s.applies_to }}</div>
         </div>
+        <div id="stageStatusBadge{{ s.number }}" style="flex-shrink:0"></div>
         <span style="color:#ccc;font-size:18px">›</span>
       </button>
       {% endfor %}
@@ -265,6 +266,7 @@ const IS_RESUBMIT = {{ 'true' if is_resubmit else 'false' }};
 const PREVIOUS_ANSWERS = {{ previous_answers | default('{}') | safe }};
 const FLAGGED_ITEMS = {{ flagged_items | default('{}') | safe }};
 const PRESELECTED_STAGE = {{ preselected_stage | default('null') }};
+const STAGE_STATUS = {{ stage_status_json | default('{}') | safe }};
 const DRAFTS = {{ drafts_json | default('{}') | safe }};
 
 const DEVICE_ID = (() => {
@@ -311,6 +313,41 @@ function initGeo() {
   );
 }
 // Called lazily when stage is selected
+
+// ── Render stage status badges on load ───────────────────────────────────────
+function renderStageBadges() {
+  Object.entries(STAGE_STATUS).forEach(([num, info]) => {
+    const el = document.getElementById('stageStatusBadge' + num);
+    if (!el) return;
+    const colors = {
+      approved: {bg:'#dcfce7',color:'#166534',text:'✓ Approved'},
+      pending:  {bg:'#fef9c3',color:'#854d0e',text:'⏳ Pending'},
+      rejected: {bg:'#fee2e2',color:'#991b1b',text:'✗ Rejected'},
+    };
+    const c = colors[info.status] || {bg:'#f3f4f6',color:'#6b7280',text:info.status};
+    el.innerHTML = '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:' + c.bg + ';color:' + c.color + '">' + c.text + '</span>';
+
+    // Also mark the button visually
+    const btn = document.getElementById('stageBtnWrapper' + num);
+    if (btn && info.status === 'approved') {
+      btn.style.borderLeft = '3px solid #16a34a';
+      btn.style.background = '#f0fdf4';
+    } else if (btn && info.status === 'pending') {
+      btn.style.borderLeft = '3px solid #ca8a04';
+    } else if (btn && info.status === 'rejected') {
+      btn.style.borderLeft = '3px solid #dc2626';
+    }
+  });
+
+  // Show draft badges
+  Object.entries(DRAFTS).forEach(([num, draft]) => {
+    if (STAGE_STATUS[num]) return; // already has a submission badge
+    const el = document.getElementById('stageStatusBadge' + num);
+    if (!el) return;
+    el.innerHTML = '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#92400e">💾 Draft</span>';
+  });
+}
+document.addEventListener('DOMContentLoaded', renderStageBadges);
 
 // ── Resubmission setup ───────────────────────────────────────────────────────
 if (IS_RESUBMIT && PRESELECTED_STAGE) {
@@ -375,6 +412,14 @@ function showStep(n) {
 }
 function goStep1() { showStep(1); }
 function goStep2() {
+  // Show draft banner if draft exists for selected stage
+  setTimeout(() => {
+    const draft = DRAFTS[String(selectedStage)] || DRAFTS[selectedStage];
+    if (draft && !IS_RESUBMIT) {
+      window._currentDraft = draft;
+      _showDraftBanner(draft);
+    }
+  }, 200);
   if (!validateStep1()) return;
   buildChecklist();
   showStep(2);
@@ -784,14 +829,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && selectedStage) saveDraft(true);
 });
 
-// Show draft banner after checklist renders
-const _origBC = window.buildChecklist;
-window.buildChecklist = function() {
-  if (_origBC) _origBC();
-  setTimeout(() => {
-    if (window._currentDraft && !IS_RESUBMIT) _showDraftBanner(window._currentDraft);
-  }, 150);
-};
+
 
 async function submitForm() {
   const stage = STAGES[selectedStage];
