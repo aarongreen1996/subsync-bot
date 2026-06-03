@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from flask import Flask, request, Response
+from flask import Flask, request, Response, redirect
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
 
@@ -1731,6 +1731,14 @@ def handle_log(from_number, incoming_msg):
 # ── Landing ───────────────────────────────────────────────────────────────────
 import base64 as _b64
 _LANDING_B64 = 'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj48aGVhZD48bWV0YSBjaGFyc2V0PSJVVEYtOCI+PHRpdGxlPk5vdGUyUXVvdGU8L3RpdGxlPjwvaGVhZD48Ym9keT48aDE+Tm90ZTJRdW90ZTwvaDE+PC9ib2R5PjwvaHRtbD4='
+
+@app.before_request
+def redirect_bare_domain():
+    """Redirect root domain to www, preserving path."""
+    host = request.host or ""
+    if host in ("note2quote.co.uk", "note2quote.co.uk:80", "note2quote.co.uk:443"):
+        url = request.url.replace("://note2quote.co.uk", "://www.note2quote.co.uk", 1)
+        return redirect(url, code=301)
 
 @app.route('/')
 def landing():
