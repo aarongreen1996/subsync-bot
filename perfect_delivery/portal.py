@@ -1024,6 +1024,53 @@ def api_photos(user):
     return jsonify(photos)
 
 
+
+# ── Checklist Editor API ──────────────────────────────────────────────────────
+
+@portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
+@_require_admin_role
+def api_checklist_get(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"overrides": []})
+    res = supabase.table("pd_checklist_overrides").select("*").eq(
+        "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
+    return jsonify({"overrides": res.data or []})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>", methods=["POST"])
+@_require_admin_role
+def api_checklist_save(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"ok": False, "error": "No tenant"}), 400
+    items = request.get_json() or []
+    if not isinstance(items, list): items = [items]
+    for item in items:
+        item_id = item.get("item_id")
+        if not item_id: continue
+        record = {"tenant_id": tenant_id, "stage_number": stage_number, "item_id": item_id,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}
+        for f in ["text","photo_required","enabled","sort_order"]:
+            if f in item: record[f] = item[f]
+        supabase.table("pd_checklist_overrides").upsert(
+            record, on_conflict="tenant_id,stage_number,item_id").execute()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>/reset", methods=["DELETE"])
+@_require_admin_role
+def api_checklist_reset(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if tenant_id:
+        supabase.table("pd_checklist_overrides").delete().eq(
+            "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
+    return jsonify({"ok": True})
+
+
 # ── User management API ───────────────────────────────────────────────────────
 
 @portal_bp.route("/api/users", methods=["GET"])
