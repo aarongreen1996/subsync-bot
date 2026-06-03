@@ -412,17 +412,17 @@ function showStep(n) {
 }
 function goStep1() { showStep(1); }
 function goStep2() {
-  // Show draft banner if draft exists for selected stage
+  if (!validateStep1()) return;
+  buildChecklist();
+  showStep(2);
+  // Show draft banner after checklist renders
   setTimeout(() => {
     const draft = DRAFTS[String(selectedStage)] || DRAFTS[selectedStage];
     if (draft && !IS_RESUBMIT) {
       window._currentDraft = draft;
       _showDraftBanner(draft);
     }
-  }, 200);
-  if (!validateStep1()) return;
-  buildChecklist();
-  showStep(2);
+  }, 300);
 }
 function goStep3() {
   buildSummary();
@@ -445,7 +445,16 @@ function selectStage(num) {
   initGeo();
   const draftBtn = document.getElementById('fabDraft');
   if (draftBtn) draftBtn.style.display = 'block';
-  window._currentDraft = DRAFTS[String(num)] || DRAFTS[num] || null;
+  window._currentDraft = null;
+
+  // If draft exists, pre-fill contact fields so validation passes
+  const draft = DRAFTS[String(num)] || DRAFTS[num];
+  if (draft && !IS_RESUBMIT) {
+    window._currentDraft = draft;
+    if (draft.submitted_by_name)    { const el = document.getElementById('inputName');    if (el && !el.value) el.value = draft.submitted_by_name; }
+    if (draft.submitted_by_company) { const el = document.getElementById('inputCompany'); if (el && !el.value) el.value = draft.submitted_by_company; }
+    if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el && !el.value) el.value = draft.submitted_by_email; }
+  }
   document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('stageBtnWrapper' + num).classList.add('selected');
   selectedStage = num;
@@ -798,8 +807,9 @@ function _showDraftBanner(draft) {
   freshBtn.onclick = () => banner.remove();
   btns.appendChild(restoreBtn); btns.appendChild(freshBtn);
   banner.appendChild(info); banner.appendChild(btns);
-  const checklist = document.getElementById('checklistItems');
+  const checklist = document.getElementById('itemsContainer');
   if (checklist) checklist.insertAdjacentElement('beforebegin', banner);
+  else document.getElementById('step2')?.insertAdjacentElement('afterbegin', banner);
 }
 
 function _restoreDraft(draft) {
