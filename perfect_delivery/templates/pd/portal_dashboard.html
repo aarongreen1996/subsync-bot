@@ -389,31 +389,34 @@
   </div>
 
   <!-- Settings -->
-  <!-- Checklist Editor -->
-  <div class="page" id="page-checklist">
-    <div class="page-title">Checklist Editor</div>
-    <div class="page-sub">Customise stage checklist items. Changes apply to your company only.</div>
-    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <select id="clStageSelect" onchange="loadChecklistStage()" style="padding:8px 14px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;min-width:260px">
-        <option value="">Select a stage to edit…</option>
-      </select>
-      <button class="btn btn-ghost btn-sm" onclick="clResetStage()" id="clResetBtn" style="display:none">↩ Reset to default</button>
-    </div>
-    <div id="clEditor" style="display:none">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title" id="clStageName"></span>
-          <button class="btn btn-primary btn-sm" onclick="clSave()">Save changes</button>
+  <!-- Checklist Editor — full embedded version -->
+  <div class="page" id="page-checklist" style="padding:0;overflow:hidden">
+    <div style="display:flex;height:calc(100vh - 56px)">
+      <!-- Stage sidebar -->
+      <div id="clSidebar" style="width:240px;background:#fff;border-right:1px solid #e5e5ea;overflow-y:auto;flex-shrink:0">
+        <div style="padding:10px 12px;border-bottom:1px solid #e5e5ea">
+          <input type="text" id="clSearch" placeholder="Search stages…" oninput="clFilterStages(this.value)"
+            style="width:100%;padding:7px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:12px;background:#f9f9fb;outline:none">
         </div>
-        <div class="card-body">
-          <div id="clItems"></div>
-          <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f2f2f7">
-            <button class="btn btn-ghost btn-sm" onclick="clAddItem()">+ Add item</button>
-          </div>
+        <div id="clStageList"></div>
+      </div>
+      <!-- Editor main -->
+      <div id="clEditorMain" style="flex:1;overflow-y:auto;padding:24px;padding-bottom:70px">
+        <div style="display:flex;align-items:center;justify-content:center;height:200px;flex-direction:column;gap:10px;color:#8e8e93">
+          <div style="font-size:40px">📋</div>
+          <p style="font-weight:600;font-size:15px">Select a stage to edit</p>
+          <p style="font-size:13px">Choose from the list on the left</p>
         </div>
       </div>
     </div>
-    <div id="clEmpty" style="color:#8e8e93;font-size:14px;padding:20px 0">Select a stage above to edit its checklist items.</div>
+    <!-- Save bar -->
+    <div id="clSaveBar" style="position:fixed;bottom:0;left:304px;right:0;background:#fff;border-top:1px solid #e5e5ea;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;z-index:50">
+      <span id="clSaveMsg" style="font-size:13px;color:#8e8e93">All changes saved</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="clResetStage()" id="clResetBtn" style="display:none">Reset to defaults</button>
+        <button class="btn btn-primary btn-sm" onclick="clSaveAll()">Save Changes</button>
+      </div>
+    </div>
   </div>
 
   <div class="page" id="page-settings">
@@ -1313,133 +1316,300 @@ document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVis
 <script>
 // ── Checklist Editor ─────────────────────────────────────────────────────────
 let clCurrentStage = null;
-let clItems = [];
+let clOverrides    = {};
+let clPending      = {};
 
-function clInitStageSelect() {
-  const sel = document.getElementById('clStageSelect');
-  if (!sel || typeof STAGES_FULL === 'undefined') return;
+function clRenderSidebar(filter) {
+  filter = (filter || '').toLowerCase();
+  const container = document.getElementById('clStageList');
+  if (!container) return;
+  container.innerHTML = '';
+  if (typeof STAGES_FULL === 'undefined') return;
+
+  // Group stages by applies_to
+  const groups = {};
   Object.entries(STAGES_FULL).forEach(([num, s]) => {
-    const opt = document.createElement('option');
-    opt.value = num;
-    opt.textContent = String(num).padStart(2,'0') + ' \u2014 ' + s.name + ' (' + (s.applies_to||'') + ')';
-    sel.appendChild(opt);
+    const trade = s.applies_to || 'Other';
+    if (!groups[trade]) groups[trade] = [];
+    groups[trade].push([num, s]);
+  });
+
+  Object.entries(groups).forEach(([trade, stages]) => {
+    const filtered = stages.filter(([n, s]) =>
+      !filter || s.name.toLowerCase().includes(filter) || trade.toLowerCase().includes(filter)
+    );
+    if (!filtered.length) return;
+
+    const gh = document.createElement('div');
+    gh.style.cssText = 'padding:6px 12px 3px;font-size:10px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.8px;background:#f9f9fb;border-bottom:1px solid #f2f2f7';
+    gh.textContent = trade;
+    container.appendChild(gh);
+
+    filtered.forEach(([num, s]) => {
+      const item = document.createElement('div');
+      const isActive = clCurrentStage == num;
+      item.style.cssText = 'padding:10px 12px;border-bottom:1px solid #f2f2f7;cursor:pointer;display:flex;align-items:center;gap:8px;' + (isActive ? 'background:#1a1a2e;' : '');
+      item.onclick = () => clLoadStage(num);
+      item.innerHTML = '<span style="background:' + (isActive ? '#C5962A' : '#f2f2f7') + ';color:' + (isActive ? '#1a1a2e' : '#6b7280') + ';font-size:10px;font-weight:700;padding:2px 5px;border-radius:4px;flex-shrink:0">' + String(num).padStart(2,'0') + '</span>' +
+        '<div style="flex:1"><div style="font-size:12px;font-weight:600;color:' + (isActive ? '#C5962A' : '#1a1a2e') + '">' + s.name + '</div></div>';
+      container.appendChild(item);
+    });
   });
 }
 
-async function loadChecklistStage() {
-  const num = document.getElementById('clStageSelect').value;
-  if (!num) return;
-  clCurrentStage = parseInt(num);
-  document.getElementById('clEditor').style.display = 'none';
-  document.getElementById('clEmpty').style.display = 'block';
-  document.getElementById('clEmpty').textContent = 'Loading\u2026';
-  try {
-    const res  = await fetch('/pd/portal/api/checklist/' + num);
-    const data = await res.json();
-    const overrides = {};
-    (data.overrides || []).forEach(o => { overrides[o.item_id] = o; });
-    const base = STAGES_FULL[num] || {};
-    clItems = (base.items || []).map((item, idx) => {
-      const ov = overrides[item.id] || {};
-      return {
-        item_id:        item.id,
-        text:           ov.text           !== undefined ? ov.text           : item.text,
-        photo_required: ov.photo_required !== undefined ? ov.photo_required : (item.photo !== false),
-        enabled:        ov.enabled        !== undefined ? ov.enabled        : true,
-        sort_order:     ov.sort_order     !== undefined ? ov.sort_order     : idx,
-      };
-    });
-    const baseIds = new Set((base.items||[]).map(i => i.id));
-    Object.values(overrides).forEach(ov => {
-      if (!baseIds.has(ov.item_id) && ov.item_id.startsWith('custom_'))
-        clItems.push({ item_id: ov.item_id, text: ov.text||'', photo_required: ov.photo_required!==false, enabled: ov.enabled!==false, sort_order: ov.sort_order||999 });
-    });
-    clItems.sort((a,b) => a.sort_order - b.sort_order);
-    document.getElementById('clStageName').textContent = String(num).padStart(2,'0') + ' \u2014 ' + (base.name||'');
-    document.getElementById('clResetBtn').style.display = 'inline-flex';
-    clRender();
-    document.getElementById('clEditor').style.display = 'block';
-    document.getElementById('clEmpty').style.display = 'none';
-  } catch(e) {
-    document.getElementById('clEmpty').textContent = 'Error loading. Please try again.';
+function clFilterStages(v) { clRenderSidebar(v); }
+
+async function clLoadStage(stageNum) {
+  clCurrentStage = stageNum;
+  clPending      = {};
+  clRenderSidebar(document.getElementById('clSearch')?.value || '');
+
+  const res  = await fetch('/pd/portal/api/checklist/' + stageNum);
+  const data = await res.json();
+  clOverrides = {};
+  (data.overrides || []).forEach(o => { clOverrides[o.item_id] = o; });
+
+  clRenderEditor(stageNum);
+  clUpdateSaveBar(false);
+}
+
+function clRenderEditor(stageNum) {
+  const stage = STAGES_FULL[stageNum];
+  const main  = document.getElementById('clEditorMain');
+  if (!stage || !main) return;
+
+  main.innerHTML = '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:16px;flex-wrap:wrap">' +
+    '<div><div style="font-size:18px;font-weight:700;color:#1a1a2e">Stage ' + String(stageNum).padStart(2,'0') + ' \u2014 ' + stage.name + '</div>' +
+    '<div style="font-size:13px;color:#8e8e93;margin-top:3px">' + stage.applies_to + '</div></div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button class="btn btn-ghost btn-sm" onclick="clExpandAll()">Expand all</button>' +
+    '<button class="btn btn-primary btn-sm" onclick="clShowAddItem()">+ Add item</button>' +
+    '</div></div>' +
+    '<div id="clAddArea"></div>' +
+    '<div id="clItemsContainer"></div>' +
+    '<div style="height:70px"></div>';
+
+  const container = document.getElementById('clItemsContainer');
+  (stage.items || []).forEach((item, idx) => {
+    container.appendChild(clBuildCard(item, idx + 1));
+  });
+
+  // Custom items
+  Object.values(clOverrides).forEach(ov => {
+    if (ov.item_id && ov.item_id.startsWith('custom_') && !(stage.items||[]).find(i => i.id === ov.item_id)) {
+      container.appendChild(clBuildCard({id: ov.item_id, text: ov.text||'', photo: ov.photo_required}, (stage.items||[]).length + 1, true));
+    }
+  });
+}
+
+function clBuildCard(item, num, isCustom) {
+  const ov       = clOverrides[item.id] || {};
+  const text     = (ov.text !== undefined && ov.text !== null) ? ov.text : item.text;
+  const photoReq = (ov.photo_required !== undefined && ov.photo_required !== null) ? ov.photo_required : (item.photo || false);
+  const enabled  = (ov.enabled !== undefined && ov.enabled !== null) ? ov.enabled : true;
+  const exPhoto  = ov.example_photo_url || '';
+  const exGuide  = ov.example_guidance || '';
+  const hasOv    = Object.keys(ov).length > 0;
+
+  const card = document.createElement('div');
+  card.id = 'clcard_' + item.id;
+  card.style.cssText = 'background:#fff;border-radius:12px;padding:16px;margin-bottom:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06);border-left:3px solid ' + (hasOv ? '#C5962A' : '#e5e5ea') + ';' + (!enabled ? 'opacity:0.5;' : '');
+
+  const safeId = item.id.replace(/[^a-z0-9_]/gi, '_');
+
+  card.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:10px">' +
+      '<span style="color:#c7c7cc;font-size:16px;padding-top:2px">⠿</span>' +
+      '<span style="font-size:11px;font-weight:700;color:#8e8e93;min-width:24px">' + String(num).padStart(2,'0') + '</span>' +
+      '<span style="flex:1;font-size:14px;color:#1a1a2e;line-height:1.5;cursor:pointer" onclick="clToggleEdit('' + safeId + '')">' + (text||'<em style=\"color:#c7c7cc\">No text</em>') + '</span>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' +
+        '<label style="position:relative;width:40px;height:22px;display:inline-block">' +
+          '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="clMark('' + item.id + '','enabled',this.checked)" style="opacity:0;width:0;height:0">' +
+          '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:' + (enabled ? '#34c759' : '#e5e5ea') + ';border-radius:22px;cursor:pointer;transition:0.2s"><span style="position:absolute;width:18px;height:18px;' + (enabled ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%;transition:0.2s"></span></span>' +
+        '</label>' +
+        '<button class="btn btn-ghost btn-sm" onclick="clToggleEdit('' + safeId + '')">Edit</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="cledit_' + safeId + '" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #f2f2f7">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div style="grid-column:1/-1">' +
+          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Question Text</label>' +
+          '<textarea id="cltxt_' + safeId + '" oninput="clMark('' + item.id + '','text',this.value)" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none">' + (text||'') + '</textarea>' +
+        '</div>' +
+        '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:8px 0">' +
+          '<div><div style="font-size:13px;font-weight:600">📷 Require Photo</div><div style="font-size:12px;color:#8e8e93">Subcontractor must upload a photo</div></div>' +
+          '<label style="position:relative;width:40px;height:22px;display:inline-block">' +
+            '<input type="checkbox" id="clphoto_' + safeId + '" ' + (photoReq ? 'checked' : '') + ' onchange="clMark('' + item.id + '','photo_required',this.checked)" style="opacity:0;width:0;height:0">' +
+            '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:' + (photoReq ? '#34c759' : '#e5e5ea') + ';border-radius:22px;cursor:pointer"><span style="position:absolute;width:18px;height:18px;' + (photoReq ? 'left:20px' : 'left:2px') + ';bottom:2px;background:#fff;border-radius:50%"></span></span>' +
+          '</label>' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Example Photo</label>' +
+          '<div onclick="document.getElementById('clexfile_' + safeId + '').click()" style="border:2px dashed #e5e5ea;border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#f9f9fb">' +
+            (exPhoto ? '<img src="' + exPhoto + '" id="cleximg_' + safeId + '" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px">' : '<div id="cleximg_' + safeId + '"></div>') +
+            '<div style="font-size:12px;color:#8e8e93">Tap to upload example photo</div>' +
+          '</div>' +
+          '<input type="file" id="clexfile_' + safeId + '" accept="image/*" style="display:none" onchange="clUploadPhoto('' + item.id + '','' + safeId + '',this)">' +
+        '</div>' +
+        '<div>' +
+          '<label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px">Guidance Text</label>' +
+          '<textarea id="clguide_' + safeId + '" placeholder="Describe what the photo should show…" oninput="clMark('' + item.id + '','example_guidance',this.value)" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:#f9f9fb;resize:vertical;min-height:70px;outline:none">' + exGuide + '</textarea>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:12px;display:flex;gap:8px">' +
+        '<button class="btn btn-ghost btn-sm" onclick="clToggleEdit('' + safeId + '')">Collapse</button>' +
+        (hasOv || isCustom ? '<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="clResetItem('' + item.id + '')">Reset to default</button>' : '') +
+      '</div>' +
+    '</div>';
+
+  return card;
+}
+
+function clToggleEdit(safeId) {
+  const el = document.getElementById('cledit_' + safeId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function clExpandAll() {
+  document.querySelectorAll('[id^="cledit_"]').forEach(el => el.style.display = 'block');
+}
+
+function clMark(itemId, field, value) {
+  if (!clPending[itemId]) clPending[itemId] = {};
+  clPending[itemId][field] = value;
+  const card = document.getElementById('clcard_' + itemId);
+  if (card) card.style.borderLeftColor = '#C5962A';
+  clUpdateSaveBar(true);
+}
+
+function clUpdateSaveBar(modified) {
+  const msg = document.getElementById('clSaveMsg');
+  const btn = document.getElementById('clResetBtn');
+  if (!msg) return;
+  if (modified) {
+    msg.textContent = 'Unsaved changes…';
+    msg.style.color = '#d97706';
+    msg.style.fontWeight = '600';
+  } else {
+    msg.textContent = 'All changes saved';
+    msg.style.color = '#8e8e93';
+    msg.style.fontWeight = '400';
+  }
+  if (btn) btn.style.display = Object.keys(clOverrides).length ? 'inline-flex' : 'none';
+}
+
+async function clUploadPhoto(itemId, safeId, input) {
+  if (!input.files[0]) return;
+  const fd = new FormData();
+  fd.append('photo', input.files[0]);
+  fd.append('item_id', itemId);
+  fd.append('stage_number', clCurrentStage);
+  const res  = await fetch('/pd/portal/api/checklist/upload-example', { method: 'POST', body: fd });
+  const json = await res.json();
+  if (json.ok) {
+    clMark(itemId, 'example_photo_url', json.url);
+    const imgEl = document.getElementById('cleximg_' + safeId);
+    if (imgEl) imgEl.outerHTML = '<img src="' + json.url + '" id="cleximg_' + safeId + '" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px">';
+    showToast('Photo uploaded');
+  } else {
+    showToast('Upload failed', true);
   }
 }
 
-function clRender() {
-  const container = document.getElementById('clItems');
-  container.innerHTML = '';
-  clItems.forEach((item, idx) => {
-    const isCustom = item.item_id.startsWith('custom_');
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7';
-    const enabledCb = document.createElement('input');
-    enabledCb.type = 'checkbox'; enabledCb.checked = item.enabled;
-    enabledCb.style.cssText = 'width:16px;height:16px;cursor:pointer;margin-top:8px;flex-shrink:0';
-    const textInput = document.createElement('input');
-    textInput.type = 'text'; textInput.value = item.text;
-    textInput.style.cssText = 'width:100%;padding:7px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:' + (item.enabled?'#fff':'#f9f9fb') + ';color:' + (item.enabled?'#1c1c1e':'#8e8e93');
-    textInput.addEventListener('input', function() { clItems[idx].text = this.value; });
-    enabledCb.addEventListener('change', function() {
-      clItems[idx].enabled = this.checked;
-      textInput.style.color = this.checked ? '#1c1c1e' : '#8e8e93';
-      textInput.style.background = this.checked ? '#fff' : '#f9f9fb';
-    });
-    const photoCb = document.createElement('input');
-    photoCb.type = 'checkbox'; photoCb.checked = item.photo_required;
-    photoCb.addEventListener('change', function() { clItems[idx].photo_required = this.checked; });
-    const photoLabel = document.createElement('label');
-    photoLabel.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;color:#636366;cursor:pointer';
-    photoLabel.appendChild(photoCb);
-    photoLabel.appendChild(document.createTextNode('Photo required'));
-    const meta = document.createElement('div');
-    meta.style.cssText = 'display:flex;gap:12px;margin-top:6px;align-items:center';
-    meta.appendChild(photoLabel);
-    if (isCustom) {
-      const removeBtn = document.createElement('button');
-      removeBtn.textContent = '\u2715 Remove';
-      removeBtn.style.cssText = 'font-size:11px;color:#ff3b30;background:none;border:none;cursor:pointer;padding:0';
-      removeBtn.addEventListener('click', function() { clItems.splice(idx,1); clRender(); });
-      meta.appendChild(removeBtn);
-    }
-    const right = document.createElement('div');
-    right.style.flex = '1';
-    right.appendChild(textInput);
-    right.appendChild(meta);
-    row.appendChild(enabledCb);
-    row.appendChild(right);
-    container.appendChild(row);
+function clShowAddItem() {
+  const area = document.getElementById('clAddArea');
+  if (!area) return;
+  if (area.innerHTML) { area.innerHTML = ''; return; }
+  area.innerHTML = '<div style="background:#f9f9fb;border:2px dashed #e5e5ea;border-radius:12px;padding:16px;margin-bottom:10px">' +
+    '<div style="font-size:14px;font-weight:700;margin-bottom:12px">Add New Item</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+      '<div style="grid-column:1/-1"><label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase">Question Text</label>' +
+      '<textarea id="clNewText" placeholder="Enter the checklist question…" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none"></textarea></div>' +
+      '<div><div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0"><div style="font-size:13px;font-weight:600">Require Photo</div>' +
+      '<label style="position:relative;width:40px;height:22px;display:inline-block"><input type="checkbox" id="clNewPhoto" checked style="opacity:0;width:0;height:0">' +
+      '<span onclick="this.previousElementSibling.click()" style="position:absolute;inset:0;background:#34c759;border-radius:22px;cursor:pointer"><span style="position:absolute;width:18px;height:18px;left:20px;bottom:2px;background:#fff;border-radius:50%"></span></span></label></div></div>' +
+      '<div><label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:5px;text-transform:uppercase">Guidance Text</label>' +
+      '<textarea id="clNewGuide" placeholder="What should the photo show?" style="width:100%;padding:9px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;resize:vertical;min-height:70px;outline:none"></textarea></div>' +
+    '</div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="clAddItem()">Add Item</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="document.getElementById('clAddArea').innerHTML=''">Cancel</button>' +
+    '</div></div>';
+}
+
+async function clAddItem() {
+  const text  = document.getElementById('clNewText')?.value.trim();
+  const photo = document.getElementById('clNewPhoto')?.checked;
+  const guide = document.getElementById('clNewGuide')?.value.trim();
+  if (!text) { showToast('Question text is required', true); return; }
+  const newId  = 'custom_' + clCurrentStage + '_' + Date.now();
+  const res = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify([{ stage_number: clCurrentStage, item_id: newId, text, photo_required: photo, example_guidance: guide, enabled: true }]),
   });
+  const json = await res.json();
+  if (json.ok) { showToast('Item added'); document.getElementById('clAddArea').innerHTML = ''; await clLoadStage(clCurrentStage); }
+  else showToast('Error: ' + json.error, true);
 }
 
-function clAddItem() {
-  if (!clCurrentStage) return;
-  clItems.push({ item_id: 'custom_' + clCurrentStage + '_' + Date.now(), text: '', photo_required: true, enabled: true, sort_order: clItems.length });
-  clRender();
-  const inputs = document.getElementById('clItems').querySelectorAll('input[type=text]');
-  if (inputs.length) inputs[inputs.length-1].focus();
-}
-
-async function clSave() {
-  if (!clCurrentStage) return;
-  try {
-    const res = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(clItems.map((item,idx) => ({ ...item, sort_order: idx }))),
-    });
-    const data = await res.json();
-    if (data.ok) showToast('Checklist saved');
-    else showToast('Error: ' + (data.error||'unknown'), true);
-  } catch(e) { showToast('Save failed', true); }
+async function clSaveAll() {
+  if (!Object.keys(clPending).length) { showToast('No changes to save'); return; }
+  const stage = STAGES_FULL[clCurrentStage];
+  const items = Object.entries(clPending).map(([item_id, changes]) => {
+    const orig = (stage?.items||[]).find(i => i.id === item_id) || {};
+    const ex   = clOverrides[item_id] || {};
+    return {
+      stage_number: clCurrentStage, item_id,
+      text:               changes.text              !== undefined ? changes.text              : (ex.text !== null && ex.text !== undefined ? ex.text : (orig.text||'')),
+      photo_required:     changes.photo_required    !== undefined ? changes.photo_required    : (ex.photo_required !== null && ex.photo_required !== undefined ? ex.photo_required : (orig.photo||false)),
+      enabled:            changes.enabled           !== undefined ? changes.enabled           : (ex.enabled !== null && ex.enabled !== undefined ? ex.enabled : true),
+      example_photo_url:  changes.example_photo_url !== undefined ? changes.example_photo_url : (ex.example_photo_url||''),
+      example_guidance:   changes.example_guidance  !== undefined ? changes.example_guidance  : (ex.example_guidance||''),
+    };
+  });
+  const res  = await fetch('/pd/portal/api/checklist/' + clCurrentStage, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(items),
+  });
+  const json = await res.json();
+  if (json.ok) { clPending = {}; await clLoadStage(clCurrentStage); showToast('Saved successfully'); }
+  else showToast('Error: ' + (json.error||'unknown'), true);
 }
 
 async function clResetStage() {
-  if (!clCurrentStage || !confirm('Reset Stage ' + clCurrentStage + ' to default?')) return;
+  if (!clCurrentStage || !confirm('Reset all customisations for this stage to defaults?')) return;
   await fetch('/pd/portal/api/checklist/' + clCurrentStage + '/reset', { method: 'DELETE' });
-  showToast('Stage reset to default');
-  loadChecklistStage();
+  clOverrides = {}; clPending = {};
+  await clLoadStage(clCurrentStage);
+  showToast('Reset to defaults');
 }
 
-document.addEventListener('DOMContentLoaded', clInitStageSelect);
+async function clResetItem(itemId) {
+  if (!confirm('Reset this item to its default?')) return;
+  // Remove this item\'s override from DB by saving empty then reloading
+  await fetch('/pd/portal/api/checklist/item/' + itemId + '/reset', { method: 'DELETE' });
+  await clLoadStage(clCurrentStage);
+  showToast('Item reset');
+}
+
+// Init sidebar when checklist page shown
+const _origShowPage = window.showPage;
+window.showPage = function(name, el) {
+  if (_origShowPage) _origShowPage(name, el);
+  if (name === 'checklist') {
+    clRenderSidebar();
+    // Adjust save bar left offset based on sidebar width
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      const w = sidebar.offsetWidth;
+      const bar = document.getElementById('clSaveBar');
+      if (bar) bar.style.left = (w + 240) + 'px';
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof STAGES_FULL !== 'undefined') clRenderSidebar();
+});
 </script>
 </body>
 </html>
