@@ -1025,6 +1025,100 @@ def api_photos(user):
 
 
 
+
+# ── Stage Groups API ──────────────────────────────────────────────────────────
+
+DEFAULT_STAGE_GROUPS = [
+    {"name": "Groundworks & Structure", "stages": [1,2,3,4,5,6,7,8,9,11]},
+    {"name": "Roof",                    "stages": [10,12,13,14]},
+    {"name": "Internal Structure",      "stages": [15,16,17,18,19,20]},
+    {"name": "1st Fix",                 "stages": [21,22,23,24]},
+    {"name": "Plastering & Lining",     "stages": [25]},
+    {"name": "2nd Fix & Finishes",      "stages": [26,27,28,29,30,31]},
+    {"name": "Finals & Handover",       "stages": [32,33,34,35,36,37]},
+]
+
+
+def _get_stage_groups(tenant_id: str) -> list:
+    """Get tenant stage groups, seeding defaults if none exist."""
+    try:
+        res = supabase.table("pd_stage_groups").select("*").eq(
+            "tenant_id", tenant_id).order("sort_order").execute()
+        if res.data:
+            return res.data
+        # Seed defaults
+        for i, g in enumerate(DEFAULT_STAGE_GROUPS):
+            supabase.table("pd_stage_groups").insert({
+                "tenant_id":     tenant_id,
+                "name":          g["name"],
+                "stage_numbers": g["stages"],
+                "sort_order":    i,
+            }).execute()
+        res2 = supabase.table("pd_stage_groups").select("*").eq(
+            "tenant_id", tenant_id).order("sort_order").execute()
+        return res2.data or []
+    except Exception as e:
+        print(f"_get_stage_groups error: {e}")
+        return []
+
+
+@portal_bp.route("/api/stage-groups", methods=["GET"])
+@_require_login
+def api_stage_groups_get(user):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify([])
+    groups = _get_stage_groups(tenant_id)
+    return jsonify(groups)
+
+
+@portal_bp.route("/api/stage-groups", methods=["POST"])
+@_require_admin_role
+def api_stage_groups_save(user):
+    """Save full group config — replaces all groups for tenant."""
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"ok": False, "error": "No tenant"}), 400
+
+    groups = request.get_json() or []
+    if not isinstance(groups, list):
+        return jsonify({"ok": False, "error": "Expected array"}), 400
+
+    try:
+        # Delete existing and re-insert
+        supabase.table("pd_stage_groups").delete().eq("tenant_id", tenant_id).execute()
+        for i, g in enumerate(groups):
+            name   = (g.get("name") or "").strip()
+            stages = g.get("stage_numbers") or g.get("stages") or []
+            if not name: continue
+            supabase.table("pd_stage_groups").insert({
+                "tenant_id":     tenant_id,
+                "name":          name,
+                "stage_numbers": [int(s) for s in stages],
+                "sort_order":    i,
+            }).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@portal_bp.route("/api/stage-groups/reset", methods=["DELETE"])
+@_require_admin_role
+def api_stage_groups_reset(user):
+    """Reset to default groups."""
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"ok": False, "error": "No tenant"}), 400
+    try:
+        supabase.table("pd_stage_groups").delete().eq("tenant_id", tenant_id).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ── Checklist Editor API ──────────────────────────────────────────────────────
 
 @portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
