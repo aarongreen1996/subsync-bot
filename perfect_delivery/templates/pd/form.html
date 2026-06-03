@@ -814,18 +814,38 @@ function _showDraftBanner(draft) {
 
 function _restoreDraft(draft) {
   if (!draft) return;
+
+  // Restore contact fields
   if (draft.submitted_by_name)    { const el = document.getElementById('inputName');    if (el) el.value = draft.submitted_by_name; }
   if (draft.submitted_by_company) { const el = document.getElementById('inputCompany'); if (el) el.value = draft.submitted_by_company; }
   if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el) el.value = draft.submitted_by_email; }
   if (draft.additional_notes)     { const el = document.getElementById('additionalNotes'); if (el) el.value = draft.additional_notes; }
+
+  // Load draft answers into answers object
   const draftAnswers = draft.answers || {};
   Object.entries(draftAnswers).forEach(([itemId, val]) => {
-    answers[itemId] = val;
-    const radios = document.querySelectorAll('input[name="item_' + itemId + '"]');
-    radios.forEach(r => { if (r.value === (val.value || val)) r.checked = true; });
-    const ta = document.getElementById('notes_' + itemId);
-    if (ta && val.text) ta.value = val.text;
+    answers[itemId] = typeof val === 'object' ? val : { value: val };
   });
+
+  // Rebuild the checklist so buildItem re-renders with restored answers
+  buildChecklist();
+
+  // Restore text inputs and notes after rebuild
+  Object.entries(draftAnswers).forEach(([itemId, val]) => {
+    if (val && val.text) {
+      const ta = document.getElementById('notes_' + itemId);
+      if (ta) ta.value = val.text;
+      const tv = document.getElementById('textval_' + itemId);
+      if (tv) tv.value = val.text;
+    }
+  });
+
+  // Restore additional notes
+  if (draft.additional_notes) {
+    const el = document.getElementById('additionalNotes');
+    if (el) el.value = draft.additional_notes;
+  }
+
   _showDraftToast('Answers restored');
 }
 
