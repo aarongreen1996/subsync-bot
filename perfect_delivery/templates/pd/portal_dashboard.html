@@ -682,6 +682,7 @@
 <script>
 const USER_ROLE = "{{ user.role }}";
 const SITES_DATA = {{ sites_json | safe }};
+const STAGES_FULL = {{ stages_full_json | safe }};
 let allPhotos = [], filteredPhotos = [], currentPhotoIdx = 0;
 
 // ── Navigation ───────────────────────────────────────────────────────────────
@@ -1028,7 +1029,6 @@ function initPhotoFilters() {
   });
   const stageSelect = document.getElementById('photoFilterStage');
   const STAGE_NAMES = {{ stages_json | safe }};
-  const STAGES_FULL = {{ stages_full_json | safe }};
   Object.entries(STAGE_NAMES).forEach(([num, stage]) => {
     const o = document.createElement('option');
     o.value = num;
