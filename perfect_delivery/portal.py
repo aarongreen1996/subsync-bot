@@ -1071,6 +1071,52 @@ def api_checklist_reset(user, stage_number):
     return jsonify({"ok": True})
 
 
+
+@portal_bp.route("/api/checklist/upload-example", methods=["POST"])
+@_require_admin_role
+def api_checklist_upload_example(user):
+    """Upload an example photo for a checklist item."""
+    import uuid as _uuid
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    photo = request.files.get("photo")
+    item_id = request.form.get("item_id", "")
+    stage_number = request.form.get("stage_number", "0")
+    if not photo or not item_id:
+        return jsonify({"ok": False, "error": "Missing photo or item_id"}), 400
+    try:
+        ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else "jpg"
+        fname = f"examples/stage_{stage_number}/{item_id}_{_uuid.uuid4().hex[:8]}.{ext}"
+        photo_bytes = photo.read()
+        SUPABASE_URL_raw = os.environ.get("SUPABASE_URL", "").rstrip("/")
+        SUPABASE_KEY_raw = os.environ.get("SUPABASE_KEY", "")
+        import requests as _req
+        r = _req.post(
+            f"{SUPABASE_URL_raw}/storage/v1/object/pd-photos/{fname}",
+            data=photo_bytes,
+            headers={"apikey": SUPABASE_KEY_raw, "Authorization": f"Bearer {SUPABASE_KEY_raw}",
+                     "Content-Type": f"image/{ext}", "x-upsert": "true"}
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"ok": False, "error": "Storage upload failed"}), 500
+        url = f"{SUPABASE_URL_raw}/storage/v1/object/public/pd-photos/{fname}"
+        return jsonify({"ok": True, "url": url})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@portal_bp.route("/api/checklist/item/<item_id>/reset", methods=["DELETE"])
+@_require_admin_role
+def api_checklist_item_reset(user, item_id):
+    """Reset a single checklist item override."""
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if tenant_id:
+        supabase.table("pd_checklist_overrides").delete().eq(
+            "tenant_id", tenant_id).eq("item_id", item_id).execute()
+    return jsonify({"ok": True})
+
+
 # ── User management API ───────────────────────────────────────────────────────
 
 @portal_bp.route("/api/users", methods=["GET"])
