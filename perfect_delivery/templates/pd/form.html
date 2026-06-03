@@ -168,7 +168,7 @@
     </div>
   </div>
 
-  <div id="geoStatus" class="geo-status geo-pending">📍 Getting your location for photo geotagging…</div>
+  <div id="geoStatus" class="geo-status" style="display:none"></div>
 
   <div style="padding: 16px 0 8px">
     <p class="section-title">Select Build Stage</p>
@@ -241,7 +241,7 @@
   <div class="info-note">By signing and submitting you confirm the works comply with contract drawings, warranty provider requirements and current Building Regulations.</div>
   <button class="fab-back" onclick="goStep2()">← Edit</button>
   <div id="draftStatus" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;z-index:100;pointer-events:none">Draft saved</div>
-  <button id="fabDraft" onclick="saveDraft(false)" style="display:none;position:fixed;bottom:140px;right:20px;z-index:100;background:#fff;color:#1a1a2e;border:2px solid #e5e5ea;border-radius:50px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.1)">💾 Save draft</button>
+  <button id="fabDraft" onclick="saveDraft(false)" style="display:none;position:fixed;bottom:82px;right:16px;z-index:200;background:#fff;color:#1a1a2e;border:2px solid #e5e5ea;border-radius:14px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.1)">💾 Save draft</button>
   <button class="fab-next" id="fabSubmit" onclick="submitForm()" style="background:var(--yes);color:white;box-shadow:0 4px 20px rgba(22,163,74,0.3)">Submit ✓</button>
 </div>
 
@@ -267,7 +267,6 @@ const FLAGGED_ITEMS = {{ flagged_items | default('{}') | safe }};
 const PRESELECTED_STAGE = {{ preselected_stage | default('null') }};
 const DRAFTS = {{ drafts_json | default('{}') | safe }};
 
-// Device ID — anonymous fingerprint stored in localStorage
 const DEVICE_ID = (() => {
   try {
     let id = localStorage.getItem('pd_device_id');
@@ -285,27 +284,33 @@ let geoLocation = null;
 const captureTime = {};
 
 // ── Geolocation ──────────────────────────────────────────────────────────────
+let _geoRequested = false;
 function initGeo() {
+  if (_geoRequested) return;
+  _geoRequested = true;
   const el = document.getElementById('geoStatus');
   if (!navigator.geolocation) {
+    el.style.display = 'block';
     el.className = 'geo-status geo-fail';
-    el.textContent = '⚠ Location not available on this device';
+    el.textContent = '⚠ Location not available';
     return;
   }
   navigator.geolocation.getCurrentPosition(
     pos => {
       geoLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) };
+      el.style.display = 'block';
       el.className = 'geo-status geo-ok';
-      el.textContent = `📍 Location confirmed — ${geoLocation.lat.toFixed(5)}, ${geoLocation.lng.toFixed(5)} (±${geoLocation.accuracy}m)`;
+      el.textContent = '📍 Location confirmed (±' + geoLocation.accuracy + 'm)';
     },
     err => {
+      el.style.display = 'block';
       el.className = 'geo-status geo-fail';
-      el.textContent = '⚠ Location permission denied — please enable location and reload';
+      el.textContent = '⚠ Location unavailable — photos will still upload';
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
   );
 }
-initGeo();
+// Called lazily when stage is selected
 
 // ── Resubmission setup ───────────────────────────────────────────────────────
 if (IS_RESUBMIT && PRESELECTED_STAGE) {
@@ -392,21 +397,14 @@ function validateStep1() {
 
 // ── Stage selection ──────────────────────────────────────────────────────────
 function selectStage(num) {
-  // Check for existing draft for this stage
-  const draft = DRAFTS[String(num)] || DRAFTS[num];
-  if (draft && !IS_RESUBMIT) {
-    _pendingDraft = draft;
-  } else {
-    _pendingDraft = null;
-  }
-  // Show save draft button
+  initGeo();
   const draftBtn = document.getElementById('fabDraft');
   if (draftBtn) draftBtn.style.display = 'block';
+  window._currentDraft = DRAFTS[String(num)] || DRAFTS[num] || null;
   document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('stageBtnWrapper' + num).classList.add('selected');
   selectedStage = num;
   answers = {};
-  _draftSavedAt = null;
   photoFiles = {};
   document.getElementById('fabStep1').disabled = false;
 }
@@ -692,27 +690,23 @@ function closeExample() {
   document.getElementById('examplePopup').classList.remove('show');
 }
 
-// ── Draft autosave ──────────────────────────────────────────────────────────
+// ── Draft autosave ────────────────────────────────────────────────────────
 let _autosaveTimer = null;
-let _draftSavedAt  = null;
-let _pendingDraft  = null;
 
-function _showDraftStatus(msg) {
+function _showDraftToast(msg) {
   const el = document.getElementById('draftStatus');
   if (!el) return;
   el.textContent = msg;
   el.style.display = 'block';
-  clearTimeout(el._hideTimer);
-  el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, 2500);
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 2500);
 }
 
-async function saveDraft(silent = true) {
+async function saveDraft(silent) {
   if (!selectedStage) return;
   const name    = document.getElementById('inputName')?.value.trim() || '';
   const company = document.getElementById('inputCompany')?.value.trim() || '';
   const email   = document.getElementById('inputEmail')?.value.trim() || '';
-
-  // Don't save if nothing filled in at all
   if (!name && !company && !email && !Object.keys(answers).length) return;
 
   const payload = {
@@ -724,103 +718,79 @@ async function saveDraft(silent = true) {
     answers:               answers,
     additional_notes:      document.getElementById('additionalNotes')?.value.trim() || '',
   };
-
   const fd = new FormData();
   fd.append('data', JSON.stringify(payload));
-
   try {
     await fetch('/pd/' + PLOT_TOKEN + '/draft', { method: 'POST', body: fd });
-    _draftSavedAt = new Date();
-    if (!silent) _showDraftStatus('✓ Draft saved');
-  } catch(e) {
-    console.warn('Draft save failed:', e);
-  }
+    if (!silent) _showDraftToast('✓ Draft saved');
+  } catch(e) { console.warn('Draft save failed:', e); }
 }
 
-function _scheduleDraftSave() {
+function _scheduleDraft() {
   clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(() => saveDraft(true), 5000); // save 5s after last change
+  _autosaveTimer = setTimeout(() => saveDraft(true), 5000);
 }
 
-// Restore draft answers into the form
-function _restoreDraft(draft) {
-  if (!draft) return;
-  // Restore name/company/email
-  if (draft.submitted_by_name)    { const el = document.getElementById('inputName');    if (el) el.value = draft.submitted_by_name; }
-  if (draft.submitted_by_company) { const el = document.getElementById('inputCompany'); if (el) el.value = draft.submitted_by_company; }
-  if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el) el.value = draft.submitted_by_email; }
-  if (draft.additional_notes)     { const el = document.getElementById('additionalNotes'); if (el) el.value = draft.additional_notes; }
-
-  // Restore answers into the answers object and UI
-  const draftAnswers = draft.answers || {};
-  Object.entries(draftAnswers).forEach(([itemId, val]) => {
-    answers[itemId] = val;
-    // Update UI elements
-    const radios = document.querySelectorAll(`input[name="item_${itemId}"]`);
-    radios.forEach(r => { if (r.value === (val.value || val)) r.checked = true; });
-    const textarea = document.getElementById('notes_' + itemId);
-    if (textarea && val.text) textarea.value = val.text;
-  });
-
-  _showDraftStatus('↩ Restored from last visit');
-}
-
-// Show "Continue from last visit?" banner if draft exists for selected stage
 function _showDraftBanner(draft) {
-  // Remove existing banner
   document.getElementById('draftBanner')?.remove();
   if (!draft) return;
-
   const updated = new Date(draft.updated_at);
-  const when = updated.toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-
+  const when = updated.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const banner = document.createElement('div');
   banner.id = 'draftBanner';
-  banner.style.cssText = 'background:#FFF8E7;border:1px solid #F59E0B;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px';
-  banner.innerHTML = \`
-    <div>
-      <div style="font-size:13px;font-weight:700;color:#92400E">↩ Draft from \${when}</div>
-      <div style="font-size:12px;color:#78350F;margin-top:2px">You started filling this stage out. Restore your progress?</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-shrink:0">
-      <button onclick="_restoreDraft(window._currentDraft);document.getElementById('draftBanner')?.remove()" style="background:#F59E0B;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Restore</button>
-      <button onclick="document.getElementById('draftBanner')?.remove()" style="background:#fff;color:#92400E;border:1px solid #F59E0B;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer">Start fresh</button>
-    </div>
-  \`;
-
+  banner.style.cssText = 'background:#FFF8E7;border:1px solid #F59E0B;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap';
+  const info = document.createElement('div');
+  info.innerHTML = '<div style="font-size:13px;font-weight:700;color:#92400E">Draft from ' + when + '</div><div style="font-size:12px;color:#78350F;margin-top:2px">You started this stage before. Restore your progress?</div>';
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px;flex-shrink:0';
+  const restoreBtn = document.createElement('button');
+  restoreBtn.textContent = 'Restore';
+  restoreBtn.style.cssText = 'background:#F59E0B;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+  restoreBtn.onclick = () => { _restoreDraft(draft); banner.remove(); };
+  const freshBtn = document.createElement('button');
+  freshBtn.textContent = 'Start fresh';
+  freshBtn.style.cssText = 'background:#fff;color:#92400E;border:1px solid #F59E0B;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer';
+  freshBtn.onclick = () => banner.remove();
+  btns.appendChild(restoreBtn); btns.appendChild(freshBtn);
+  banner.appendChild(info); banner.appendChild(btns);
   const checklist = document.getElementById('checklistItems');
   if (checklist) checklist.insertAdjacentElement('beforebegin', banner);
 }
 
-// Autosave on input events — hook into existing answer tracking
-document.addEventListener('change', e => {
-  if (selectedStage) _scheduleDraftSave();
-});
+function _restoreDraft(draft) {
+  if (!draft) return;
+  if (draft.submitted_by_name)    { const el = document.getElementById('inputName');    if (el) el.value = draft.submitted_by_name; }
+  if (draft.submitted_by_company) { const el = document.getElementById('inputCompany'); if (el) el.value = draft.submitted_by_company; }
+  if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el) el.value = draft.submitted_by_email; }
+  if (draft.additional_notes)     { const el = document.getElementById('additionalNotes'); if (el) el.value = draft.additional_notes; }
+  const draftAnswers = draft.answers || {};
+  Object.entries(draftAnswers).forEach(([itemId, val]) => {
+    answers[itemId] = val;
+    const radios = document.querySelectorAll('input[name="item_' + itemId + '"]');
+    radios.forEach(r => { if (r.value === (val.value || val)) r.checked = true; });
+    const ta = document.getElementById('notes_' + itemId);
+    if (ta && val.text) ta.value = val.text;
+  });
+  _showDraftToast('Answers restored');
+}
+
+// Auto-save on input
+document.addEventListener('change', () => { if (selectedStage) _scheduleDraft(); });
 document.addEventListener('input', e => {
-  if (selectedStage && (e.target.id === 'inputName' || e.target.id === 'inputCompany' || e.target.id === 'inputEmail' || e.target.id === 'additionalNotes')) {
-    _scheduleDraftSave();
-  }
+  const ids = ['inputName','inputCompany','inputEmail','additionalNotes'];
+  if (selectedStage && ids.includes(e.target.id)) _scheduleDraft();
 });
-
-// Save draft when page is hidden (user switches app/tab)
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && selectedStage) {
-    saveDraft(true);
-  }
+  if (document.visibilityState === 'hidden' && selectedStage) saveDraft(true);
 });
 
-// After stage loads, show draft banner if draft exists
-const _origBuildChecklist2 = window.buildChecklist;
+// Show draft banner after checklist renders
+const _origBC = window.buildChecklist;
 window.buildChecklist = function() {
-  if (_origBuildChecklist2) _origBuildChecklist2();
-  // Show draft banner after checklist renders
+  if (_origBC) _origBC();
   setTimeout(() => {
-    const draft = DRAFTS[String(selectedStage)] || DRAFTS[selectedStage];
-    if (draft && !IS_RESUBMIT) {
-      window._currentDraft = draft;
-      _showDraftBanner(draft);
-    }
-  }, 100);
+    if (window._currentDraft && !IS_RESUBMIT) _showDraftBanner(window._currentDraft);
+  }, 150);
 };
 
 async function submitForm() {
@@ -857,7 +827,7 @@ async function submitForm() {
     const json = await res.json();
     document.getElementById('loading').classList.remove('show');
     if (json.ok) {
-      delete window._currentDraft; window.location.href = '/pd/submitted/' + json.submission_id;
+      window._currentDraft = null; window.location.href = '/pd/submitted/' + json.submission_id;
     } else {
       alert('Submission failed: ' + (json.error || 'Unknown error'));
     }
