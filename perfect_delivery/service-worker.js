@@ -1,21 +1,23 @@
-// Perfect Delivery Service Worker v2
-// Strategy: Cache form pages aggressively, queue submissions when offline
+// Perfect Delivery Service Worker v3
+const CACHE = 'pd-v3';
+const OFFLINE_URL = '/pd/offline';
 
-const CACHE = 'pd-v2';
-
-// ── Install ────────────────────────────────────────────────────────────────
+// ── Install — cache offline page ──────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(['/pd/offline']))
+    caches.open(CACHE)
+      .then(cache => cache.add(OFFLINE_URL))
       .then(() => self.skipWaiting())
   );
 });
 
-// ── Activate ──────────────────────────────────────────────────────────────
+// ── Activate — take control immediately ───────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });
@@ -25,62 +27,73 @@ self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle /pd/ same-origin requests
+  // Only handle same-origin /pd/ requests
   if (url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith('/pd/')) return;
 
-  // POST requests (submit, draft) — try network, queue if offline
   if (req.method === 'POST') {
     event.respondWith(handlePost(req));
     return;
   }
 
-  // GET — cache then network (stale-while-revalidate)
   if (req.method === 'GET') {
-    event.respondWith(staleWhileRevalidate(req));
+    event.respondWith(handleGet(req));
     return;
   }
 });
 
-// Cache then revalidate in background
-async function staleWhileRevalidate(req) {
+// GET: serve from cache, fetch+update in background, fallback to offline page
+async function handleGet(req) {
   const cache  = await caches.open(CACHE);
   const cached = await cache.match(req);
 
-  const fetchPromise = fetch(req).then(resp => {
-    if (resp.ok && resp.status === 200) {
-      cache.put(req, resp.clone());
+  // Always try to fetch fresh in background
+  const networkFetch = fetch(req).then(resp => {
+    if (resp && resp.ok && resp.status === 200) {
+      // Only cache complete HTML pages and same-origin resources
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('text/html') || ct.includes('application/json')) {
+        cache.put(req, resp.clone());
+      }
     }
     return resp;
   }).catch(() => null);
 
-  return cached || fetchPromise || caches.match('/pd/offline');
+  if (cached) {
+    // Return cached immediately, refresh in background
+    networkFetch; // fire and forget
+    return cached;
+  }
+
+  // No cache — wait for network
+  const networkResp = await networkFetch;
+  if (networkResp) return networkResp;
+
+  // Truly offline with nothing cached — return offline page
+  const offlinePage = await cache.match(OFFLINE_URL);
+  return offlinePage || new Response(
+    '<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>No Signal</h2><p>Open this page when you have signal first, then it will work offline.</p></body></html>',
+    { status: 200, headers: { 'Content-Type': 'text/html' } }
+  );
 }
 
-// Try network, queue if offline
+// POST: try network, queue if offline
 async function handlePost(req) {
   try {
-    const resp = await fetch(req.clone(), { signal: AbortSignal.timeout(10000) });
+    const resp = await fetch(req.clone());
     return resp;
   } catch(e) {
-    // Offline — queue it
-    const isSubmit = req.url.includes('/submit');
-    const isDraft  = req.url.includes('/draft');
-
-    if (isSubmit || isDraft) {
+    if (req.url.includes('/submit') || req.url.includes('/draft')) {
       await enqueue(req);
       return new Response(JSON.stringify({
-        ok:      true,
-        queued:  true,
-        offline: true,
-        message: 'Saved offline',
+        ok: true, queued: true, offline: true,
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     throw e;
   }
 }
 
-// ── IndexedDB queue ────────────────────────────────────────────────────────
+// ── Queue ─────────────────────────────────────────────────────────────────
 function openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open('pd-queue', 1);
@@ -93,71 +106,66 @@ function openDB() {
 }
 
 async function enqueue(req) {
-  const db   = await openDB();
-  const body = await req.clone().arrayBuffer();
-  const hdrs = {};
-  req.headers.forEach((v, k) => { hdrs[k] = v; });
-
-  return new Promise((res, rej) => {
+  try {
+    const db   = await openDB();
+    const body = await req.clone().arrayBuffer();
+    const hdrs = {};
+    req.headers.forEach((v, k) => { hdrs[k] = v; });
     const tx = db.transaction('requests', 'readwrite');
     tx.objectStore('requests').add({
-      url:       req.url,
-      method:    req.method,
-      headers:   hdrs,
-      body:      body,
-      ts:        Date.now(),
+      url: req.url, method: req.method,
+      headers: hdrs, body, ts: Date.now(),
     });
-    tx.oncomplete = res;
-    tx.onerror    = rej;
-  });
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: 'QUEUED', url: req.url }));
+  } catch(e) {
+    console.error('[SW] enqueue error:', e);
+  }
 }
 
 async function flushQueue() {
-  const db = await openDB();
+  try {
+    const db = await openDB();
+    const items = await new Promise((res, rej) => {
+      const tx = db.transaction('requests', 'readonly');
+      const r  = tx.objectStore('requests').getAll();
+      r.onsuccess = e => res(e.target.result);
+      r.onerror   = rej;
+    });
 
-  const items = await new Promise((res, rej) => {
-    const tx = db.transaction('requests', 'readonly');
-    const r  = tx.objectStore('requests').getAll();
-    r.onsuccess = e => res(e.target.result);
-    r.onerror   = rej;
-  });
+    if (!items.length) return;
+    let synced = 0;
 
-  if (!items.length) return;
-
-  let synced = 0;
-  for (const item of items) {
-    try {
-      const resp = await fetch(item.url, {
-        method:  item.method,
-        headers: item.headers,
-        body:    item.body,
-      });
-      if (resp.ok || resp.status === 200) {
-        await new Promise((res, rej) => {
-          const tx = db.transaction('requests', 'readwrite');
-          tx.objectStore('requests').delete(item.id);
-          tx.oncomplete = res;
-          tx.onerror    = rej;
+    for (const item of items) {
+      try {
+        const resp = await fetch(item.url, {
+          method: item.method, headers: item.headers, body: item.body,
         });
-        synced++;
-      }
-    } catch(e) {
-      break; // Still offline
+        if (resp.ok) {
+          await new Promise((res, rej) => {
+            const tx = db.transaction('requests', 'readwrite');
+            tx.objectStore('requests').delete(item.id);
+            tx.oncomplete = res; tx.onerror = rej;
+          });
+          synced++;
+        }
+      } catch(e) { break; }
     }
-  }
 
-  if (synced) {
-    const clients = await self.clients.matchAll({ includeUncontrolled: true });
-    clients.forEach(c => c.postMessage({ type: 'SYNCED', count: synced }));
+    if (synced > 0) {
+      const clients = await self.clients.matchAll({ includeUncontrolled: true });
+      clients.forEach(c => c.postMessage({ type: 'SYNCED', count: synced }));
+    }
+  } catch(e) {
+    console.error('[SW] flushQueue error:', e);
   }
 }
 
-// Background sync
 self.addEventListener('sync', event => {
   if (event.tag === 'pd-sync') event.waitUntil(flushQueue());
 });
 
-// Manual trigger from page
 self.addEventListener('message', event => {
   if (event.data?.type === 'FLUSH') flushQueue();
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
