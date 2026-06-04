@@ -1,5 +1,5 @@
 // Perfect Delivery Service Worker v3
-const CACHE = 'pd-v3';
+const CACHE = 'pd-v4';
 const OFFLINE_URL = '/pd/offline';
 
 // ── Install — cache offline page ──────────────────────────────────────────
