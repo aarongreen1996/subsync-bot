@@ -912,120 +912,45 @@ async function loadUsers() {
   const users = await res.json();
   const tbody = document.getElementById('usersTable');
   if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="padding:32px;text-align:center"><div style="color:#8e8e93;font-size:14px">No users yet.<br><span style=\"font-size:13px\">Add a site manager or admin above.</span></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:32px;text-align:center;color:#8e8e93;font-size:14px">No users yet. Add a site manager or admin above.</td></tr>';
     return;
   }
   const siteMap = {};
-  (window.allSitesList || []).forEach(s => { siteMap[s.id] = s.name; });
+  (window.allSitesList || []).forEach(function(s) { siteMap[s.id] = s.name; });
 
-  tbody.innerHTML = users.map(u => {
-    const roleLabel = u.role === 'tenant_admin' ? 'Admin' : u.role === 'site_manager' ? 'Site Manager' : u.role;
-    const roleBg    = u.role === 'tenant_admin' ? '#1a1a2e' : '#f0f4ff';
-    const roleColor = u.role === 'tenant_admin' ? '#fff' : '#1a1a2e';
-    const sitesHtml = u.role === 'tenant_admin'
-      ? '<span style="font-size:12px;color:#16a34a;font-weight:600">All sites</span>'
-      : (u.site_ids || []).length === 0
-        ? '<span style="font-size:12px;color:#ef4444">No sites assigned</span>'
-        : (u.site_ids || []).slice(0,3).map(id =>
-            '<span style="font-size:11px;background:#f2f2f7;padding:2px 7px;border-radius:6px;color:#1a1a2e;margin-right:4px">' + (siteMap[id] || id) + '</span>'
-          ).join('') + ((u.site_ids||[]).length > 3 ? '<span style="font-size:11px;color:#8e8e93">+' + ((u.site_ids||[]).length - 3) + ' more</span>' : '');
-    return '<tr>' +
+  var rows = '';
+  for (var i = 0; i < users.length; i++) {
+    var u = users[i];
+    var roleLabel = u.role === 'tenant_admin' ? 'Admin' : u.role === 'site_manager' ? 'Site Manager' : u.role;
+    var roleBg    = u.role === 'tenant_admin' ? '#1a1a2e' : '#f0f4ff';
+    var roleColor = u.role === 'tenant_admin' ? '#fff' : '#1a1a2e';
+    var sitesHtml;
+    if (u.role === 'tenant_admin') {
+      sitesHtml = '<span style="font-size:12px;color:#16a34a;font-weight:600">All sites</span>';
+    } else if (!u.site_ids || !u.site_ids.length) {
+      sitesHtml = '<span style="font-size:12px;color:#ef4444">No sites assigned</span>';
+    } else {
+      sitesHtml = '';
+      var show = Math.min(u.site_ids.length, 3);
+      for (var j = 0; j < show; j++) {
+        sitesHtml += '<span style="font-size:11px;background:#f2f2f7;padding:2px 7px;border-radius:6px;color:#1a1a2e;margin-right:4px">' + (siteMap[u.site_ids[j]] || u.site_ids[j]) + '</span>';
+      }
+      if (u.site_ids.length > 3) {
+        sitesHtml += '<span style="font-size:11px;color:#8e8e93">+' + (u.site_ids.length - 3) + ' more</span>';
+      }
+    }
+    var uJson = JSON.stringify(u).replace(/'/g, "&#39;");
+    rows += '<tr>' +
       '<td><div style="font-weight:600;color:#1a1a2e">' + u.name + '</div><div style="font-size:12px;color:#8e8e93;margin-top:2px">' + u.email + '</div></td>' +
       '<td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:' + roleBg + ';color:' + roleColor + '">' + roleLabel + '</span></td>' +
       '<td>' + sitesHtml + '</td>' +
       '<td style="white-space:nowrap">' +
-        '<button class="btn btn-ghost btn-sm" onclick='editUser(' + JSON.stringify(u) + ')'>Edit</button> ' +
-        '<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteUser('' + u.id + '','' + u.name + '')">Remove</button>' +
-      '</td></tr>';
-  }).join('');
-}
-
-function togglePasswordVis() {
-  const inp = document.getElementById('uPassword');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-}
-
-function updateSiteVisibility() {
-  const role = document.getElementById('uRole').value;
-  const isAdmin = role === 'tenant_admin';
-  const hint = document.getElementById('uRoleHint');
-  const sitesWrapper = document.getElementById('uSitesWrapper');
-  const adminNote    = document.getElementById('uAdminSitesNote');
-  if (hint) hint.textContent = isAdmin ? 'Full access to all areas and settings' : 'Can review and approve submissions';
-  if (sitesWrapper) sitesWrapper.style.display = isAdmin ? 'none' : 'block';
-  if (adminNote)    adminNote.style.display    = isAdmin ? 'block' : 'none';
-}
-
-function renderSiteCards(selectedIds) {
-  const container = document.getElementById('uSiteCards');
-  if (!container) return;
-  container.innerHTML = '';
-  const sites = window.allSitesList || [];
-  if (!sites.length) {
-    container.innerHTML = '<div style="grid-column:1/-1;padding:16px;text-align:center;color:#8e8e93;font-size:13px">No sites found — add sites first</div>';
-    return;
+        '<button class="btn btn-ghost btn-sm" onclick="editUser(' + uJson + ')">Edit</button> ' +
+        '<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteUser(this)" data-id="' + u.id + '" data-name="' + u.name + '">Remove</button>' +      '</td></tr>';
   }
-  sites.forEach(site => {
-    const selected = (selectedIds || []).includes(site.id);
-    const card = document.createElement('div');
-    card.id = 'sitecard_' + site.id;
-    card.style.cssText = 'border:2px solid ' + (selected ? '#1a1a2e' : '#e5e5ea') + ';border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:' + (selected ? '#f0f4ff' : '#fff') + ';transition:all 0.15s';
-    card.onclick = () => toggleSiteCard(site.id);
-    card.innerHTML = '<div style="width:20px;height:20px;border-radius:50%;border:2px solid ' + (selected ? '#1a1a2e' : '#d1d5db') + ';background:' + (selected ? '#1a1a2e' : 'transparent') + ';display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
-      (selected ? '<svg width="10" height="8" viewBox="0 0 10 8"><path d="M1 4l3 3 5-6" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '') +
-      '</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + site.name + '</div></div>';
-    container.appendChild(card);
-  });
-  updateSiteCount();
+  tbody.innerHTML = rows;
 }
 
-function toggleSiteCard(siteId) {
-  const card    = document.getElementById('sitecard_' + siteId);
-  const cards   = document.getElementById('uSiteCards');
-  const allCards = cards ? Array.from(cards.querySelectorAll('[id^="sitecard_"]')) : [];
-  const selected = card.style.background === 'rgb(240, 244, 255)';
-  const nowSelected = !selected;
-  card.style.borderColor  = nowSelected ? '#1a1a2e' : '#e5e5ea';
-  card.style.background   = nowSelected ? '#f0f4ff' : '#fff';
-  const dot = card.querySelector('div');
-  if (dot) {
-    dot.style.borderColor  = nowSelected ? '#1a1a2e' : '#d1d5db';
-    dot.style.background   = nowSelected ? '#1a1a2e' : 'transparent';
-    dot.innerHTML = nowSelected ? '<svg width="10" height="8" viewBox="0 0 10 8"><path d="M1 4l3 3 5-6" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '';
-  }
-  updateSiteCount();
-}
-
-function getSelectedSiteIds() {
-  const cards = document.getElementById('uSiteCards');
-  if (!cards) return [];
-  return Array.from(cards.querySelectorAll('[id^="sitecard_"]'))
-    .filter(c => c.style.background === 'rgb(240, 244, 255)')
-    .map(c => c.id.replace('sitecard_', ''));
-}
-
-function updateSiteCount() {
-  const count = getSelectedSiteIds().length;
-  const el = document.getElementById('uSiteCount');
-  if (el) el.textContent = count + ' selected';
-}
-
-function showUserModal(u) {
-  const isEdit = !!u;
-  document.getElementById('userModalTitle').textContent = isEdit ? 'Edit User' : 'New User';
-  document.getElementById('uSaveBtn').textContent       = isEdit ? 'Save Changes' : 'Add User';
-  document.getElementById('editUserId').value  = u?.id || '';
-  document.getElementById('uName').value       = u?.name || '';
-  document.getElementById('uEmail').value      = u?.email || '';
-  document.getElementById('uPassword').value   = '';
-  document.getElementById('uPasswordHint').style.display = isEdit ? 'block' : 'none';
-  document.getElementById('uRole').value       = u?.role || 'site_manager';
-  renderSiteCards(u?.site_ids || []);
-  updateSiteVisibility();
-  document.getElementById('userModal').classList.add('show');
-}
-function editUser(u) { showUserModal(u); }
-function closeUserModal() { document.getElementById('userModal').classList.remove('show'); }
 
 async function saveUser() {
   const id      = document.getElementById('editUserId').value;
@@ -1056,12 +981,20 @@ async function saveUser() {
   } else showToast(json.error || 'Error saving user');
 }
 
-async function deleteUser(id, name) {
-  if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
-  const res = await fetch(`/pd/portal/api/users/${id}`, { method: 'DELETE' });
-  const json = await res.json();
-  if (json.ok) { loadUsers(); toast('User deleted'); }
-  else toast('Error deleting user','error');
+async function deleteUser(btnOrId, name) {
+  var id, uname;
+  if (typeof btnOrId === 'object' && btnOrId.dataset) {
+    id    = btnOrId.dataset.id;
+    uname = btnOrId.dataset.name;
+  } else {
+    id    = btnOrId;
+    uname = name || 'this user';
+  }
+  if (!confirm('Remove ' + uname + '? This cannot be undone.')) return;
+  var res  = await fetch('/pd/portal/api/users/' + id, { method: 'DELETE' });
+  var json = await res.json();
+  if (json.ok) { loadUsers(); showToast('User removed'); }
+  else showToast('Error removing user');
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
