@@ -281,6 +281,7 @@ const MANAGER_NOTES = "{{ manager_notes | default('') | replace('"', '\"') }}";
 
 let selectedStage = null;
 let answers = {};
+let photoUrls = {};  // itemId -> url (pre-uploaded draft photos)
 let photoFiles = {};
 let geoLocation = null;
 const captureTime = {};
@@ -446,6 +447,8 @@ function selectStage(num) {
   const draftBtn = document.getElementById('fabDraft');
   if (draftBtn) draftBtn.style.display = 'block';
   window._currentDraft = null;
+  answers = {};
+  photoUrls = {};
 
   // If draft exists, pre-fill contact fields so validation passes
   const draft = DRAFTS[String(num)] || DRAFTS[num];
@@ -571,13 +574,17 @@ function handlePhotoSelected(input, photoId, itemId) {
   const tsStr = ts.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
   captureTime[itemId] = tsStr;
 
-  const geo = geoLocation ? `${geoLocation.lat.toFixed(5)},${geoLocation.lng.toFixed(5)}` : 'Location unavailable';
+  const geo = geoLocation ? geoLocation.lat.toFixed(5) + ',' + geoLocation.lng.toFixed(5) : 'Location unavailable';
 
-  compressAndStampImage(file, tsStr, geo, 1280, 0.85, (blob, dataUrl) => {
-    photoFiles[itemId].push(new File([blob], file.name, {type: 'image/jpeg'}));
+  compressAndStampImage(file, tsStr, geo, 1280, 0.85, async (blob, dataUrl) => {
+    const photoFile = new File([blob], file.name, {type: 'image/jpeg'});
+    photoFiles[itemId].push(photoFile);
+
+    // Show preview immediately
     const previewGrid = document.getElementById('preview_' + photoId);
     const wrap = document.createElement('div');
     wrap.className = 'photo-preview-item';
+    wrap.id = 'photowrap_' + itemId;
     const img = document.createElement('img');
     img.src = dataUrl;
     const stamp = document.createElement('div');
@@ -586,12 +593,26 @@ function handlePhotoSelected(input, photoId, itemId) {
     const rem = document.createElement('button');
     rem.className = 'photo-remove';
     rem.textContent = '×';
-    rem.onclick = () => { photoFiles[itemId] = []; wrap.remove(); };
+    rem.onclick = () => { photoFiles[itemId] = []; delete photoUrls[itemId]; wrap.remove(); _scheduleDraft(); };
     wrap.appendChild(img);
     wrap.appendChild(stamp);
     wrap.appendChild(rem);
     previewGrid.innerHTML = '';
     previewGrid.appendChild(wrap);
+
+    // Upload to draft storage immediately so it can be restored later
+    try {
+      const fd = new FormData();
+      fd.append('photo', photoFile, photoFile.name);
+      fd.append('item_id', itemId);
+      fd.append('stage_number', selectedStage);
+      const res  = await fetch('/pd/' + PLOT_TOKEN + '/draft/photo', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.ok) {
+        photoUrls[itemId] = json.url;
+        _scheduleDraft();
+      }
+    } catch(e) { console.warn('Draft photo upload failed:', e); }
   });
   input.value = '';
 }
@@ -770,6 +791,7 @@ async function saveDraft(silent) {
     submitted_by_company:  company,
     submitted_by_email:    email,
     answers:               answers,
+    photo_urls:            photoUrls,
     additional_notes:      document.getElementById('additionalNotes')?.value.trim() || '',
   };
   const fd = new FormData();
@@ -830,11 +852,9 @@ function _restoreDraft(draft) {
   // Rebuild the checklist so buildItem re-renders with restored answers
   buildChecklist();
 
-  // Restore text inputs and notes after rebuild
+  // Restore text inputs after rebuild
   Object.entries(draftAnswers).forEach(([itemId, val]) => {
     if (val && val.text) {
-      const ta = document.getElementById('notes_' + itemId);
-      if (ta) ta.value = val.text;
       const tv = document.getElementById('textval_' + itemId);
       if (tv) tv.value = val.text;
     }
@@ -846,7 +866,41 @@ function _restoreDraft(draft) {
     if (el) el.value = draft.additional_notes;
   }
 
-  _showDraftToast('Answers restored');
+  // Restore photos from pre-uploaded URLs
+  const draftPhotoUrls = draft.photo_urls || {};
+  Object.entries(draftPhotoUrls).forEach(([itemId, url]) => {
+    if (!url) return;
+    photoUrls[itemId] = url;
+
+    const photoId   = 'photo_' + itemId;
+    const previewGrid = document.getElementById('preview_' + photoId);
+    if (!previewGrid) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'photo-preview-item';
+    wrap.id = 'photowrap_' + itemId;
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'width:100%;border-radius:8px';
+
+    const stamp = document.createElement('div');
+    stamp.className = 'photo-stamp';
+    stamp.textContent = 'Restored from draft';
+
+    const rem = document.createElement('button');
+    rem.className = 'photo-remove';
+    rem.textContent = '×';
+    rem.onclick = () => { delete photoUrls[itemId]; photoFiles[itemId] = []; wrap.remove(); _scheduleDraft(); };
+
+    wrap.appendChild(img);
+    wrap.appendChild(stamp);
+    wrap.appendChild(rem);
+    previewGrid.innerHTML = '';
+    previewGrid.appendChild(wrap);
+  });
+
+  _showDraftToast('Answers and photos restored');
 }
 
 // Auto-save on input
@@ -889,6 +943,10 @@ async function submitForm() {
   Object.entries(photoFiles).forEach(([itemId, files]) => {
     files.forEach(file => formData.append('photo_' + itemId, file, file.name));
   });
+  // Include pre-uploaded draft photo URLs (no need to re-upload)
+  if (Object.keys(photoUrls).length) {
+    formData.append('draft_photo_urls', JSON.stringify(photoUrls));
+  }
 
   try {
     const res = await fetch('/pd/' + PLOT_TOKEN + '/submit', { method: 'POST', body: formData });
