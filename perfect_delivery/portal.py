@@ -12,6 +12,11 @@ from flask import (
     redirect, url_for, make_response, abort
 )
 from supabase import create_client, Client
+try:
+    from .email_utils import send_welcome_email, send_site_manager_assignment_email
+except Exception:
+    def send_welcome_email(*a, **k): pass
+    def send_site_manager_assignment_email(*a, **k): pass
 
 SUPABASE_URL  = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
@@ -1253,7 +1258,22 @@ def api_users_create(user):
             "role":          role,
             "site_ids":      json.dumps(site_ids),
         }).execute()
-        return jsonify({"ok": True, "user": res.data[0]})
+
+        new_user = res.data[0]
+
+        # Send welcome email with login details
+        try:
+            # Get assigned sites for the welcome email
+            assigned_sites = []
+            if site_ids:
+                sites_res = supabase.table("pd_sites").select("id, name").in_("id", site_ids).execute()
+                assigned_sites = sites_res.data or []
+            send_welcome_email(new_user, tenant, password, assigned_sites)
+        except Exception as email_err:
+            print(f"Welcome email error: {email_err}")
+            # Don't fail user creation if email fails
+
+        return jsonify({"ok": True, "user": new_user})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
@@ -1275,7 +1295,33 @@ def api_users_update(user, user_id):
     if not updates:
         return jsonify({"ok": False, "error": "Nothing to update"}), 400
 
+    # Capture old site_ids before update for comparison
+    old_site_ids = []
+    if "site_ids" in updates:
+        try:
+            old_res = supabase.table("pd_users").select("site_ids").eq("id", user_id).single().execute()
+            raw = (old_res.data or {}).get("site_ids") or "[]"
+            old_site_ids = json.loads(raw) if isinstance(raw, str) else (raw or [])
+        except Exception:
+            pass
+
     supabase.table("pd_users").update(updates).eq("id", user_id).execute()
+
+    # Send site assignment email for newly added sites
+    if "site_ids" in updates:
+        try:
+            new_ids_raw = updates["site_ids"]
+            new_ids = json.loads(new_ids_raw) if isinstance(new_ids_raw, str) else (new_ids_raw or [])
+            added = [s for s in new_ids if s not in old_site_ids]
+            if added:
+                added_res  = supabase.table("pd_sites").select("id, name").in_("id", added).execute()
+                added_sites = added_res.data or []
+                if added_sites:
+                    u_res = supabase.table("pd_users").select("*").eq("id", user_id).single().execute()
+                    send_site_manager_assignment_email(u_res.data or {}, _get_tenant(), added_sites)
+        except Exception as e:
+            print(f"Site assignment email error: {e}")
+
     return jsonify({"ok": True})
 
 
