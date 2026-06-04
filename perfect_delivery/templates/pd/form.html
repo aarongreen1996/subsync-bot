@@ -7,7 +7,6 @@
 <link rel="manifest" href="/pd/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="PD Form">
 <title>Perfect Delivery — Plot {{ plot.plot_number }}</title>
 <style>
   :root {
@@ -131,13 +130,11 @@
 </style>
 </head>
 <body>
-
-<!-- Offline indicator -->
-<div id="offlineBanner" style="display:none;background:#dc2626;color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:200">
-  📶 No signal — form will save locally and upload when you reconnect
+<div id="offlineBanner" style="display:none;background:#dc2626;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:999">
+  No signal — answers save automatically and will upload when you reconnect
 </div>
-<div id="syncBanner" style="display:none;background:#16a34a;color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:200">
-  ✓ Back online — syncing submissions…
+<div id="syncBanner" style="display:none;background:#16a34a;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:999">
+  Back online — uploading saved submissions...
 </div>
 
 <div class="header">
@@ -975,137 +972,33 @@ async function submitForm() {
   }
 }
 
-// ── Service Worker + Offline ─────────────────────────────────────────────
+// ── PWA offline support ───────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/pd/service-worker.js', { scope: '/pd/' })
-    .then(async reg => {
-      console.log('[PD] SW registered:', reg.scope);
+    .then(function(reg) {
+      console.log('[PD] SW ready');
+      if (reg.sync) reg.sync.register('pd-sync').catch(function(){});
+    }).catch(function(e) { console.warn('[PD] SW error:', e); });
 
-      // Wait for SW to be active and controlling this page
-      if (reg.installing) {
-        await new Promise(resolve => {
-          reg.installing.addEventListener('statechange', function() {
-            if (this.state === 'activated') resolve();
-          });
-        });
-      }
-
-      // SW is active — it will cache this page on next navigation/reload
-      // Manually cache current page via SW message isn't needed —
-      // the SW's handleGet will cache it on this very page load
-
-      // Register background sync
-      if ('sync' in reg) reg.sync.register('pd-sync').catch(() => {});
-    })
-    .catch(e => console.warn('[PD] SW failed:', e));
-
-  // Messages from SW
-  navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data?.type === 'SYNCED') {
-      showSyncBanner();
-    }
-    if (event.data?.type === 'QUEUED') {
-      showOfflineToast('📥 Saved offline — will upload when signal returns');
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (!e.data) return;
+    if (e.data.type === 'SYNCED') {
+      var b = document.getElementById('syncBanner');
+      if (b) { b.style.display = 'block'; setTimeout(function(){ b.style.display = 'none'; }, 3000); }
     }
   });
 }
 
-// Online/offline detection
-function updateOnlineStatus() {
-  const offline = !navigator.onLine;
-  const banner  = document.getElementById('offlineBanner');
-  if (banner) banner.style.display = offline ? 'block' : 'none';
-
-  if (!offline) {
-    // Back online — tell SW to flush queue
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'FLUSH' });
-    }
-    navigator.serviceWorker?.ready.then(reg => {
-      if (reg.sync) reg.sync.register('pd-sync').catch(() => {});
-    });
+function updateOfflineBanner() {
+  var el = document.getElementById('offlineBanner');
+  if (el) el.style.display = navigator.onLine ? 'none' : 'block';
+  if (navigator.onLine && navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'FLUSH' });
   }
 }
-
-window.addEventListener('online',  () => { updateOnlineStatus(); showSyncBanner(); });
-window.addEventListener('offline', updateOnlineStatus);
-// Check immediately and after SW activates
-updateOnlineStatus();
-navigator.serviceWorker?.ready.then(() => updateOnlineStatus());
-
-function showOfflineToast(msg) {
-  const existing = document.getElementById('offlineToast');
-  if (existing) existing.remove();
-  const toast = document.createElement('div');
-  toast.id = 'offlineToast';
-  toast.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;z-index:300;border:1px solid #C5962A;white-space:nowrap';
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4000);
-}
-
-function showSyncBanner() {
-  const banner = document.getElementById('syncBanner');
-  if (banner) {
-    banner.style.display = 'block';
-    setTimeout(() => { banner.style.display = 'none'; }, 4000);
-  }
-}
-
-// Patch submitForm to detect offline queue response
-const _origSubmitFn = submitForm;
-submitForm = async function() {
-  // Temporarily patch fetch to intercept submit response
-  const _origFetch = window.fetch;
-  let _wasQueued = false;
-
-  window.fetch = async function(url, opts) {
-    const resp = await _origFetch(url, opts);
-    if (typeof url === 'string' && url.includes('/submit')) {
-      try {
-        const clone = resp.clone();
-        const json  = await clone.json();
-        if (json.queued) {
-          _wasQueued = true;
-          // Return a response that won't trigger redirect
-          return new Response(JSON.stringify({ ok: false, offline: true }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      } catch(e) {}
-    }
-    return resp;
-  };
-
-  await _origSubmitFn();
-  window.fetch = _origFetch;
-
-  if (_wasQueued) {
-    document.getElementById('loading')?.classList.remove('show');
-    _showOfflineSuccess();
-  }
-};
-
-function _showOfflineSuccess() {
-  document.body.innerHTML = \`
-    <div style="font-family:-apple-system,sans-serif;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
-      <div style="text-align:center;color:#fff;max-width:320px">
-        <div style="font-size:60px;margin-bottom:20px">💾</div>
-        <h1 style="color:#C5962A;font-size:22px;margin-bottom:12px">Saved Offline</h1>
-        <p style="color:#a0a0b0;font-size:15px;line-height:1.6;margin-bottom:24px">
-          No signal detected. Your submission has been saved on this device
-          and will upload automatically when you regain signal.
-        </p>
-        <div style="background:rgba(197,150,42,0.15);border:1px solid rgba(197,150,42,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#C5962A;margin-bottom:24px">
-          ⚠ Keep this browser tab open until you have signal
-        </div>
-        <button onclick="window.history.back()" style="background:#C5962A;color:#1a1a2e;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">
-          ← Back to form
-        </button>
-      </div>
-    </div>
-  \`;
-}
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+updateOfflineBanner();
 </script>
 </body>
 </html>
