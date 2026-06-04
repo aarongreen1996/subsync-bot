@@ -924,51 +924,220 @@ document.addEventListener('visibilitychange', () => {
 
 
 
+// ── Offline Queue (IndexedDB) ─────────────────────────────────────────────
+function pdOpenDB() {
+  return new Promise(function(res, rej) {
+    var r = indexedDB.open('pd-submissions', 1);
+    r.onupgradeneeded = function(e) {
+      e.target.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+    };
+    r.onsuccess = function(e) { res(e.target.result); };
+    r.onerror   = function(e) { rej(e.target.error); };
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise(function(res, rej) {
+    var reader = new FileReader();
+    reader.onload  = function(e) { res(e.target.result); };
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function pdQueueSubmission(payload, photoFilesMap, photoUrlsMap) {
+  // Convert all photo files to base64 so they survive IndexedDB storage
+  var photos = {};
+  for (var itemId in photoFilesMap) {
+    var files = photoFilesMap[itemId];
+    if (files && files.length) {
+      photos[itemId] = { type: 'file', data: await fileToBase64(files[0]), name: files[0].name };
+    }
+  }
+  // Pre-uploaded photos (URLs) — store as-is
+  for (var itemId2 in photoUrlsMap) {
+    if (!photos[itemId2]) {
+      photos[itemId2] = { type: 'url', data: photoUrlsMap[itemId2] };
+    }
+  }
+
+  var entry = {
+    token:     PLOT_TOKEN,
+    payload:   payload,
+    photos:    photos,
+    ts:        Date.now(),
+  };
+
+  var db = await pdOpenDB();
+  await new Promise(function(res, rej) {
+    var tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').add(entry);
+    tx.oncomplete = res;
+    tx.onerror    = rej;
+  });
+}
+
+async function pdFlushQueue() {
+  var db;
+  try { db = await pdOpenDB(); } catch(e) { return; }
+
+  var items = await new Promise(function(res, rej) {
+    var tx = db.transaction('queue', 'readonly');
+    var r  = tx.objectStore('queue').getAll();
+    r.onsuccess = function(e) { res(e.target.result); };
+    r.onerror   = rej;
+  });
+
+  if (!items.length) return;
+
+  var synced = 0;
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    try {
+      var fd = new FormData();
+      fd.append('data', JSON.stringify(item.payload));
+
+      // Rebuild photo files from base64
+      for (var itemId in item.photos) {
+        var photo = item.photos[itemId];
+        if (photo.type === 'file') {
+          // Convert base64 back to blob
+          var res2 = await fetch(photo.data);
+          var blob = await res2.blob();
+          fd.append('photo_' + itemId, blob, photo.name || 'photo.jpg');
+        } else if (photo.type === 'url') {
+          // Pre-uploaded — send as draft_photo_urls
+        }
+      }
+
+      // Add pre-uploaded URLs
+      var urlPhotos = {};
+      for (var itemId3 in item.photos) {
+        if (item.photos[itemId3].type === 'url') urlPhotos[itemId3] = item.photos[itemId3].data;
+      }
+      if (Object.keys(urlPhotos).length) {
+        fd.append('draft_photo_urls', JSON.stringify(urlPhotos));
+      }
+
+      var resp = await fetch('/pd/' + item.token + '/submit', { method: 'POST', body: fd });
+      if (resp.ok) {
+        var json = await resp.json();
+        if (json.ok || json.submission_id) {
+          // Remove from queue
+          var db2 = await pdOpenDB();
+          await new Promise(function(res3, rej3) {
+            var tx2 = db2.transaction('queue', 'readwrite');
+            tx2.objectStore('queue').delete(item.id);
+            tx2.oncomplete = res3;
+            tx2.onerror    = rej3;
+          });
+          synced++;
+        }
+      }
+    } catch(e) {
+      console.log('[PD] Still offline, keeping in queue');
+      break;
+    }
+  }
+
+  if (synced > 0) {
+    var b = document.getElementById('syncBanner');
+    if (b) {
+      b.textContent = synced + ' submission' + (synced > 1 ? 's' : '') + ' uploaded successfully';
+      b.style.display = 'block';
+      setTimeout(function(){ b.style.display = 'none'; }, 4000);
+    }
+  }
+}
+
+function pdShowOfflineSaved(queueLen) {
+  var el = document.getElementById('loading');
+  if (el) el.classList.remove('show');
+  document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px"><div style="text-align:center;color:#fff;max-width:320px"><div style="font-size:60px;margin-bottom:20px">&#x1F4BE;</div><h1 style="color:#C5962A;font-size:22px;margin-bottom:12px">Saved Offline</h1><p style="color:#a0a0b0;font-size:15px;line-height:1.6;margin-bottom:20px">Your submission has been saved on this device. It will upload automatically when you reconnect.</p><div style="background:rgba(197,150,42,0.15);border:1px solid rgba(197,150,42,0.3);border-radius:10px;padding:12px;font-size:13px;color:#C5962A;margin-bottom:24px">' + queueLen + ' submission' + (queueLen !== 1 ? 's' : '') + ' waiting to upload</div><button onclick="window.history.back()" style="background:#C5962A;color:#1a1a2e;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">Back to form</button></div></div>';
+  // Start watching for reconnection
+  function tryFlush() {
+    if (navigator.onLine) {
+      pdFlushQueue();
+    } else {
+      setTimeout(tryFlush, 3000);
+    }
+  }
+  setTimeout(tryFlush, 3000);
+}
+
+async function pdSendSubmission(payload, photoFilesMap, photoUrlsMap) {
+  var fd = new FormData();
+  fd.append('data', JSON.stringify(payload));
+  for (var itemId in photoFilesMap) {
+    var files = photoFilesMap[itemId];
+    if (files && files.length) {
+      fd.append('photo_' + itemId, files[0], files[0].name);
+    }
+  }
+  if (Object.keys(photoUrlsMap).length) {
+    fd.append('draft_photo_urls', JSON.stringify(photoUrlsMap));
+  }
+  var resp = await fetch('/pd/' + PLOT_TOKEN + '/submit', { method: 'POST', body: fd });
+  return resp.json();
+}
+
 async function submitForm() {
-  const stage = STAGES[selectedStage];
+  const sigData = getSigDataUrl();
+  if (!sigData) { alert('Please sign before submitting.'); return; }
+
   document.getElementById('loading').classList.add('show');
 
-  // Validate signature
-  const sigData = getSigDataUrl();
-  if (!sigData) {
-    document.getElementById('loading').classList.remove('show');
-    alert('Please sign before submitting.');
+  const payload = {
+    stage_number:          selectedStage,
+    submitted_by_name:     document.getElementById('inputName').value.trim(),
+    submitted_by_company:  document.getElementById('inputCompany').value.trim(),
+    submitted_by_email:    document.getElementById('inputEmail').value.trim(),
+    answers:               answers,
+    geolocation:           geoLocation,
+    signature:             sigData,
+    additional_notes:      document.getElementById('additionalNotes').value.trim(),
+  };
+
+  if (!navigator.onLine) {
+    // Save to local queue
+    try {
+      await pdQueueSubmission(payload, photoFiles, photoUrls);
+      // Also save draft so answers are preserved
+      await saveDraft(true);
+      var db = await pdOpenDB();
+      var items = await new Promise(function(res, rej) {
+        var tx = db.transaction('queue', 'readonly');
+        var r  = tx.objectStore('queue').getAll();
+        r.onsuccess = function(e) { res(e.target.result); };
+        r.onerror   = rej;
+      });
+      pdShowOfflineSaved(items.length);
+    } catch(e) {
+      document.getElementById('loading').classList.remove('show');
+      alert('Could not save offline. Please try again.');
+    }
     return;
   }
 
-  const payload = {
-    stage_number: selectedStage,
-    submitted_by_name: document.getElementById('inputName').value.trim(),
-    submitted_by_company: document.getElementById('inputCompany').value.trim(),
-    submitted_by_email: document.getElementById('inputEmail').value.trim(),
-    answers: answers,
-    geolocation: geoLocation,
-    signature: sigData,
-    additional_notes: document.getElementById('additionalNotes').value.trim(),
-  };
-
-  const formData = new FormData();
-  formData.append('data', JSON.stringify(payload));
-  Object.entries(photoFiles).forEach(([itemId, files]) => {
-    files.forEach(file => formData.append('photo_' + itemId, file, file.name));
-  });
-  // Include pre-uploaded draft photo URLs (no need to re-upload)
-  if (Object.keys(photoUrls).length) {
-    formData.append('draft_photo_urls', JSON.stringify(photoUrls));
-  }
-
+  // Online — send directly
   try {
-    const res = await fetch('/pd/' + PLOT_TOKEN + '/submit', { method: 'POST', body: formData });
-    const json = await res.json();
+    const json = await pdSendSubmission(payload, photoFiles, photoUrls);
     document.getElementById('loading').classList.remove('show');
     if (json.ok) {
-      window._currentDraft = null; window.location.href = '/pd/submitted/' + json.submission_id;
+      window._currentDraft = null;
+      window.location.href = '/pd/submitted/' + json.submission_id;
     } else {
       alert('Submission failed: ' + (json.error || 'Unknown error'));
     }
-  } catch (err) {
+  } catch(err) {
     document.getElementById('loading').classList.remove('show');
-    alert('Network error. Please check your connection and try again.');
+    // Network error even though navigator.onLine — queue it
+    try {
+      await pdQueueSubmission(payload, photoFiles, photoUrls);
+      pdShowOfflineSaved(1);
+    } catch(e2) {
+      alert('Network error. Please check your connection and try again.');
+    }
   }
 }
 
@@ -1011,13 +1180,19 @@ if ('serviceWorker' in navigator) {
 function updateOfflineBanner() {
   var el = document.getElementById('offlineBanner');
   if (el) el.style.display = navigator.onLine ? 'none' : 'block';
-  if (navigator.onLine && navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'FLUSH' });
+  if (navigator.onLine) {
+    // Flush any locally queued submissions
+    pdFlushQueue();
   }
 }
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
 updateOfflineBanner();
+
+// Also try flushing on page load in case there are queued items
+window.addEventListener('load', function() {
+  if (navigator.onLine) pdFlushQueue();
+});
 </script>
 </body>
 </html>
