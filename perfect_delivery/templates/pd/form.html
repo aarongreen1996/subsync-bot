@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="/pd/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PD Form">
 <title>Perfect Delivery — Plot {{ plot.plot_number }}</title>
 <style>
   :root {
@@ -127,6 +131,14 @@
 </style>
 </head>
 <body>
+
+<!-- Offline indicator -->
+<div id="offlineBanner" style="display:none;background:#dc2626;color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:200">
+  📶 No signal — form will save locally and upload when you reconnect
+</div>
+<div id="syncBanner" style="display:none;background:#16a34a;color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:200">
+  ✓ Back online — syncing submissions…
+</div>
 
 <div class="header">
   <div class="header-top">
@@ -961,6 +973,123 @@ async function submitForm() {
     document.getElementById('loading').classList.remove('show');
     alert('Network error. Please check your connection and try again.');
   }
+}
+
+// ── Service Worker + Offline ─────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/pd/service-worker.js', {
+        scope: '/pd/'
+      });
+      console.log('[PD] SW registered:', reg.scope);
+
+      // Listen for messages from SW
+      navigator.serviceWorker.addEventListener('message', event => {
+        const data = event.data;
+        if (data.type === 'QUEUED') {
+          showOfflineToast('📥 Saved offline — will upload when signal returns');
+        }
+        if (data.type === 'SYNCED') {
+          showSyncBanner();
+        }
+      });
+    } catch(e) {
+      console.warn('[PD] SW registration failed:', e);
+    }
+  });
+}
+
+// Online/offline detection
+function updateOnlineStatus() {
+  const offline = !navigator.onLine;
+  const banner  = document.getElementById('offlineBanner');
+  if (banner) banner.style.display = offline ? 'block' : 'none';
+
+  if (!offline && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'ONLINE' });
+    // Register background sync if supported
+    navigator.serviceWorker.ready.then(reg => {
+      if ('sync' in reg) {
+        reg.sync.register('pd-sync').catch(() => {});
+      }
+    });
+  }
+}
+
+window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus(); // Check on load
+
+function showOfflineToast(msg) {
+  const existing = document.getElementById('offlineToast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'offlineToast';
+  toast.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;z-index:300;border:1px solid #C5962A;white-space:nowrap';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+function showSyncBanner() {
+  const banner = document.getElementById('syncBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    setTimeout(() => { banner.style.display = 'none'; }, 4000);
+  }
+}
+
+// Handle queued submit response (SW returns ok:true with queued:true when offline)
+const _origSubmit = submitForm;
+submitForm = async function() {
+  // Wrap to detect offline queue response
+  const origFetch = window.fetch;
+  const offlineResponses = [];
+  window.fetch = async function(url, opts) {
+    const resp = await origFetch(url, opts);
+    if (url && url.toString().includes('/submit')) {
+      const clone = resp.clone();
+      try {
+        const json = await clone.json();
+        if (json.queued) {
+          offlineResponses.push(json);
+        }
+      } catch(e) {}
+    }
+    return resp;
+  };
+
+  await _origSubmit();
+
+  window.fetch = origFetch;
+
+  if (offlineResponses.length) {
+    // Show offline success screen instead of redirect
+    document.getElementById('loading').classList.remove('show');
+    _showOfflineSuccess();
+  }
+};
+
+function _showOfflineSuccess() {
+  document.body.innerHTML = \`
+    <div style="font-family:-apple-system,sans-serif;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="text-align:center;color:#fff;max-width:320px">
+        <div style="font-size:60px;margin-bottom:20px">💾</div>
+        <h1 style="color:#C5962A;font-size:22px;margin-bottom:12px">Saved Offline</h1>
+        <p style="color:#a0a0b0;font-size:15px;line-height:1.6;margin-bottom:24px">
+          No signal detected. Your submission has been saved on this device
+          and will upload automatically when you regain signal.
+        </p>
+        <div style="background:rgba(197,150,42,0.15);border:1px solid rgba(197,150,42,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#C5962A;margin-bottom:24px">
+          ⚠ Keep this browser tab open until you have signal
+        </div>
+        <button onclick="window.history.back()" style="background:#C5962A;color:#1a1a2e;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">
+          ← Back to form
+        </button>
+      </div>
+    </div>
+  \`;
 }
 </script>
 </body>
