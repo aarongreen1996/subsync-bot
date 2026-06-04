@@ -30,23 +30,14 @@ def _send(to_email: str, subject: str, html: str, pdf_bytes: bytes = None, pdf_f
         "Authorization": f"Bearer {RESEND_API_KEY}",
         "Content-Type": "application/json",
     }
-    print(f"[email] Attempting send to={to_email!r} from={FROM_EMAIL!r} subject={subject!r}")
-    if not RESEND_API_KEY:
-        print("[email] ERROR: RESEND_API_KEY (SMTP_PASSWORD) is not set — email skipped")
-        return
-    if not to_email:
-        print("[email] ERROR: to_email is empty — email skipped")
-        return
-    if "resend.dev" in FROM_EMAIL:
-        print(f"[email] WARNING: FROM_EMAIL is {FROM_EMAIL!r} — set FROM_EMAIL env var to noreply@send.note2quote.co.uk")
     try:
         r = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=30)
         if r.status_code not in (200, 201):
-            print(f"[email] Resend API error {r.status_code}: {r.text}")
+            print(f"Resend API error {r.status_code}: {r.text}")
         else:
-            print(f"[email] Sent OK to {to_email} — id: {r.json().get('id')}")
+            print(f"Email sent to {to_email} — id: {r.json().get('id')}")
     except Exception as e:
-        print(f"[email] Send exception: {e}")
+        print(f"Email send error: {e}")
 
 
 def send_manager_notification(submission: dict, plot: dict, site: dict, review_url: str):
@@ -203,3 +194,191 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0}}
         stage_num = submission.get("stage_number","")
         pdf_filename = f"PD_Approved_{site_slug}_Plot{plot_num}_Stage{stage_num}.pdf"
     _send(sub_email, subject, html, pdf_bytes if is_approved else None, pdf_filename)
+
+
+def send_welcome_email(user: dict, tenant: dict, password: str, sites: list):
+    """Send welcome email to a new portal user (site manager or tenant admin)."""
+    name         = user.get("name", "")
+    email        = user.get("email", "")
+    role         = user.get("role", "site_manager")
+    company      = tenant.get("company_name", "Perfect Delivery")
+    portal_url   = f"{BASE_URL}/pd/portal"
+    is_admin     = role == "tenant_admin"
+
+    role_label   = "Tenant Admin" if is_admin else "Site Manager"
+    role_colour  = "#1a1a2e" if is_admin else "#C5962A"
+
+    # Build site list HTML
+    site_rows = ""
+    for site in sites:
+        site_name = site.get("name", "")
+        site_rows += f"""
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#1a1a2e">{site_name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6b7280">Active</td>
+        </tr>"""
+
+    site_section = ""
+    if sites:
+        site_section = f"""
+        <div style="margin:24px 0">
+          <p style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:8px">Your assigned sites:</p>
+          <table style="width:100%;border-collapse:collapse;background:#f9f9fb;border-radius:8px;overflow:hidden">
+            <tr style="background:#f2f2f7">
+              <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Site</th>
+              <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase">Status</th>
+            </tr>
+            {site_rows}
+          </table>
+        </div>"""
+
+    admin_section = ""
+    if is_admin:
+        admin_section = f"""
+        <div style="background:#fff8e7;border:1px solid #f59e0b;border-radius:10px;padding:16px 20px;margin:20px 0">
+          <p style="font-size:13px;font-weight:700;color:#92400e;margin:0 0 6px">Admin Access</p>
+          <p style="font-size:13px;color:#78350f;margin:0">As a Tenant Admin you can manage sites, plots, users and checklist settings from your dashboard.</p>
+        </div>"""
+
+    guide_rows = [
+        ("📱", "Scan QR codes", "Subcontractors scan plot QR codes to submit stage checklists"),
+        ("✅", "Review & approve", "You receive an email for each submission — review photos and approve or reject"),
+        ("📊", "Dashboard", "View all sites, plots and submission history from your portal"),
+        ("📷", "Photo library", "All photos are stored and searchable by site, plot and stage"),
+    ]
+    guide_html = ""
+    for icon, title, desc in guide_rows:
+        guide_html += f"""
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:40px">{icon}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0">
+            <div style="font-size:13px;font-weight:700;color:#1a1a2e">{title}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">{desc}</div>
+          </td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}}
+.w{{max-width:600px;margin:0 auto;background:#fff}}
+.h{{background:#1a1a2e;padding:28px 32px}}
+.h h1{{color:#C5962A;margin:0;font-size:22px;font-weight:800}}
+.h p{{color:#9ca3af;margin:4px 0 0;font-size:13px}}
+.b{{padding:32px}}
+.badge{{display:inline-block;background:{role_colour};color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}}
+.creds{{background:#f9f9fb;border:1.5px solid #e5e5ea;border-radius:10px;padding:16px 20px;margin:20px 0}}
+.cred-row{{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #e5e5ea;font-size:14px}}
+.cred-row:last-child{{border-bottom:none}}
+.cred-lbl{{color:#6b7280;font-weight:500}} .cred-val{{font-weight:700;color:#1a1a2e;font-family:monospace}}
+.btn{{display:inline-block;background:#C5962A;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:16px;font-weight:700;margin:8px 4px}}
+.btn-ghost{{display:inline-block;background:#f2f2f7;color:#1a1a2e;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:14px;font-weight:600;margin:8px 4px}}
+.ft{{background:#f8f9fa;padding:20px 32px;text-align:center;font-size:12px;color:#9ca3af;border-top:1px solid #f0f0f0}}
+</style></head>
+<body><div class="w">
+<div class="h">
+  <h1>Perfect Delivery</h1>
+  <p>{company} · Quality Management Portal</p>
+</div>
+<div class="b">
+  <span class="badge">{role_label}</span>
+  <h2 style="font-size:20px;color:#1a1a2e;margin:0 0 8px">Welcome, {name}! 👋</h2>
+  <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px">
+    Your Perfect Delivery account has been set up. Use the details below to log in and start reviewing stage submissions from your sites.
+  </p>
+
+  <div class="creds">
+    <p style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 10px">Your login details</p>
+    <div class="cred-row">
+      <span class="cred-lbl">Portal URL</span>
+      <span class="cred-val" style="font-family:inherit;font-size:13px"><a href="{portal_url}" style="color:#C5962A">{portal_url.replace("https://","")}</a></span>
+    </div>
+    <div class="cred-row">
+      <span class="cred-lbl">Email</span>
+      <span class="cred-val">{email}</span>
+    </div>
+    <div class="cred-row">
+      <span class="cred-lbl">Password</span>
+      <span class="cred-val">{password}</span>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin:24px 0">
+    <a href="{portal_url}" class="btn">Open Dashboard →</a>
+  </div>
+
+  {site_section}
+  {admin_section}
+
+  <div style="margin:24px 0">
+    <p style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:8px">How Perfect Delivery works:</p>
+    <table style="width:100%;border-collapse:collapse">
+      {guide_html}
+    </table>
+  </div>
+
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:16px 20px;margin:20px 0">
+    <p style="font-size:13px;font-weight:700;color:#166534;margin:0 0 6px">💡 Quick tip</p>
+    <p style="font-size:13px;color:#166534;margin:0">
+      When a subcontractor submits a stage checklist you'll receive an email with a review link. 
+      You can approve or reject directly from that email — no need to log in every time.
+    </p>
+  </div>
+
+  <p style="font-size:13px;color:#9ca3af;margin-top:24px">
+    Need help? Reply to this email or contact your system administrator.
+    You can change your password at any time from your dashboard settings.
+  </p>
+</div>
+<div class="ft">
+  Perfect Delivery · {company}<br>
+  <a href="{portal_url}" style="color:#C5962A;text-decoration:none">Access your dashboard</a>
+</div>
+</div></body></html>"""
+
+    subject = f"Welcome to Perfect Delivery — {company}"
+    _send(email, subject, html)
+
+
+def send_site_manager_assignment_email(user: dict, tenant: dict, new_sites: list):
+    """Email sent when a site manager is assigned to new sites."""
+    name       = user.get("name", "")
+    email      = user.get("email", "")
+    company    = tenant.get("company_name", "Perfect Delivery")
+    portal_url = f"{BASE_URL}/pd/portal"
+
+    site_list = "".join(
+        f"<li style='padding:4px 0;font-size:14px;color:#1a1a2e'>📍 {s.get('name','')}</li>"
+        for s in new_sites
+    )
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,Arial,sans-serif;background:#f5f5f5;margin:0;padding:0">
+<div style="max-width:600px;margin:0 auto;background:#fff">
+  <div style="background:#1a1a2e;padding:24px 32px">
+    <h1 style="color:#C5962A;margin:0;font-size:20px">Perfect Delivery</h1>
+    <p style="color:#9ca3af;margin:4px 0 0;font-size:13px">{company}</p>
+  </div>
+  <div style="padding:32px">
+    <h2 style="font-size:18px;color:#1a1a2e;margin:0 0 12px">New site assignment, {name}</h2>
+    <p style="font-size:14px;color:#6b7280;line-height:1.6">You've been assigned to the following site(s) on Perfect Delivery:</p>
+    <ul style="background:#f9f9fb;border-radius:10px;padding:16px 16px 16px 32px;margin:16px 0">
+      {site_list}
+    </ul>
+    <p style="font-size:14px;color:#6b7280;line-height:1.6">
+      You'll receive an email notification each time a subcontractor submits a stage checklist for these sites.
+      Log in to your dashboard to view plots, submissions and photos.
+    </p>
+    <div style="text-align:center;margin:24px 0">
+      <a href="{portal_url}" style="display:inline-block;background:#C5962A;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:700">Open Dashboard →</a>
+    </div>
+  </div>
+  <div style="background:#f8f9fa;padding:16px 32px;text-align:center;font-size:12px;color:#9ca3af">
+    Perfect Delivery · {company}
+  </div>
+</div>
+</body></html>"""
+
+    subject = f"New site assigned — {', '.join(s.get('name','') for s in new_sites)}"
+    _send(email, subject, html)
