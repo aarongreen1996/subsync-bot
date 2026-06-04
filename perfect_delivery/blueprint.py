@@ -63,6 +63,48 @@ def _upload_photo(file_obj, submission_id: str, item_id: str) -> tuple:
     return path, public_url
 
 
+
+# ── PWA routes ───────────────────────────────────────────────────────────────
+
+@pd_bp.route("/manifest.json")
+def pwa_manifest():
+    import json as _json
+    from flask import Response as _Resp
+    manifest = {
+        "name": "Perfect Delivery",
+        "short_name": "PD Form",
+        "description": "Stage sign-off checklist",
+        "start_url": "/pd/",
+        "scope": "/pd/",
+        "display": "standalone",
+        "background_color": "#1a1a2e",
+        "theme_color": "#1a1a2e",
+        "orientation": "portrait",
+    }
+    return _Resp(_json.dumps(manifest), mimetype="application/manifest+json",
+                 headers={"Cache-Control": "public, max-age=86400"})
+
+
+@pd_bp.route("/service-worker.js")
+def pwa_service_worker():
+    import os as _os
+    from flask import Response as _Resp
+    sw_path = _os.path.join(_os.path.dirname(__file__), "service-worker.js")
+    try:
+        with open(sw_path, "r") as f:
+            sw_content = f.read()
+    except FileNotFoundError:
+        sw_content = "// Service worker not found"
+    return _Resp(sw_content, mimetype="application/javascript",
+                 headers={"Cache-Control": "no-cache, no-store, must-revalidate",
+                          "Service-Worker-Allowed": "/pd/"})
+
+
+@pd_bp.route("/offline")
+def pwa_offline():
+    return render_template("pd/offline.html")
+
+
 # ── Subcontractor Form ────────────────────────────────────────────────────────
 
 @pd_bp.route("/<token>", methods=["GET"])
