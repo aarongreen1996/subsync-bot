@@ -977,25 +977,34 @@ async function submitForm() {
 
 // ── Service Worker + Offline ─────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    try {
-      const reg = await navigator.serviceWorker.register('/pd/service-worker.js', {
-        scope: '/pd/'
-      });
-      console.log('[PD] SW registered:', reg.scope);
+  // Register SW immediately — don't wait for load event
+  navigator.serviceWorker.register('/pd/service-worker.js', { scope: '/pd/' })
+    .then(reg => {
+      console.log('[PD] SW registered scope:', reg.scope);
 
-      // Listen for messages from SW
-      navigator.serviceWorker.addEventListener('message', event => {
-        const data = event.data;
-        if (data.type === 'QUEUED') {
-          showOfflineToast('📥 Saved offline — will upload when signal returns');
-        }
-        if (data.type === 'SYNCED') {
-          showSyncBanner();
-        }
-      });
-    } catch(e) {
-      console.warn('[PD] SW registration failed:', e);
+      // Cache THIS page immediately now that SW is active
+      if (reg.active || reg.installing) {
+        const cache_url = window.location.href;
+        caches.open('pd-v2').then(cache => {
+          cache.add(cache_url).then(() => {
+            console.log('[PD] Page cached for offline:', cache_url);
+          }).catch(e => console.warn('[PD] Cache add failed:', e));
+        });
+      }
+
+      // Trigger background sync registration
+      if ('sync' in reg) {
+        reg.sync.register('pd-sync').catch(() => {});
+      }
+    })
+    .catch(e => console.warn('[PD] SW registration failed:', e));
+
+  // Listen for messages from SW
+  navigator.serviceWorker.addEventListener('message', event => {
+    const data = event.data;
+    if (data.type === 'SYNCED') {
+      showSyncBanner();
+      setTimeout(() => { window.location.reload(); }, 2000);
     }
   });
 }
@@ -1006,20 +1015,22 @@ function updateOnlineStatus() {
   const banner  = document.getElementById('offlineBanner');
   if (banner) banner.style.display = offline ? 'block' : 'none';
 
-  if (!offline && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'ONLINE' });
-    // Register background sync if supported
-    navigator.serviceWorker.ready.then(reg => {
-      if ('sync' in reg) {
-        reg.sync.register('pd-sync').catch(() => {});
-      }
+  if (!offline) {
+    // Back online — tell SW to flush queue
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'FLUSH' });
+    }
+    navigator.serviceWorker?.ready.then(reg => {
+      if (reg.sync) reg.sync.register('pd-sync').catch(() => {});
     });
   }
 }
 
-window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('online',  () => { updateOnlineStatus(); showSyncBanner(); });
 window.addEventListener('offline', updateOnlineStatus);
-updateOnlineStatus(); // Check on load
+// Check immediately and after SW activates
+updateOnlineStatus();
+navigator.serviceWorker?.ready.then(() => updateOnlineStatus());
 
 function showOfflineToast(msg) {
   const existing = document.getElementById('offlineToast');
@@ -1040,33 +1051,36 @@ function showSyncBanner() {
   }
 }
 
-// Handle queued submit response (SW returns ok:true with queued:true when offline)
-const _origSubmit = submitForm;
+// Patch submitForm to detect offline queue response
+const _origSubmitFn = submitForm;
 submitForm = async function() {
-  // Wrap to detect offline queue response
-  const origFetch = window.fetch;
-  const offlineResponses = [];
+  // Temporarily patch fetch to intercept submit response
+  const _origFetch = window.fetch;
+  let _wasQueued = false;
+
   window.fetch = async function(url, opts) {
-    const resp = await origFetch(url, opts);
-    if (url && url.toString().includes('/submit')) {
-      const clone = resp.clone();
+    const resp = await _origFetch(url, opts);
+    if (typeof url === 'string' && url.includes('/submit')) {
       try {
-        const json = await clone.json();
+        const clone = resp.clone();
+        const json  = await clone.json();
         if (json.queued) {
-          offlineResponses.push(json);
+          _wasQueued = true;
+          // Return a response that won't trigger redirect
+          return new Response(JSON.stringify({ ok: false, offline: true }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
         }
       } catch(e) {}
     }
     return resp;
   };
 
-  await _origSubmit();
+  await _origSubmitFn();
+  window.fetch = _origFetch;
 
-  window.fetch = origFetch;
-
-  if (offlineResponses.length) {
-    // Show offline success screen instead of redirect
-    document.getElementById('loading').classList.remove('show');
+  if (_wasQueued) {
+    document.getElementById('loading')?.classList.remove('show');
     _showOfflineSuccess();
   }
 };
