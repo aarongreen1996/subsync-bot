@@ -977,34 +977,35 @@ async function submitForm() {
 
 // ── Service Worker + Offline ─────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  // Register SW immediately — don't wait for load event
   navigator.serviceWorker.register('/pd/service-worker.js', { scope: '/pd/' })
-    .then(reg => {
-      console.log('[PD] SW registered scope:', reg.scope);
+    .then(async reg => {
+      console.log('[PD] SW registered:', reg.scope);
 
-      // Cache THIS page immediately now that SW is active
-      if (reg.active || reg.installing) {
-        const cache_url = window.location.href;
-        caches.open('pd-v2').then(cache => {
-          cache.add(cache_url).then(() => {
-            console.log('[PD] Page cached for offline:', cache_url);
-          }).catch(e => console.warn('[PD] Cache add failed:', e));
+      // Wait for SW to be active and controlling this page
+      if (reg.installing) {
+        await new Promise(resolve => {
+          reg.installing.addEventListener('statechange', function() {
+            if (this.state === 'activated') resolve();
+          });
         });
       }
 
-      // Trigger background sync registration
-      if ('sync' in reg) {
-        reg.sync.register('pd-sync').catch(() => {});
-      }
-    })
-    .catch(e => console.warn('[PD] SW registration failed:', e));
+      // SW is active — it will cache this page on next navigation/reload
+      // Manually cache current page via SW message isn't needed —
+      // the SW's handleGet will cache it on this very page load
 
-  // Listen for messages from SW
+      // Register background sync
+      if ('sync' in reg) reg.sync.register('pd-sync').catch(() => {});
+    })
+    .catch(e => console.warn('[PD] SW failed:', e));
+
+  // Messages from SW
   navigator.serviceWorker.addEventListener('message', event => {
-    const data = event.data;
-    if (data.type === 'SYNCED') {
+    if (event.data?.type === 'SYNCED') {
       showSyncBanner();
-      setTimeout(() => { window.location.reload(); }, 2000);
+    }
+    if (event.data?.type === 'QUEUED') {
+      showOfflineToast('📥 Saved offline — will upload when signal returns');
     }
   });
 }
