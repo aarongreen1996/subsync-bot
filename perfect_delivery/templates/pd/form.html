@@ -977,8 +977,27 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/pd/service-worker.js', { scope: '/pd/' })
     .then(function(reg) {
       console.log('[PD] SW ready');
+      // Force new SW to take over immediately without waiting for page reload
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      reg.addEventListener('updatefound', function() {
+        var newSW = reg.installing;
+        if (newSW) {
+          newSW.addEventListener('statechange', function() {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        }
+      });
       if (reg.sync) reg.sync.register('pd-sync').catch(function(){});
     }).catch(function(e) { console.warn('[PD] SW error:', e); });
+
+  var refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    if (!refreshing) { refreshing = true; } // don't auto-reload — just let it work
+  });
 
   navigator.serviceWorker.addEventListener('message', function(e) {
     if (!e.data) return;
