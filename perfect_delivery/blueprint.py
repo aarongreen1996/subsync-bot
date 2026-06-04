@@ -122,6 +122,42 @@ def form(token: str):
 
 
 
+
+@pd_bp.route("/<token>/draft/photo", methods=["POST"])
+def save_draft_photo(token: str):
+    """Upload a photo for a draft — stores in Supabase and returns URL."""
+    import uuid as _uuid
+    plot_row = _get_plot(token)
+    photo    = request.files.get("photo")
+    item_id  = request.form.get("item_id", "")
+    stage_number = request.form.get("stage_number", "0")
+
+    if not photo or not item_id:
+        return jsonify({"ok": False, "error": "Missing photo or item_id"}), 400
+
+    try:
+        ext        = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else "jpg"
+        fname      = f"drafts/{plot_row['id']}/{stage_number}/{item_id}_{_uuid.uuid4().hex[:8]}.{ext}"
+        photo_bytes = photo.read()
+
+        SURL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+        SKEY = os.environ.get("SUPABASE_KEY", "")
+        import requests as _req
+        r = _req.post(
+            f"{SURL}/storage/v1/object/pd-photos/{fname}",
+            data=photo_bytes,
+            headers={"apikey": SKEY, "Authorization": f"Bearer {SKEY}",
+                     "Content-Type": f"image/{ext}", "x-upsert": "true"}
+        )
+        if r.status_code not in (200, 201):
+            return jsonify({"ok": False, "error": "Upload failed"}), 500
+
+        url = f"{SURL}/storage/v1/object/public/pd-photos/{fname}"
+        return jsonify({"ok": True, "url": url, "item_id": item_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @pd_bp.route("/<token>/draft", methods=["POST"])
 def save_draft(token: str):
     """Save or update a draft for a plot+stage."""
@@ -143,6 +179,7 @@ def save_draft(token: str):
         "submitted_by_company": data.get("submitted_by_company", ""),
         "submitted_by_email":  data.get("submitted_by_email", ""),
         "answers":             data.get("answers", {}),
+        "photo_urls":          data.get("photo_urls", {}),
         "additional_notes":    data.get("additional_notes", ""),
         "updated_at":          datetime.now(timezone.utc).isoformat(),
     }
@@ -237,12 +274,36 @@ def submit(token: str):
     }
     supabase.table("pd_submissions").insert(sub_record).execute()
 
-    # Upload photos
+    # Handle pre-uploaded draft photos first
     photo_records = []
+    draft_photo_urls_raw = request.form.get("draft_photo_urls", "{}")
+    try:
+        draft_photo_urls = json.loads(draft_photo_urls_raw)
+    except Exception:
+        draft_photo_urls = {}
+
+    for item_id, url in draft_photo_urls.items():
+        if not url: continue
+        item_label = next(
+            (i.get("text", item_id)[:60] for i in stage.get("items", []) if i["id"] == item_id),
+            item_id,
+        )
+        photo_records.append({
+            "submission_id": submission_id,
+            "item_id":       item_id,
+            "item_label":    item_label,
+            "storage_path":  url,
+            "public_url":    url,
+        })
+
+    # Upload new photos taken during this session
     for key, file_obj in request.files.items():
         if not key.startswith("photo_") or not getattr(file_obj, "filename", None):
             continue
         item_id = key[len("photo_"):]
+        # Skip if already have a draft photo for this item
+        if item_id in draft_photo_urls:
+            continue
         item_label = next(
             (i.get("text", item_id)[:60] for i in stage.get("items", []) if i["id"] == item_id),
             item_id,
@@ -251,10 +312,10 @@ def submit(token: str):
             storage_path, public_url = _upload_photo(file_obj, submission_id, item_id)
             photo_records.append({
                 "submission_id": submission_id,
-                "item_id": item_id,
-                "item_label": item_label,
-                "storage_path": storage_path,
-                "public_url": public_url,
+                "item_id":       item_id,
+                "item_label":    item_label,
+                "storage_path":  storage_path,
+                "public_url":    public_url,
             })
         except Exception as e:
             print(f"Photo upload error {item_id}: {e}")
