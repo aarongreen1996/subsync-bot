@@ -1,238 +1,164 @@
-// Perfect Delivery — Service Worker
-// Handles offline form caching and submission queuing
+// Perfect Delivery Service Worker v2
+// Strategy: Cache form pages aggressively, queue submissions when offline
 
-const SW_VERSION = 'pd-v1';
-const CACHE_NAME = SW_VERSION + '-cache';
-
-// Assets to cache on install (app shell)
-const STATIC_ASSETS = [
-  '/pd/offline',
-];
+const CACHE = 'pd-v2';
 
 // ── Install ────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE).then(cache => cache.addAll(['/pd/offline']))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// ── Activate ───────────────────────────────────────────────────────────────
+// ── Activate ──────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// ── Fetch ──────────────────────────────────────────────────────────────────
+// ── Fetch ─────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  const url = new URL(req.url);
 
-  // Only handle same-origin /pd/ requests
+  // Only handle /pd/ same-origin requests
   if (url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith('/pd/')) return;
 
-  // Form page — cache-first with network fallback
-  if (event.request.method === 'GET' && isFormPage(url.pathname)) {
-    event.respondWith(cacheFirstWithNetworkFallback(event.request));
+  // POST requests (submit, draft) — try network, queue if offline
+  if (req.method === 'POST') {
+    event.respondWith(handlePost(req));
     return;
   }
 
-  // Submit / draft endpoints — queue if offline
-  if (event.request.method === 'POST') {
-    event.respondWith(postWithOfflineQueue(event.request));
+  // GET — cache then network (stale-while-revalidate)
+  if (req.method === 'GET') {
+    event.respondWith(staleWhileRevalidate(req));
     return;
   }
-
-  // Everything else — network first
-  event.respondWith(networkFirstWithCacheFallback(event.request));
 });
 
-function isFormPage(pathname) {
-  // Match /pd/<token> — form pages
-  const parts = pathname.split('/').filter(Boolean);
-  return parts.length === 2 && parts[0] === 'pd' && !parts[1].includes('.');
-}
+// Cache then revalidate in background
+async function staleWhileRevalidate(req) {
+  const cache  = await caches.open(CACHE);
+  const cached = await cache.match(req);
 
-async function cacheFirstWithNetworkFallback(request) {
-  const cached = await caches.match(request);
-  if (cached) {
-    // Refresh cache in background
-    fetch(request).then(resp => {
-      if (resp.ok) {
-        caches.open(CACHE_NAME).then(c => c.put(request, resp.clone()));
-      }
-    }).catch(() => {});
-    return cached;
-  }
-  try {
-    const resp = await fetch(request);
-    if (resp.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, resp.clone());
+  const fetchPromise = fetch(req).then(resp => {
+    if (resp.ok && resp.status === 200) {
+      cache.put(req, resp.clone());
     }
     return resp;
-  } catch(e) {
-    const offlineResp = await caches.match('/pd/offline');
-    return offlineResp || new Response('Offline', { status: 503 });
-  }
+  }).catch(() => null);
+
+  return cached || fetchPromise || caches.match('/pd/offline');
 }
 
-async function networkFirstWithCacheFallback(request) {
+// Try network, queue if offline
+async function handlePost(req) {
   try {
-    const resp = await fetch(request);
-    if (resp.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, resp.clone());
-    }
+    const resp = await fetch(req.clone(), { signal: AbortSignal.timeout(10000) });
     return resp;
   } catch(e) {
-    const cached = await caches.match(request);
-    return cached || new Response('Offline', { status: 503 });
-  }
-}
+    // Offline — queue it
+    const isSubmit = req.url.includes('/submit');
+    const isDraft  = req.url.includes('/draft');
 
-async function postWithOfflineQueue(request) {
-  try {
-    const resp = await fetch(request.clone());
-    return resp;
-  } catch(e) {
-    // Offline — queue the submission
-    if (request.url.includes('/submit') || request.url.includes('/draft')) {
-      await queueRequest(request);
-      // Return a fake success so the form doesn't show an error
+    if (isSubmit || isDraft) {
+      await enqueue(req);
       return new Response(JSON.stringify({
-        ok: true,
-        queued: true,
-        message: 'Saved offline — will submit when signal returns',
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+        ok:      true,
+        queued:  true,
+        offline: true,
+        message: 'Saved offline',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     throw e;
   }
 }
 
-// ── Offline queue using IndexedDB ─────────────────────────────────────────
-async function getDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('pd-offline-queue', 1);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('queue')) {
-        db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
-      }
+// ── IndexedDB queue ────────────────────────────────────────────────────────
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('pd-queue', 1);
+    r.onupgradeneeded = e => {
+      e.target.result.createObjectStore('requests', { keyPath: 'id', autoIncrement: true });
     };
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror   = e => reject(e.target.error);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
   });
 }
 
-async function queueRequest(request) {
-  try {
-    const db = await getDB();
-    // Read the request body
-    const clone = request.clone();
-    const body  = await clone.arrayBuffer();
-    const headers = {};
-    request.headers.forEach((v, k) => { headers[k] = v; });
+async function enqueue(req) {
+  const db   = await openDB();
+  const body = await req.clone().arrayBuffer();
+  const hdrs = {};
+  req.headers.forEach((v, k) => { hdrs[k] = v; });
 
-    const entry = {
-      url:       request.url,
-      method:    request.method,
-      headers:   headers,
+  return new Promise((res, rej) => {
+    const tx = db.transaction('requests', 'readwrite');
+    tx.objectStore('requests').add({
+      url:       req.url,
+      method:    req.method,
+      headers:   hdrs,
       body:      body,
-      timestamp: Date.now(),
-    };
-
-    const tx    = db.transaction('queue', 'readwrite');
-    const store = tx.objectStore('queue');
-    await new Promise((res, rej) => {
-      const r = store.add(entry);
-      r.onsuccess = res;
-      r.onerror   = rej;
+      ts:        Date.now(),
     });
-
-    // Notify clients
-    const clients = await self.clients.matchAll();
-    clients.forEach(c => c.postMessage({ type: 'QUEUED', url: request.url }));
-
-    console.log('[SW] Queued offline:', request.url);
-  } catch(e) {
-    console.error('[SW] Queue error:', e);
-  }
+    tx.oncomplete = res;
+    tx.onerror    = rej;
+  });
 }
 
 async function flushQueue() {
-  try {
-    const db    = await getDB();
-    const tx    = db.transaction('queue', 'readonly');
-    const store = tx.objectStore('queue');
-    const items = await new Promise((res, rej) => {
-      const r = store.getAll();
-      r.onsuccess = e => res(e.target.result);
-      r.onerror   = rej;
-    });
+  const db = await openDB();
 
-    if (!items.length) return;
+  const items = await new Promise((res, rej) => {
+    const tx = db.transaction('requests', 'readonly');
+    const r  = tx.objectStore('requests').getAll();
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = rej;
+  });
 
-    console.log('[SW] Flushing', items.length, 'queued requests');
+  if (!items.length) return;
 
-    for (const item of items) {
-      try {
-        const resp = await fetch(item.url, {
-          method:  item.method,
-          headers: item.headers,
-          body:    item.body,
+  let synced = 0;
+  for (const item of items) {
+    try {
+      const resp = await fetch(item.url, {
+        method:  item.method,
+        headers: item.headers,
+        body:    item.body,
+      });
+      if (resp.ok || resp.status === 200) {
+        await new Promise((res, rej) => {
+          const tx = db.transaction('requests', 'readwrite');
+          tx.objectStore('requests').delete(item.id);
+          tx.oncomplete = res;
+          tx.onerror    = rej;
         });
-
-        if (resp.ok) {
-          // Remove from queue
-          const delTx    = db.transaction('queue', 'readwrite');
-          const delStore = delTx.objectStore('queue');
-          await new Promise((res, rej) => {
-            const r = delStore.delete(item.id);
-            r.onsuccess = res;
-            r.onerror   = rej;
-          });
-
-          // Notify clients
-          const clients = await self.clients.matchAll();
-          clients.forEach(c => c.postMessage({
-            type:    'SYNCED',
-            url:     item.url,
-            queued:  items.length,
-          }));
-
-          console.log('[SW] Synced:', item.url);
-        }
-      } catch(e) {
-        console.log('[SW] Still offline, keeping in queue:', item.url);
-        break; // Stop trying if still offline
+        synced++;
       }
+    } catch(e) {
+      break; // Still offline
     }
-  } catch(e) {
-    console.error('[SW] Flush error:', e);
+  }
+
+  if (synced) {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: 'SYNCED', count: synced }));
   }
 }
 
-// ── Background sync ────────────────────────────────────────────────────────
+// Background sync
 self.addEventListener('sync', event => {
-  if (event.tag === 'pd-sync') {
-    event.waitUntil(flushQueue());
-  }
+  if (event.tag === 'pd-sync') event.waitUntil(flushQueue());
 });
 
-// ── Online message from client ────────────────────────────────────────────
+// Manual trigger from page
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'ONLINE') {
-    flushQueue();
-  }
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  if (event.data?.type === 'FLUSH') flushQueue();
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
