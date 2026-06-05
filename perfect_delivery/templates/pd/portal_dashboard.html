@@ -933,6 +933,11 @@ async function loadUsers() {
 
   tbody.innerHTML = '';
   users.forEach(u => {
+    // site_ids may be a JSON string — parse it
+    if (typeof u.site_ids === 'string') {
+      try { u.site_ids = JSON.parse(u.site_ids); } catch(e) { u.site_ids = []; }
+    }
+    if (!Array.isArray(u.site_ids)) u.site_ids = [];
     window._userMap[u.id] = u;
 
     const roleLabel = u.role === 'tenant_admin' ? 'Admin' : 'Site Manager';
