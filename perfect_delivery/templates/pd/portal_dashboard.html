@@ -758,7 +758,8 @@ async function loadOverview() {
     fetch('/pd/portal/api/submissions?limit=8'),
   ]);
   const sites = await sitesRes.json();
-  allSitesList = sites; // store for plot modal dropdown
+  allSitesList = sites;
+    window.allSitesList = sites; // store for plot modal dropdown
   const subs  = await subsRes.json();
 
   document.getElementById('statSites').textContent    = sites.length;
@@ -782,6 +783,7 @@ async function loadOverview() {
 
 // ── Sites ────────────────────────────────────────────────────────────────────
 let allSitesList = [];
+window.allSitesList = allSitesList;
 
 async function loadSites() {
   const res   = await fetch('/pd/portal/api/sites');
@@ -917,7 +919,17 @@ async function loadUsers() {
   }
   window._userMap = {};
   const siteMap  = {};
-  (window.allSitesList || []).forEach(s => { siteMap[s.id] = s.name; });
+  // Load sites if not already available
+  const siteList = window.allSitesList || allSitesList || [];
+  if (!siteList.length) {
+    try {
+      const sr = await fetch('/pd/portal/api/sites');
+      const sd = await sr.json();
+      if (Array.isArray(sd)) { window.allSitesList = sd; sd.forEach(s => { siteMap[s.id] = s.name; }); }
+    } catch(e) {}
+  } else {
+    siteList.forEach(s => { siteMap[s.id] = s.name; });
+  }
 
   tbody.innerHTML = '';
   users.forEach(u => {
