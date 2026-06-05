@@ -507,11 +507,11 @@
     <div class="modal-title" id="siteModalTitle">Add Site</div>
     <input type="hidden" id="editSiteId">
     <div class="form-grid">
-      <div class="field form-full"><label>Site Name <span style="color:var(--red)">*</span></label><input type="text" id="sName" placeholder="e.g. Danes Park"></div>
-      <div class="field form-full"><label>Address</label><input type="text" id="sAddress" placeholder="e.g. Church Lane, Bishops Waltham"></div>
-      <div class="field"><label>Manager Name <span style="color:var(--red)">*</span></label><input type="text" id="sManagerName" placeholder="Full name"></div>
-      <div class="field"><label>Manager Email <span style="color:var(--red)">*</span></label><input type="email" id="sManagerEmail" placeholder="manager@company.co.uk"></div>
-      <div class="field"><label>Manager Phone</label><input type="text" id="sManagerPhone" placeholder="+44 7700 000000"></div>
+      <div class="field form-full"><label>Site Name <span style="color:var(--red)">*</span></label><input type="text" id="siteName" placeholder="e.g. Danes Park"></div>
+      <div class="field form-full"><label>Address</label><input type="text" id="siteAddress" placeholder="e.g. Church Lane, Bishops Waltham"></div>
+      <div class="field"><label>Manager Name <span style="color:var(--red)">*</span></label><input type="text" id="siteManagerName" placeholder="Full name"></div>
+      <div class="field"><label>Manager Email <span style="color:var(--red)">*</span></label><input type="email" id="siteManagerEmail" placeholder="manager@company.co.uk"></div>
+      <div class="field"><label>Manager Phone</label><input type="text" id="siteManagerPhone" placeholder="+44 7700 000000"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeSiteModal()">Cancel</button>
@@ -1288,11 +1288,11 @@ async function editPlotHouseType(id, number, houseType, houseTypeDetail) {
 function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='') {
   document.getElementById('siteModalTitle').textContent = id ? 'Edit Site' : 'Add Site';
   document.getElementById('editSiteId').value  = id;
-  document.getElementById('sName').value        = name;
-  document.getElementById('sAddress').value     = address;
-  document.getElementById('sManagerName').value = mgName;
-  document.getElementById('sManagerEmail').value= mgEmail;
-  document.getElementById('sManagerPhone').value= mgPhone;
+  document.getElementById('siteName').value        = name;
+  document.getElementById('siteAddress').value     = address;
+  document.getElementById('siteManagerName').value = mgName;
+  document.getElementById('siteManagerEmail').value= mgEmail;
+  document.getElementById('siteManagerPhone').value= mgPhone;
   document.getElementById('siteModal').classList.add('show');
 }
 function closeSiteModal() { document.getElementById('siteModal').classList.remove('show'); }
@@ -1300,11 +1300,11 @@ function closeSiteModal() { document.getElementById('siteModal').classList.remov
 async function saveSite() {
   const id = document.getElementById('editSiteId').value;
   const payload = {
-    name:          document.getElementById('sName').value.trim(),
-    address:       document.getElementById('sAddress').value.trim(),
-    manager_name:  document.getElementById('sManagerName').value.trim(),
-    manager_email: document.getElementById('sManagerEmail').value.trim(),
-    manager_phone: document.getElementById('sManagerPhone').value.trim(),
+    name:          document.getElementById('siteName').value.trim(),
+    address:       document.getElementById('siteAddress').value.trim(),
+    manager_name:  document.getElementById('siteManagerName').value.trim(),
+    manager_email: document.getElementById('siteManagerEmail').value.trim(),
+    manager_phone: document.getElementById('siteManagerPhone').value.trim(),
   };
   if (!payload.name || !payload.manager_email) { toast('Site name and manager email are required','error'); return; }
   const url = id ? `/pd/portal/api/sites/${id}` : '/pd/portal/api/sites';
