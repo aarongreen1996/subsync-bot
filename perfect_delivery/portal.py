@@ -836,8 +836,8 @@ def qr_sheet(user, site_id):
     from .qr_utils import generate_qr_png
     from .checklist_data import STAGES
 
-    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).order("plot_number").execute()
-    plots = plots_res.data or []
+    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).execute()
+    plots = _natural_sort_plots(plots_res.data or [])
 
     from datetime import date as _date
     from flask import render_template as _rt
