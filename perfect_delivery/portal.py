@@ -12,13 +12,6 @@ from flask import (
     redirect, url_for, make_response, abort
 )
 from supabase import create_client, Client
-import re as _re
-
-def _natural_sort_plots(plots):
-    def _key(p):
-        parts = _re.split(r'(\d+)', str(p.get("plot_number") or ""))
-        return [int(x) if x.isdigit() else x.lower() for x in parts]
-    return sorted(plots, key=_key)
 try:
     from .email_utils import send_welcome_email, send_site_manager_assignment_email
 except Exception:
@@ -843,8 +836,8 @@ def qr_sheet(user, site_id):
     from .qr_utils import generate_qr_png
     from .checklist_data import STAGES
 
-    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).execute()
-    plots = _natural_sort_plots(plots_res.data or [])
+    plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).order("plot_number").execute()
+    plots = plots_res.data or []
 
     from datetime import date as _date
     from flask import render_template as _rt
