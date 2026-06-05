@@ -82,7 +82,6 @@
     {% for plot in plots %}
     <div class="qr-card">
       <img src="/pd/portal/qr/{{ plot.id }}" alt="QR Plot {{ plot.plot_number }}" loading="lazy">
-      <img src="/pd/portal/qr/{{ plot.id }}?inline=1" alt="QR Plot {{ plot.plot_number }}" loading="lazy">
       <div class="qr-plot">Plot {{ plot.plot_number }}</div>
       <div class="qr-site">{{ site.name }}</div>
       <div class="qr-status">{{ plot.status | capitalize }}</div>
