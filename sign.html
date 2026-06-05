@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sign Document — Note2Quote</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --amber:#f59e0b;--amber-d:#d97706;
+  --bg:#0c0d10;--bg2:#13141a;--bg3:#1a1b24;
+  --card:#1e1f2a;--border:#2a2b38;
+  --text:#f0ede8;--muted:#888;--green:#22c55e;--red:#ef4444;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Manrope,sans-serif;min-height:100vh;padding:0;}
+
+/* ── Header ── */
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10;}
+.logo{width:36px;height:36px;background:var(--amber);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo svg{width:22px;height:22px;}
+.header-text h1{font-size:15px;font-weight:700;letter-spacing:0.5px;}
+.header-text p{font-size:11px;color:var(--muted);margin-top:1px;}
+
+/* ── Content ── */
+.content{max-width:500px;margin:0 auto;padding:20px 16px 100px;}
+
+/* Status banner */
+.status-banner{border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;}
+.status-signed{background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:var(--green);}
+.status-pending{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:var(--amber);}
+
+/* Document card */
+.doc-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;}
+.doc-ref{font-family:'Bebas Neue',Georgia,serif;font-size:28px;letter-spacing:2px;color:var(--amber);margin-bottom:4px;}
+.doc-type{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;}
+.doc-meta{display:grid;gap:8px;}
+.meta-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+.meta-row:last-child{border-bottom:none;}
+.meta-label{font-size:12px;color:var(--muted);}
+.meta-value{font-size:13px;font-weight:600;}
+
+/* Items table */
+.items-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
+.items-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;}
+.item-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.item-row:last-child{border-bottom:none;}
+.item-desc{font-size:13px;line-height:1.4;flex:1;}
+.item-cost{font-size:13px;font-weight:700;color:var(--amber);white-space:nowrap;}
+.item-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.total-row{padding:14px 16px;background:var(--bg3);display:flex;justify-content:space-between;align-items:center;}
+.total-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+.total-value{font-size:20px;font-weight:700;color:var(--amber);}
+
+/* Signature section */
+.sig-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;}
+.sig-title{font-size:14px;font-weight:700;margin-bottom:4px;}
+.sig-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;}
+.sig-name-wrap{margin-bottom:14px;}
+.sig-name-wrap label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;}
+.sig-name-wrap input{width:100%;padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s;}
+.sig-name-wrap input:focus{border-color:var(--amber);}
+.sig-name-wrap input::placeholder{color:var(--muted);}
+.canvas-wrap{position:relative;border:2px dashed var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px;touch-action:none;background:var(--bg3);}
+.canvas-wrap.active{border-color:var(--amber);border-style:solid;}
+canvas{display:block;width:100%;cursor:crosshair;}
+.canvas-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--muted);font-size:13px;pointer-events:none;text-align:center;transition:opacity .2s;}
+.canvas-hint.hidden{opacity:0;}
+.clear-btn{font-size:12px;color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer;padding:4px 0;}
+
+/* Submit button */
+.sign-btn{width:100%;padding:16px;background:var(--amber);color:#0c0d10;border:none;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:0.5px;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:10px;}
+.sign-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.sign-btn:active:not(:disabled){transform:scale(0.98);}
+.sign-btn.loading{background:var(--amber-d);}
+
+/* Success state */
+.success-screen{text-align:center;padding:40px 20px;}
+.success-icon{width:72px;height:72px;background:rgba(34,197,94,0.12);border:2px solid var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;}
+.success-title{font-size:24px;font-weight:800;margin-bottom:8px;}
+.success-sub{font-size:14px;color:var(--muted);line-height:1.6;}
+
+/* Error state */
+.error-screen{text-align:center;padding:40px 20px;}
+.error-icon{font-size:48px;margin-bottom:16px;}
+.error-title{font-size:22px;font-weight:700;margin-bottom:8px;}
+.error-sub{font-size:14px;color:var(--muted);}
+
+/* Already signed */
+.signed-sig{margin-top:12px;background:var(--bg3);border-radius:8px;padding:12px;font-size:12px;color:var(--muted);}
+.signed-sig strong{color:var(--text);}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <svg viewBox="0 0 32 32" fill="none">
+      <rect x="2" y="14" width="3" height="8" rx="1.5" fill="#0c0d10"/>
+      <rect x="7" y="10" width="3" height="14" rx="1.5" fill="#0c0d10"/>
+      <rect x="12" y="7" width="3" height="18" rx="1.5" fill="#0c0d10"/>
+      <rect x="17" y="11" width="3" height="12" rx="1.5" fill="#0c0d10"/>
+      <rect x="22" y="15" width="3" height="6" rx="1.5" fill="#0c0d10"/>
+    </svg>
+  </div>
+  <div class="header-text">
+    <h1>NOTE2QUOTE</h1>
+    <p>Document signing</p>
+  </div>
+</div>
+
+<div class="content" id="main-content">
+  <div style="text-align:center;padding:60px 0;color:var(--muted)">Loading document...</div>
+</div>
+
+<script>
+var token = window.location.pathname.split('/').pop();
+var DOC = null;
+
+async function init(){
+  if(!token){ showError('No document token in URL.'); return; }
+  try{
+    var r = await fetch('/api/sign/'+token);
+    var d = await r.json();
+    if(!d.ok){ showError(d.error||'Document not found or link has expired.'); return; }
+    DOC = d.document;
+    if(DOC.signed_at){
+      showAlreadySigned(DOC);
+    } else {
+      showSigningForm(DOC);
+    }
+  } catch(e){
+    showError('Could not load document. Please check your connection and try again.');
+  }
+}
+
+function showError(msg){
+  document.getElementById('main-content').innerHTML =
+    '<div class="error-screen"><div class="error-icon">🔗</div>'+
+    '<div class="error-title">Link unavailable</div>'+
+    '<div class="error-sub">'+msg+'</div></div>';
+}
+
+function showAlreadySigned(doc){
+  var dt = new Date(doc.signed_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  document.getElementById('main-content').innerHTML =
+    '<div class="status-banner status-signed"><span>✅</span><span>Signed &amp; approved</span></div>'+
+    buildDocCard(doc)+
+    '<div class="doc-card" style="text-align:center">'+
+    '<div style="font-size:32px;margin-bottom:8px">✅</div>'+
+    '<div style="font-size:16px;font-weight:700;margin-bottom:4px">Already signed</div>'+
+    '<div class="signed-sig">Signed by <strong>'+doc.signed_by_name+'</strong> on '+dt+'</div>'+
+    '</div>';
+}
+
+function showSigningForm(doc){
+  var items = doc.items||[];
+  var total = items.reduce(function(s,l){return s+parseFloat(l.cost_estimate||0);},0);
+
+  var itemsHtml = items.map(function(l){
+    var cost = parseFloat(l.cost_estimate||0);
+    var hrs  = l.hours ? l.hours+'h' : '';
+    return '<div class="item-row">'+
+      '<div><div class="item-desc">'+(l.description||'—')+'</div>'+
+      '<div class="item-meta">'+(l.type||'').replace('_',' ')+(hrs?' · '+hrs:'')+'</div></div>'+
+      '<div class="item-cost">'+(cost?'£'+cost.toFixed(0):'—')+'</div>'+
+      '</div>';
+  }).join('');
+
+  document.getElementById('main-content').innerHTML =
+    '<div class="status-banner status-pending"><span>📋</span><span>Awaiting your signature</span></div>'+
+    buildDocCard(doc)+
+    '<div class="items-card">'+
+    '<div class="items-header">Items included</div>'+
+    itemsHtml+
+    '<div class="total-row"><span class="total-label">Total value</span><span class="total-value">£'+total.toFixed(0)+'</span></div>'+
+    '</div>'+
+    '<div class="sig-card">'+
+    '<div class="sig-title">Sign to approve</div>'+
+    '<div class="sig-sub">By signing you confirm the work listed above was instructed or approved by you and agree it is chargeable.</div>'+
+    '<div class="sig-name-wrap">'+
+    '<label>Your full name</label>'+
+    '<input type="text" id="signer-name" placeholder="e.g. Dave Smith" autocomplete="name">'+
+    '</div>'+
+    '<label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Signature</label>'+
+    '<div class="canvas-wrap" id="canvas-wrap">'+
+    '<canvas id="sig-canvas" height="140"></canvas>'+
+    '<div class="canvas-hint" id="canvas-hint">✍️  Sign here with your finger or mouse</div>'+
+    '</div>'+
+    '<button class="clear-btn" onclick="clearSig()">Clear signature</button>'+
+    '</div>'+
+    '<button class="sign-btn" id="sign-btn" onclick="submitSignature()">✅  Sign &amp; approve document</button>';
+
+  initCanvas();
+}
+
+function buildDocCard(doc){
+  return '<div class="doc-card">'+
+    '<div class="doc-ref">'+(doc.doc_ref||'—')+'</div>'+
+    '<div class="doc-type">'+(doc.doc_title||'Variation Order')+'</div>'+
+    '<div class="doc-meta">'+
+    '<div class="meta-row"><span class="meta-label">Site</span><span class="meta-value">'+(doc.site_name||'—')+'</span></div>'+
+    '<div class="meta-row"><span class="meta-label">Date</span><span class="meta-value">'+new Date(doc.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</span></div>'+
+    '<div class="meta-row"><span class="meta-label">Items</span><span class="meta-value">'+((doc.items||[]).length)+' item(s)</span></div>'+
+    '</div></div>';
+}
+
+// ── Canvas signature pad ──────────────────────────────────────────────────
+var canvas, ctx, drawing=false, hasSig=false;
+
+function initCanvas(){
+  canvas = document.getElementById('sig-canvas');
+  ctx    = canvas.getContext('2d');
+  var wrap = document.getElementById('canvas-wrap');
+
+  // Set canvas size to match CSS width
+  function resize(){
+    var rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width * window.devicePixelRatio;
+    canvas.height = 140 * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.strokeStyle = '#f0ede8';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+  }
+  resize();
+
+  function getPos(e){
+    var rect = canvas.getBoundingClientRect();
+    var t = e.touches ? e.touches[0] : e;
+    return {x: t.clientX - rect.left, y: t.clientY - rect.top};
+  }
+  function start(e){ e.preventDefault(); drawing=true; var p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); wrap.classList.add('active'); }
+  function move(e){ e.preventDefault(); if(!drawing)return; var p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasSig=true; document.getElementById('canvas-hint').classList.add('hidden'); }
+  function end(e){ e.preventDefault(); drawing=false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove',  move,  {passive:false});
+  canvas.addEventListener('touchend',   end,   {passive:false});
+}
+
+function clearSig(){
+  if(!canvas)return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  hasSig=false;
+  document.getElementById('canvas-hint').classList.remove('hidden');
+  document.getElementById('canvas-wrap').classList.remove('active');
+}
+
+async function submitSignature(){
+  var name = (document.getElementById('signer-name').value||'').trim();
+  if(!name){ alert('Please enter your full name before signing.'); return; }
+  if(!hasSig){ alert('Please add your signature above.'); return; }
+
+  var btn = document.getElementById('sign-btn');
+  btn.disabled=true; btn.classList.add('loading');
+  btn.innerHTML='Submitting...';
+
+  // Get signature as base64 PNG
+  var sigData = canvas.toDataURL('image/png');
+
+  try{
+    var r = await fetch('/api/sign/'+token, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name:name, signature:sigData})
+    });
+    var d = await r.json();
+    if(d.ok){
+      document.getElementById('main-content').innerHTML =
+        '<div class="success-screen">'+
+        '<div class="success-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>'+
+        '<div class="success-title">Document signed ✅</div>'+
+        '<div class="success-sub">Thank you, '+name+'.<br><br>'+
+        'Your signature has been recorded and the contractor has been notified.<br><br>'+
+        'A signed copy will be sent to both parties.</div>'+
+        '</div>';
+    } else {
+      btn.disabled=false; btn.classList.remove('loading');
+      btn.innerHTML='✅  Sign &amp; approve document';
+      alert(d.error||'Something went wrong. Please try again.');
+    }
+  } catch(e){
+    btn.disabled=false; btn.classList.remove('loading');
+    btn.innerHTML='✅  Sign &amp; approve document';
+    alert('Connection error. Please try again.');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
