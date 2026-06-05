@@ -490,6 +490,37 @@ def _generate_vo_or_ds(company, logs, doc_title, doc_ref, site_label, project_in
     right_box = make_sig_box("Client approval",
                               "Approved by (client):", "___________________________")
 
+    # If a digital signature is present, embed it in the client box
+    sig_image_data = company.get("signature_data","")
+    signed_by      = company.get("signed_by_name","")
+    signed_at_str  = company.get("signed_at","")
+    if sig_image_data and sig_image_data.startswith("data:image"):
+        try:
+            import base64 as _b64, io as _io
+            header, b64data = sig_image_data.split(",",1)
+            img_bytes = _b64.b64decode(b64data)
+            sig_img = Image(_io.BytesIO(img_bytes), width=70*mm, height=20*mm)
+            signed_label = f"Signed by: {signed_by}" if signed_by else "Digitally signed"
+            if signed_at_str:
+                signed_label += f" · {signed_at_str}"
+            right_sig = [
+                [Paragraph("Client approval", _sig_head)],
+                [sig_img],
+                [Paragraph(signed_label, sty("SigSigned", fontSize=7, textColor=mid))],
+                [Spacer(1, 2*mm)],
+                [HRFlowable(width="100%", thickness=0.5, color=mid)],
+                [Paragraph("Digitally signed via Note2Quote", _sig_nd)],
+            ]
+            right_box = make_sig_box.__class__  # rebuild
+            right_box_tbl = Table(right_sig, colWidths=[79*mm])
+            right_box_tbl.setStyle(TableStyle([
+                ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
+                ("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+            ]))
+            right_box = right_box_tbl
+        except Exception as _se:
+            print(f"Signature embed error: {_se}")
+
     sig_row = Table(
         [[left_box, Spacer(12*mm, 1), right_box]],
         colWidths=[79*mm, 12*mm, 79*mm]
