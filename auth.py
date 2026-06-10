@@ -95,7 +95,7 @@ def magic_login():
         pass
 
     # Mark as used
-    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
+    # db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
 
     # Get the phone number
     wa     = row.get("whatsapp", "")
