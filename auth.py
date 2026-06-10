@@ -1,4 +1,3 @@
-# v2
 import os
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -95,9 +94,8 @@ def magic_login():
     except Exception:
         pass
 
-    # DON'T mark as used here — the dashboard JS calls /api/validate-token
-    # which marks it used after confirming. Marking here causes validate-token
-    # to fail since it checks used=false.
+    # Mark as used
+    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
 
     # Get the phone number
     wa     = row.get("whatsapp", "")
