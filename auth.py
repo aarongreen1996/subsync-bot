@@ -94,8 +94,9 @@ def magic_login():
     except Exception:
         pass
 
-    # Mark as used
-    db_patch(f"auth_tokens?token=eq.{token}", {"used": True})
+    # DON'T mark as used here — the dashboard JS calls /api/validate-token
+    # which marks it used after confirming. Marking here causes validate-token
+    # to fail since it checks used=false.
 
     # Get the phone number
     wa     = row.get("whatsapp", "")
