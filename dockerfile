@@ -7,6 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy ALL application files - never cached, always fresh
+ARG CACHE_BUST=1
 COPY . .
 
 EXPOSE 8080
