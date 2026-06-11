@@ -20,12 +20,18 @@ from onboarding import onboarding_bp
 from admin import admin_bp
 from scheduler import start_scheduler
 from account import account_bp
+from auth import auth_bp, create_magic_token
+from perfect_delivery import pd_bp, portal_bp, superadmin_bp
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(account_bp)
+app.register_blueprint(auth_bp)
+app.register_blueprint(pd_bp)
+app.register_blueprint(portal_bp)
+app.register_blueprint(superadmin_bp)
 start_scheduler()
 
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
