@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checklist Editor — Perfect Delivery</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;color:#1a1a2e;min-height:100vh}
+.topbar{background:#009430;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.topbar h1{font-size:17px;font-weight:700}
+.topbar a{color:#fff;text-decoration:none;font-size:13px;opacity:.85}
+.topbar a:hover{opacity:1}
+.container{max-width:960px;margin:0 auto;padding:24px 16px}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px}
+.page-sub{font-size:13px;color:#666;margin-bottom:24px}
+.stage-grid{display:grid;grid-template-columns:280px 1fr;gap:20px}
+.stage-list{background:#fff;border-radius:12px;border:1px solid #e0e0e0;overflow:hidden;height:fit-content;position:sticky;top:20px}
+.stage-list h3{padding:14px 16px;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e0e0e0}
+.stage-item{padding:11px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+.stage-item:hover{background:#f5f7fa}
+.stage-item.active{background:#e8f5e9;color:#009430;font-weight:600}
+.stage-item .badge{font-size:10px;background:#e0e0e0;padding:2px 7px;border-radius:10px;color:#666}
+.stage-item.active .badge{background:#009430;color:#fff}
+.editor-panel{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:20px}
+.editor-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f0f0f0}
+.editor-header h2{font-size:16px;font-weight:700}
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn-green{background:#009430;color:#fff}
+.btn-green:hover{background:#007a28}
+.btn-outline{background:#fff;color:#666;border:1px solid #ddd}
+.btn-outline:hover{border-color:#009430;color:#009430}
+.btn-red{background:#fff;color:#e53935;border:1px solid #e53935}
+.btn-red:hover{background:#ffebee}
+.btn-sm{padding:5px 10px;font-size:12px}
+.item-row{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #e8e8e8;border-radius:8px;margin-bottom:8px;background:#fafafa;transition:border-color .15s}
+.item-row:hover{border-color:#009430}
+.item-row.disabled{opacity:.5}
+.item-toggle{flex-shrink:0;margin-top:2px}
+.item-toggle input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:#009430}
+.item-body{flex:1}
+.item-text{font-size:13px;line-height:1.5;margin-bottom:6px}
+.item-text-edit{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;min-height:36px;font-family:inherit}
+.item-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.item-meta label{font-size:11px;color:#666;display:flex;align-items:center;gap:4px;cursor:pointer}
+.item-meta input[type=checkbox]{accent-color:#009430}
+.tag{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.tag-photo{background:#e3f2fd;color:#1565c0}
+.tag-modified{background:#fff3e0;color:#e65100}
+.item-actions{display:flex;gap:4px;flex-shrink:0}
+.empty-state{text-align:center;padding:40px 20px;color:#999}
+.save-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e0e0e0;padding:12px 24px;display:flex;justify-content:flex-end;gap:10px;z-index:100;transform:translateY(100%);transition:transform .2s}
+.save-bar.show{transform:translateY(0)}
+.toast{position:fixed;top:20px;right:20px;background:#009430;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.error{background:#e53935}
+@media(max-width:700px){.stage-grid{grid-template-columns:1fr}.stage-list{position:static}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:16px">
+    <a href="/pd/portal/dashboard">← Dashboard</a>
+    <h1>Checklist Editor</h1>
+  </div>
+  <div style="font-size:13px;opacity:.85">{{ user.name }} &bull; {{ tenant.name if tenant else '' }}</div>
+</div>
+
+<div class="container">
+  <div class="page-title">Checklist Editor</div>
+  <div class="page-sub">Customise the checklist items for each build stage. Changes apply to all sites in your company.</div>
+
+  <div class="stage-grid">
+    <!-- Stage list -->
+    <div class="stage-list">
+      <h3>Build Stages</h3>
+      <div id="stage-list-items">
+        <div style="padding:20px;text-align:center;color:#999;font-size:13px">Loading stages...</div>
+      </div>
+    </div>
+
+    <!-- Editor panel -->
+    <div class="editor-panel" id="editor-panel">
+      <div class="empty-state">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <div style="font-weight:600;margin-bottom:4px">Select a stage to edit</div>
+        <div style="font-size:13px">Choose a build stage from the left to view and customise its checklist items.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="save-bar" id="save-bar">
+  <button class="btn btn-outline" onclick="discardChanges()">Discard changes</button>
+  <button class="btn btn-green" onclick="saveChanges()">Save changes</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var STAGES = {{ stages_json | safe }};
+var currentStage = null;
+var currentItems = [];
+var overrides = {};
+var dirty = false;
+
+function stageNums() {
+  return Object.keys(STAGES).map(Number).sort(function(a,b){return a-b;});
+}
+
+function renderStageList() {
+  var nums = stageNums();
+  var html = '';
+  nums.forEach(function(n) {
+    var s = STAGES[n];
+    var isActive = currentStage === n ? ' active' : '';
+    html += '<div class="stage-item' + isActive + '" onclick="loadStage(' + n + ')" id="stage-li-' + n + '">';
+    html += '<span>' + n + '. ' + s.name + '</span>';
+    html += '</div>';
+  });
+  document.getElementById('stage-list-items').innerHTML = html;
+}
+
+async function loadStage(n) {
+  if (dirty) {
+    if (!confirm('You have unsaved changes. Discard them?')) return;
+    dirty = false;
+    showSaveBar(false);
+  }
+  currentStage = n;
+  renderStageList();
+
+  // Fetch overrides for this stage
+  try {
+    var r = await fetch('/pd/portal/api/checklist/' + n);
+    var d = await r.json();
+    overrides = {};
+    (d.overrides || []).forEach(function(o) { overrides[o.item_id] = o; });
+  } catch(e) {
+    overrides = {};
+  }
+
+  renderEditor();
+}
+
+function renderEditor() {
+  var n = currentStage;
+  var stage = STAGES[n];
+  if (!stage) return;
+
+  var items = stage.items || [];
+  var html = '';
+
+  html += '<div class="editor-header">';
+  html += '<div>';
+  html += '<h2>Stage ' + n + ': ' + stage.name + '</h2>';
+  if (stage.applies_to) html += '<div style="font-size:12px;color:#666;margin-top:2px">Applies to: ' + stage.applies_to + '</div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:8px">';
+  html += '<button class="btn btn-outline btn-sm" onclick="resetStage()">Reset to default</button>';
+  html += '</div>';
+  html += '</div>';
+
+  if (!items.length) {
+    html += '<div class="empty-state">No checklist items for this stage.</div>';
+  } else {
+    html += '<div id="items-container">';
+    items.forEach(function(item) {
+      var ov = overrides[item.id] || {};
+      var enabled = ov.hasOwnProperty('enabled') ? ov.enabled : true;
+      var text = ov.text || item.text;
+      var photoRequired = ov.hasOwnProperty('photo_required') ? ov.photo_required : (item.photo !== false);
+      var isModified = Object.keys(ov).length > 0;
+
+      html += '<div class="item-row' + (enabled ? '' : ' disabled') + '" id="item-' + item.id + '">';
+      html += '<div class="item-toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleItem(\'' + item.id + '\',this.checked)" title="Enable/disable this item"></div>';
+      html += '<div class="item-body">';
+      html += '<textarea class="item-text-edit" id="text-' + item.id + '" onchange="markDirty()" rows="2">' + escHtml(text) + '</textarea>';
+      html += '<div class="item-meta" style="margin-top:6px">';
+      html += '<label><input type="checkbox" ' + (photoRequired ? 'checked' : '') + ' id="photo-' + item.id + '" onchange="markDirty()"> Require photo</label>';
+      if (isModified) html += '<span class="tag tag-modified">Modified</span>';
+      if (item.photo !== false) html += '<span class="tag tag-photo">📷 Photo stage</span>';
+      html += '</div>';
+      html += '</div>';
+      html += '<div class="item-actions">';
+      html += '<button class="btn btn-outline btn-sm" onclick="resetItem(\'' + item.id + '\')" title="Reset to default">↺</button>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('editor-panel').innerHTML = html;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleItem(itemId, enabled) {
+  var row = document.getElementById('item-' + itemId);
+  if (enabled) row.classList.remove('disabled');
+  else row.classList.add('disabled');
+  markDirty();
+}
+
+function markDirty() {
+  dirty = true;
+  showSaveBar(true);
+}
+
+function showSaveBar(show) {
+  var bar = document.getElementById('save-bar');
+  if (show) bar.classList.add('show');
+  else bar.classList.remove('show');
+}
+
+function discardChanges() {
+  dirty = false;
+  showSaveBar(false);
+  loadStage(currentStage);
+}
+
+async function saveChanges() {
+  var n = currentStage;
+  var stage = STAGES[n];
+  if (!stage) return;
+
+  var items = stage.items || [];
+  var payload = [];
+
+  items.forEach(function(item) {
+    var textEl = document.getElementById('text-' + item.id);
+    var photoEl = document.getElementById('photo-' + item.id);
+    var row = document.getElementById('item-' + item.id);
+    var enabled = !row.classList.contains('disabled');
+    var text = textEl ? textEl.value.trim() : item.text;
+    var photoRequired = photoEl ? photoEl.checked : (item.photo !== false);
+
+    payload.push({
+      item_id: item.id,
+      text: text,
+      photo_required: photoRequired,
+      enabled: enabled,
+      sort_order: items.indexOf(item),
+    });
+  });
+
+  try {
+    var r = await fetch('/pd/portal/api/checklist/' + n, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    var d = await r.json();
+    if (d.ok) {
+      dirty = false;
+      showSaveBar(false);
+      showToast('Stage ' + n + ' saved ✓', false);
+      // Reload overrides
+      await loadStage(n);
+    } else {
+      showToast('Error: ' + (d.error || 'Unknown'), true);
+    }
+  } catch(e) {
+    showToast('Save failed: ' + e.message, true);
+  }
+}
+
+async function resetStage() {
+  if (!confirm('Reset all items in this stage to default? Your customisations will be lost.')) return;
+  try {
+    await fetch('/pd/portal/api/checklist/' + currentStage + '/reset', {method: 'DELETE'});
+    showToast('Stage reset to default ✓', false);
+    await loadStage(currentStage);
+  } catch(e) {
+    showToast('Reset failed', true);
+  }
+}
+
+async function resetItem(itemId) {
+  try {
+    await fetch('/pd/portal/api/checklist/item/' + itemId + '/reset', {method: 'DELETE'});
+    showToast('Item reset ✓', false);
+    dirty = false;
+    showSaveBar(false);
+    await loadStage(currentStage);
+  } catch(e) {
+    showToast('Reset failed', true);
+  }
+}
+
+function showToast(msg, isError) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(function(){ t.className = 'toast'; }, 3000);
+}
+
+// Init
+renderStageList();
+// Auto-load stage 1
+loadStage(1);
+</script>
+
+</body>
+</html>
