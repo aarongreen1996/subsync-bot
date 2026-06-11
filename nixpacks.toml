@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["python313"]
+
+[variables]
+PYTHON_VERSION = "3.13.13"
