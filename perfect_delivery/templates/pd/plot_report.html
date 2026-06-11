@@ -19,20 +19,17 @@
 
   .container { max-width: 900px; margin: 24px auto; padding: 0 16px 60px; }
 
-  /* Summary cards */
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 12px; margin-bottom: 24px; }
   .summary-card { background: white; border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   .summary-card .n { font-size: 28px; font-weight: 800; }
   .summary-card .l { font-size: 12px; color: #8e8e93; margin-top: 2px; }
   .n-green { color: #34c759; } .n-amber { color: #ff9500; } .n-red { color: #ff3b30; } .n-grey { color: #8e8e93; } .n-dark { color: #1a1a2e; }
 
-  /* Progress bar */
   .progress-card { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   .progress-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
   .progress-track { height: 10px; background: #f2f2f7; border-radius: 10px; overflow: hidden; }
   .progress-fill { height: 100%; background: linear-gradient(90deg, #34c759, #30d158); border-radius: 10px; }
 
-  /* Stage table */
   .section-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; margin-top: 24px; color: #1a1a2e; }
   .stage-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   .stage-table th { text-align: left; padding: 11px 16px; font-size: 11px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; background: #f9f9fb; border-bottom: 1px solid #f2f2f7; }
@@ -50,10 +47,8 @@
   .review-link { color: #007aff; text-decoration: none; font-weight: 600; font-size: 12px; }
   .review-link:hover { text-decoration: underline; }
 
-  /* Group rows */
   .group-row td { background: #f2f2f7 !important; font-size: 11px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; padding: 7px 16px; }
 
-  /* Print */
   @media print {
     .screen-header, .screen-actions, .no-print { display: none !important; }
     body { background: white; font-size: 11px; }
@@ -77,13 +72,12 @@
     <p>{{ site.name }}{% if site.address %} · {{ site.address }}{% endif %}</p>
   </div>
   <div class="screen-actions">
-    <a href="/pd/admin?key={{ admin_key }}" class="btn btn-ghost">← Admin</a>
-    <a href="/pd/admin/plot/{{ plot.id }}/report/pdf?key={{ admin_key }}" class="btn btn-blue">⬇ Export PDF</a>
+    <a href="{{ back_url if back_url else '/pd/admin?key=' + admin_key }}" class="btn btn-ghost">← Back</a>
+    <a href="{{ pdf_url if pdf_url else '/pd/admin/plot/' + plot.id + '/report/pdf?key=' + admin_key }}" class="btn btn-blue">⬇ Export PDF</a>
     <button class="btn btn-gold" onclick="window.print()">🖨 Print</button>
   </div>
 </div>
 
-<!-- Print header -->
 <div class="print-header">
   <h1 style="font-size:18px;font-weight:800">Perfect Delivery — Plot Report</h1>
   <p style="margin-top:4px;font-size:13px;color:#8e8e93">{{ site.name }} · Plot {{ plot.plot_number }} · Generated {{ now }}</p>
@@ -91,7 +85,6 @@
 
 <div class="container">
 
-  <!-- Summary -->
   <div class="summary-grid">
     <div class="summary-card"><div class="n n-dark">37</div><div class="l">Total Stages</div></div>
     <div class="summary-card"><div class="n n-green">{{ approved_count }}</div><div class="l">Approved</div></div>
@@ -100,7 +93,6 @@
     <div class="summary-card"><div class="n n-grey">{{ not_started }}</div><div class="l">Not Started</div></div>
   </div>
 
-  <!-- Progress -->
   <div class="progress-card">
     <div class="progress-label">
       <span>Build Completion</span>
@@ -111,7 +103,6 @@
     </div>
   </div>
 
-  <!-- Stage audit table -->
   <div class="section-title">Stage Audit Trail</div>
   <table class="stage-table">
     <thead>
@@ -172,7 +163,6 @@
     </tbody>
   </table>
 
-  <!-- Part L summary -->
   {% if part_l_rows %}
   <div class="section-title">Part L Compliance Record</div>
   <table class="stage-table">
