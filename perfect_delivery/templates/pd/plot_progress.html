@@ -18,7 +18,6 @@
 
   .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
 
-  /* Stats bar */
   .stats-bar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
   .stat-card { flex: 1; min-width: 120px; background: white; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center; }
   .stat-card .n { font-size: 28px; font-weight: 800; }
@@ -29,20 +28,17 @@
   .n-empty    { color: #9ca3af; }
   .n-total    { color: #1a1a2e; }
 
-  /* Progress bar */
   .progress-section { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   .progress-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
   .progress-track { height: 12px; background: #f0f2f5; border-radius: 10px; overflow: hidden; }
   .progress-fill { height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e); border-radius: 10px; transition: width 0.5s ease; }
 
-  /* Group sections */
   .group-section { margin-bottom: 24px; }
   .group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .group-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
   .group-line { flex: 1; height: 1px; background: #e5e7eb; }
   .group-count { font-size: 12px; color: #6b7280; }
 
-  /* Stage grid */
   .stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 
   .stage-card {
@@ -70,7 +66,6 @@
   .stage-meta { font-size: 11px; color: #9ca3af; margin-top: 4px; }
   .stage-trade { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
-  /* Photo album section */
   .album-section { background: white; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   .album-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
   .album-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
@@ -87,7 +82,6 @@
   .photo-date  { color: rgba(255,255,255,0.7); font-size: 9px; }
   .photo-empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; grid-column: 1/-1; }
 
-  /* Lightbox */
   .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; }
   .lightbox.show { display: flex; }
   .lightbox img { max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; }
@@ -114,13 +108,12 @@
     <p>{{ site.name }} · {{ site.address or '' }}</p>
   </div>
   <div class="header-right">
-    <a href="/pd/admin?key={{ admin_key }}" class="btn btn-outline">← Admin</a>
+    <a href="{{ back_url if back_url else '/pd/admin?key=' + admin_key }}" class="btn btn-outline">← Back</a>
   </div>
 </div>
 
 <div class="container">
 
-  <!-- Stats bar -->
   <div class="stats-bar">
     <div class="stat-card"><div class="n n-approved" id="statApproved">—</div><div class="l">Approved</div></div>
     <div class="stat-card"><div class="n n-pending"  id="statPending">—</div><div class="l">Pending</div></div>
@@ -129,7 +122,6 @@
     <div class="stat-card"><div class="n n-total">37</div><div class="l">Total Stages</div></div>
   </div>
 
-  <!-- Progress bar -->
   <div class="progress-section">
     <div class="progress-label">
       <span>Overall Completion</span>
@@ -140,10 +132,8 @@
     </div>
   </div>
 
-  <!-- Stage groups rendered by JS -->
   <div id="stageGroups"></div>
 
-  <!-- Photo album -->
   <div class="album-section">
     <div class="album-header">
       <div class="album-title">📷 Plot Photo Album</div>
@@ -158,7 +148,6 @@
 
 </div>
 
-<!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <button class="lightbox-close" onclick="closeLightbox()">×</button>
   <button class="lightbox-nav lightbox-prev" onclick="event.stopPropagation();navPhoto(-1)">‹</button>
@@ -178,12 +167,10 @@ let filteredPhotos = [];
 let currentPhotoIdx = 0;
 let activeStageFilter = 'all';
 
-// ── Load submissions ─────────────────────────────────────────────────────────
 async function loadData() {
   const res = await fetch(`/pd/admin/submissions?key=${ADMIN_KEY}&plot_id=${PLOT_ID}`);
   const submissions = await res.json();
 
-  // Build stage status map — latest submission per stage
   const stageMap = {};
   submissions.forEach(sub => {
     const n = sub.stage_number;
@@ -196,7 +183,6 @@ async function loadData() {
   await loadPhotos(submissions);
 }
 
-// ── Render stage grid ────────────────────────────────────────────────────────
 function renderStages(stageMap) {
   let approved = 0, pending = 0, rejected = 0, empty = 0;
 
@@ -257,7 +243,6 @@ function renderStages(stageMap) {
     container.appendChild(section);
   });
 
-  // Update stats
   document.getElementById('statApproved').textContent = approved;
   document.getElementById('statPending').textContent  = pending;
   document.getElementById('statRejected').textContent = rejected;
@@ -268,12 +253,10 @@ function renderStages(stageMap) {
   document.getElementById('progressFill').style.width = pct + '%';
 }
 
-// ── Load photos ──────────────────────────────────────────────────────────────
 async function loadPhotos(submissions) {
   allPhotos = [];
   const filters = document.getElementById('albumFilters');
 
-  // Fetch photos for each submission
   for (const sub of submissions) {
     const res = await fetch(`/pd/admin/photos?submission_id=${sub.id}&key=${ADMIN_KEY}`);
     if (!res.ok) continue;
@@ -289,7 +272,6 @@ async function loadPhotos(submissions) {
       });
     });
 
-    // Add filter button for this stage if not already there
     if (!document.getElementById('filter_' + sub.stage_number)) {
       const btn = document.createElement('button');
       btn.className = 'filter-btn';
@@ -300,7 +282,6 @@ async function loadPhotos(submissions) {
     }
   }
 
-  // Sort by stage number then date
   allPhotos.sort((a,b) => a.stageNum - b.stageNum);
   filteredPhotos = [...allPhotos];
   renderPhotos();
@@ -332,7 +313,6 @@ function renderPhotos() {
     </div>`).join('');
 }
 
-// ── Lightbox ─────────────────────────────────────────────────────────────────
 function openLightbox(idx) {
   currentPhotoIdx = idx;
   showPhoto();
