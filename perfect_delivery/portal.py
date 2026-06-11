@@ -28,8 +28,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 portal_bp = Blueprint("portal", __name__, template_folder="templates", url_prefix="/pd/portal")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -43,7 +41,6 @@ def _get_tenant() -> dict:
 
 
 def _get_current_user():
-    """Get user from session cookie. Returns user dict or None."""
     token = request.cookies.get("pd_session")
     if not token:
         return None
@@ -84,7 +81,6 @@ def _require_admin_role(f):
 
 
 def _user_site_filter(user: dict, query):
-    """Apply site filter for non-admin users."""
     if user.get("role") == "tenant_admin":
         return query
     site_ids = user.get("site_ids") or []
@@ -96,7 +92,6 @@ def _user_site_filter(user: dict, query):
     if site_ids:
         query = query.in_("site_id", site_ids)
     else:
-        # No sites assigned — return nothing
         query = query.eq("id", "00000000-0000-0000-0000-000000000000")
     return query
 
@@ -133,7 +128,6 @@ def auth():
 
     user = res.data
 
-    # Create session
     token      = secrets.token_hex(32)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)).isoformat()
     supabase.table("pd_sessions").insert({
@@ -142,7 +136,6 @@ def auth():
         "expires_at": expires_at,
     }).execute()
 
-    # Update last login
     supabase.table("pd_users").update({
         "last_login": datetime.now(timezone.utc).isoformat()
     }).eq("id", user["id"]).execute()
@@ -176,7 +169,6 @@ def signout():
 @_require_login
 def dashboard(user):
     tenant = _get_tenant()
-    # Get sites for user modal
     if user.get("role") == "tenant_admin":
         sites_res = supabase.table("pd_sites").select("id, name").order("name").execute()
     else:
@@ -226,7 +218,6 @@ def plot_progress(user, plot_id):
     plot = res.data
     site = plot["pd_sites"]
 
-    # Check access
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -252,23 +243,18 @@ def plot_progress(user, plot_id):
         stages_json=stages_json,
         groups_json=groups_json,
         admin_key=ADMIN_KEY,
+        back_url="/pd/portal/dashboard",
     )
-
-
-
-
 
 
 @portal_bp.route("/qr/<plot_id>")
 @_require_login
 def portal_qr(user, plot_id):
-    """Serve QR code PNG for portal users."""
     res = supabase.table("pd_plots").select("*, pd_sites(name)").eq("id", plot_id).single().execute()
     if not res.data:
         abort(404)
     plot = res.data
 
-    # Check site access
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -349,7 +335,6 @@ def api_plots_create(user):
 @portal_bp.route("/api/plots/<plot_id>", methods=["DELETE"])
 @_require_admin_role
 def api_plots_delete(user, plot_id):
-    # Cascade: delete photos → submissions → plot
     try:
         subs = supabase.table("pd_submissions").select("id").eq("plot_id", plot_id).execute()
         for sub in (subs.data or []):
@@ -364,7 +349,6 @@ def api_plots_delete(user, plot_id):
 @portal_bp.route("/api/plots/<plot_id>/clear", methods=["DELETE"])
 @_require_admin_role
 def api_plots_clear(user, plot_id):
-    """Clear all submissions for a plot without deleting the plot itself."""
     try:
         subs = supabase.table("pd_submissions").select("id").eq("plot_id", plot_id).execute()
         for sub in (subs.data or []):
@@ -375,14 +359,11 @@ def api_plots_clear(user, plot_id):
     return jsonify({"ok": True})
 
 
-
-
 # ── Plot import (AI-powered + manual) ────────────────────────────────────────
 
 @portal_bp.route("/api/plots/import-preview", methods=["POST"])
 @_require_admin_role
 def api_plots_import_preview(user):
-    """Accept PDF/Excel upload, use AI to extract plots, return preview."""
     import os, base64
 
     if "file" not in request.files:
@@ -396,7 +377,6 @@ def api_plots_import_preview(user):
     filename = (file_obj.filename or "").lower()
     file_bytes = file_obj.read()
 
-    # Build prompt for Claude
     system_prompt = """You are a data extraction assistant for a UK house builder.
 You will receive an accommodation schedule document. Extract every RESIDENTIAL PLOT.
 
@@ -415,14 +395,12 @@ RULES:
         import anthropic as _anthropic
         client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
 
-        # Extract text from file first (fast — no base64 PDF processing)
         text_content = ""
         msg = None
 
         if filename.endswith(".pdf"):
             import re as _re2, json as _json2, io as _io2
 
-            # Step 1 — extract text with pypdf
             raw_text = ""
             try:
                 import pypdf as _pypdf
@@ -432,7 +410,6 @@ RULES:
             except Exception as e:
                 print(f"pypdf failed: {e}")
 
-            # Step 2 — regex parse (instant, no API calls)
             DWELLING_TYPES = [
                 "Linked-End-Terrace","Linked-Semi-Detached","Semi-Detached",
                 "End-Terrace","Detached","Terrace","Flat","Bungalow","Det","Semi","Bung"
@@ -455,23 +432,18 @@ RULES:
                         continue
                     pn   = m.group(1)
                     rest = m.group(2).strip()
-                    # Skip communal/non-residential rows
                     if any(w in rest.lower() for w in ["communal","cycle","bin store","car park","substation","store -"]):
                         continue
                     if pn in seen:
                         continue
-                    # Find dwelling type
                     dwelling = ""
                     for dt in DWELLING_TYPES:
                         if _re2.search(r"\b" + _re2.escape(dt) + r"\b", rest, _re2.IGNORECASE):
                             dwelling = dt
                             break
-                    # Extract house type — everything before first GIA number
                     ht = _re2.split(r"\s+\d{2,3}\.\d", rest)[0].strip()
-                    # Remove tenure/version keywords
                     for kw in STRIP_WORDS:
                         ht = ht.replace(kw, " ")
-                    # Remove dwelling type
                     for dt in DWELLING_TYPES:
                         ht = _re2.sub(r"\b" + _re2.escape(dt) + r"\b", "", ht, flags=_re2.IGNORECASE)
                     ht = _re2.sub(r"\s+", " ", ht).strip().strip("-").strip()
@@ -484,7 +456,6 @@ RULES:
                 all_plots = parse_schedule(raw_text)
                 print(f"Regex parser found {len(all_plots)} plots")
 
-            # Step 3 — if regex found < 10 plots, fall back to AI on full text
             if len(all_plots) < 10:
                 print("Regex found few plots — trying AI fallback")
                 try:
@@ -506,7 +477,6 @@ RULES:
                 except Exception as e:
                     print(f"AI fallback error: {e}")
 
-            # Validate and return
             cleaned_plots = []
             seen2 = set()
             for p in all_plots:
@@ -520,7 +490,6 @@ RULES:
                         "site_id":       site_id,
                     })
 
-            # Sort numerically
             cleaned_plots.sort(key=lambda x: int(x["plot_number"]))
             print(f"Returning {len(cleaned_plots)} validated plots")
             return jsonify({"ok": True, "plots": cleaned_plots, "count": len(cleaned_plots)})
@@ -540,7 +509,6 @@ RULES:
         else:
             text_content = file_bytes.decode("utf-8", errors="ignore")[:12000]
 
-        # Send as text (fast) unless msg already set by fallback
         if msg is None:
             msg = client.messages.create(
                 model="claude-haiku-4-5", max_tokens=4096,
@@ -556,13 +524,11 @@ RULES:
         import re as _re, json as _json
         plots = None
 
-        # Strategy 1: direct parse
         try:
             plots = _json.loads(response_text)
         except Exception:
             pass
 
-        # Strategy 2: find array bounds
         if plots is None:
             try:
                 start = response_text.index("[")
@@ -571,7 +537,6 @@ RULES:
             except Exception:
                 pass
 
-        # Strategy 3: strip markdown fences (```json ... ```)
         if plots is None:
             try:
                 cleaned_r = _re.sub(r"```[a-z]*", "", response_text).replace("```", "").strip()
@@ -581,13 +546,11 @@ RULES:
             except Exception:
                 pass
 
-        # Strategy 4: aggressive — find first { after [ and last } before ]
         if plots is None:
             try:
                 start = response_text.index("[")
                 end   = response_text.rindex("]") + 1
                 chunk = response_text[start:end]
-                # Remove any trailing commas before ]
                 chunk = _re.sub(r',\s*\]', ']', chunk)
                 plots = _json.loads(chunk)
             except Exception:
@@ -596,11 +559,10 @@ RULES:
         if plots is None:
             return jsonify({
                 "ok": False,
-                "error": "Could not parse AI response — check Railway logs for the raw output",
+                "error": "Could not parse AI response",
                 "raw": response_text[:800]
             }), 400
 
-        # Validate and clean
         cleaned = []
         for p in plots:
             pn = str(p.get("plot_number","")).strip()
@@ -623,7 +585,6 @@ RULES:
 @portal_bp.route("/api/plots/import-confirm", methods=["POST"])
 @_require_admin_role
 def api_plots_import_confirm(user):
-    """Bulk create plots from confirmed preview data."""
     data    = request.get_json() or {}
     plots   = data.get("plots", [])
     site_id = data.get("site_id", "")
@@ -638,7 +599,6 @@ def api_plots_import_confirm(user):
     for p in plots:
         if not p.get("plot_number"):
             continue
-        # Combine house_type and dwelling_type
         ht = p.get("house_type","").strip()
         dt = p.get("dwelling_type","").strip()
 
@@ -663,7 +623,6 @@ def api_plots_import_confirm(user):
 @portal_bp.route("/api/plots/import-range", methods=["POST"])
 @_require_admin_role
 def api_plots_import_range(user):
-    """Create plots from a numeric range e.g. 1-164."""
     data       = request.get_json() or {}
     site_id    = data.get("site_id","")
     range_str  = data.get("range","").strip()
@@ -672,14 +631,12 @@ def api_plots_import_range(user):
     if not site_id or not range_str:
         return jsonify({"ok": False, "error": "Site and range required"}), 400
 
-    # Parse range or comma list
     plot_numbers = []
     for part in range_str.split(","):
         part = part.strip()
         if "-" in part:
             try:
                 start, end = part.split("-", 1)
-                # Handle prefixed ranges like A1-A20
                 prefix = "".join(c for c in start if not c.isdigit())
                 s = int("".join(c for c in start if c.isdigit()))
                 e = int("".join(c for c in end if c.isdigit()))
@@ -709,7 +666,6 @@ def api_plots_import_range(user):
 @portal_bp.route("/api/plots/<plot_id>", methods=["PUT"])
 @_require_admin_role
 def api_plots_update(user, plot_id):
-    """Update plot details including house type."""
     data = request.get_json() or {}
     updates = {}
     if "plot_number"      in data: updates["plot_number"]      = str(data["plot_number"]).strip()
@@ -732,7 +688,6 @@ def plot_report(user, plot_id):
     plot = res.data
     site = plot["pd_sites"]
 
-    # Check access
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -809,9 +764,8 @@ def plot_report(user, plot_id):
         rejected_count=rejected_count, not_started=not_started,
         pct=pct, admin_key=ADMIN_KEY,
         now=_date.today().strftime("%d %b %Y"),
+        back_url="/pd/portal/dashboard",
     )
-
-
 
 
 @portal_bp.route("/site/<site_id>/qr-sheet")
@@ -822,7 +776,6 @@ def qr_sheet(user, site_id):
         abort(404)
     site = site_res.data
 
-    # Check access
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -906,12 +859,21 @@ def api_sites(user):
             res = supabase.table("pd_sites").select("*").in_("id", site_ids).execute()
         sites = res.data or []
 
-        # Add plot count per site
-        for site in sites:
-            try:
-                plots_res = supabase.table("pd_plots").select("id", count="exact").eq("site_id", site["id"]).execute()
-                site["plot_count"] = plots_res.count or 0
-            except Exception:
+        # FIX: Batch fetch ALL plot counts in a single query (was N+1)
+        try:
+            all_site_ids = [s["id"] for s in sites]
+            if all_site_ids:
+                plots_res = supabase.table("pd_plots").select("id, site_id").in_("site_id", all_site_ids).execute()
+                counts = {}
+                for p in (plots_res.data or []):
+                    counts[p["site_id"]] = counts.get(p["site_id"], 0) + 1
+                for site in sites:
+                    site["plot_count"] = counts.get(site["id"], 0)
+            else:
+                for site in sites:
+                    site["plot_count"] = 0
+        except Exception:
+            for site in sites:
                 site["plot_count"] = 0
 
         return jsonify(sites)
@@ -925,25 +887,35 @@ def api_sites(user):
 def api_plots(user):
     try:
         site_id = request.args.get("site_id")
-        # Sort numerically where possible
         query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail")
         if site_id:
             query = query.eq("site_id", site_id)
         res = query.execute()
         plots = res.data or []
 
-        # Sort numerically
         def plot_sort_key(p):
             try: return (0, int(p.get("plot_number","0")))
             except: return (1, str(p.get("plot_number","")))
         plots.sort(key=plot_sort_key)
 
-        # Add approved stage count per plot
-        for plot in plots:
-            try:
-                subs_res = supabase.table("pd_submissions").select("stage_number, status").eq("plot_id", plot["id"]).eq("status", "approved").execute()
-                plot["approved_count"] = len(set(s["stage_number"] for s in (subs_res.data or [])))
-            except Exception:
+        # FIX: Batch fetch approved counts in one query (was N+1)
+        try:
+            plot_ids = [p["id"] for p in plots]
+            if plot_ids:
+                subs_res = supabase.table("pd_submissions").select("plot_id, stage_number").in_("plot_id", plot_ids).eq("status", "approved").execute()
+                approved_map = {}
+                for s in (subs_res.data or []):
+                    pid = s["plot_id"]
+                    if pid not in approved_map:
+                        approved_map[pid] = set()
+                    approved_map[pid].add(s["stage_number"])
+                for plot in plots:
+                    plot["approved_count"] = len(approved_map.get(plot["id"], set()))
+            else:
+                for plot in plots:
+                    plot["approved_count"] = 0
+        except Exception:
+            for plot in plots:
                 plot["approved_count"] = 0
 
         return jsonify(plots)
@@ -968,7 +940,6 @@ def api_submissions(user):
     res = query.execute()
     subs = res.data or []
 
-    # Filter by site access for non-admins
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -986,7 +957,6 @@ def api_photos(user):
     stage_number = request.args.get("stage_number")
     limit        = int(request.args.get("limit", 200))
 
-    # Get submissions filtered by access
     subs_query = supabase.table("pd_submissions").select(
         "id, stage_number, stage_name, submitted_at, pd_plots(plot_number, site_id, pd_sites(name))"
     ).order("stage_number")
@@ -997,7 +967,6 @@ def api_photos(user):
     subs_res = subs_query.execute()
     subs = subs_res.data or []
 
-    # Filter by site access
     if user.get("role") != "tenant_admin":
         site_ids = user.get("site_ids") or []
         if isinstance(site_ids, str):
@@ -1012,11 +981,9 @@ def api_photos(user):
         return jsonify([])
 
     sub_ids = [s["id"] for s in subs]
-    # Batch fetch photos
     photos_res = supabase.table("pd_photos").select("*").in_("submission_id", sub_ids).limit(limit).execute()
     photos = photos_res.data or []
 
-    # Enrich photos with submission metadata
     sub_map = {s["id"]: s for s in subs}
     for p in photos:
         sub = sub_map.get(p["submission_id"], {})
@@ -1028,8 +995,6 @@ def api_photos(user):
 
     photos.sort(key=lambda p: (p.get("stage_number", 0), p.get("submitted_at", "")))
     return jsonify(photos)
-
-
 
 
 # ── Stage Groups API ──────────────────────────────────────────────────────────
@@ -1046,13 +1011,11 @@ DEFAULT_STAGE_GROUPS = [
 
 
 def _get_stage_groups(tenant_id: str) -> list:
-    """Get tenant stage groups, seeding defaults if none exist."""
     try:
         res = supabase.table("pd_stage_groups").select("*").eq(
             "tenant_id", tenant_id).order("sort_order").execute()
         if res.data:
             return res.data
-        # Seed defaults
         for i, g in enumerate(DEFAULT_STAGE_GROUPS):
             supabase.table("pd_stage_groups").insert({
                 "tenant_id":     tenant_id,
@@ -1082,7 +1045,6 @@ def api_stage_groups_get(user):
 @portal_bp.route("/api/stage-groups", methods=["POST"])
 @_require_admin_role
 def api_stage_groups_save(user):
-    """Save full group config — replaces all groups for tenant."""
     tenant = _get_tenant()
     tenant_id = tenant.get("id")
     if not tenant_id:
@@ -1093,7 +1055,6 @@ def api_stage_groups_save(user):
         return jsonify({"ok": False, "error": "Expected array"}), 400
 
     try:
-        # Delete existing and re-insert
         supabase.table("pd_stage_groups").delete().eq("tenant_id", tenant_id).execute()
         for i, g in enumerate(groups):
             name   = (g.get("name") or "").strip()
@@ -1113,7 +1074,6 @@ def api_stage_groups_save(user):
 @portal_bp.route("/api/stage-groups/reset", methods=["DELETE"])
 @_require_admin_role
 def api_stage_groups_reset(user):
-    """Reset to default groups."""
     tenant = _get_tenant()
     tenant_id = tenant.get("id")
     if not tenant_id:
@@ -1123,6 +1083,32 @@ def api_stage_groups_reset(user):
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Checklist Editor (tenant admin page) ─────────────────────────────────────
+
+@portal_bp.route("/checklist")
+@_require_admin_role
+def checklist_editor(user):
+    """Checklist editor page for tenant admins."""
+    tenant = _get_tenant()
+    from .checklist_data import STAGES
+    stages_json = json.dumps({
+        str(k): {
+            "name": v["name"],
+            "applies_to": v.get("applies_to", ""),
+            "items": [{"id": i["id"], "text": i["text"], "photo": i.get("photo", True)}
+                      for i in v.get("items", [])]
+        }
+        for k, v in STAGES.items()
+    })
+    return render_template(
+        "pd/portal_checklist.html",
+        user=user,
+        tenant=tenant,
+        stages_json=stages_json,
+        admin_key=ADMIN_KEY,
+    )
 
 
 # ── Checklist Editor API ──────────────────────────────────────────────────────
@@ -1171,11 +1157,9 @@ def api_checklist_reset(user, stage_number):
     return jsonify({"ok": True})
 
 
-
 @portal_bp.route("/api/checklist/upload-example", methods=["POST"])
 @_require_admin_role
 def api_checklist_upload_example(user):
-    """Upload an example photo for a checklist item."""
     import uuid as _uuid
     tenant = _get_tenant()
     tenant_id = tenant.get("id")
@@ -1208,7 +1192,6 @@ def api_checklist_upload_example(user):
 @portal_bp.route("/api/checklist/item/<item_id>/reset", methods=["DELETE"])
 @_require_admin_role
 def api_checklist_item_reset(user, item_id):
-    """Reset a single checklist item override."""
     tenant = _get_tenant()
     tenant_id = tenant.get("id")
     if tenant_id:
@@ -1262,9 +1245,7 @@ def api_users_create(user):
 
         new_user = res.data[0]
 
-        # Send welcome email with login details
         try:
-            # Get assigned sites for the welcome email
             assigned_sites = []
             if site_ids:
                 sites_res = supabase.table("pd_sites").select("id, name").in_("id", site_ids).execute()
@@ -1272,7 +1253,6 @@ def api_users_create(user):
             send_welcome_email(new_user, tenant, password, assigned_sites)
         except Exception as email_err:
             print(f"Welcome email error: {email_err}")
-            # Don't fail user creation if email fails
 
         return jsonify({"ok": True, "user": new_user})
     except Exception as e:
@@ -1296,7 +1276,6 @@ def api_users_update(user, user_id):
     if not updates:
         return jsonify({"ok": False, "error": "Nothing to update"}), 400
 
-    # Capture old site_ids before update for comparison
     old_site_ids = []
     if "site_ids" in updates:
         try:
@@ -1308,7 +1287,6 @@ def api_users_update(user, user_id):
 
     supabase.table("pd_users").update(updates).eq("id", user_id).execute()
 
-    # Send site assignment email for newly added sites
     if "site_ids" in updates:
         try:
             new_ids_raw = updates["site_ids"]
@@ -1329,7 +1307,6 @@ def api_users_update(user, user_id):
 @portal_bp.route("/api/users/<user_id>", methods=["DELETE"])
 @_require_admin_role
 def api_users_delete(user, user_id):
-    # Prevent self-deletion
     if user_id == user.get("id"):
         return jsonify({"ok": False, "error": "You cannot delete your own account"}), 400
     supabase.table("pd_users").delete().eq("id", user_id).execute()
