@@ -765,6 +765,7 @@ def plot_report(user, plot_id):
         pct=pct, admin_key=ADMIN_KEY,
         now=_date.today().strftime("%d %b %Y"),
         back_url="/pd/portal/dashboard",
+        pdf_url=f"/pd/portal/plot/{plot_id}/report/pdf",
     )
 
 
