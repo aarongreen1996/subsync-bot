@@ -835,6 +835,7 @@ def qr_sheet(user, site_id):
     import io as _io
     from .qr_utils import generate_qr_png
     from .checklist_data import STAGES
+    from .blueprint import _natural_sort_plots
 
     plots_res = supabase.table("pd_plots").select("*").eq("site_id", site_id).execute()
     plots = _natural_sort_plots(plots_res.data or [])
