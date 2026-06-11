@@ -845,7 +845,7 @@ def qr_sheet(user, site_id):
     return _rt(
         "pd/qr_sheet.html",
         site=site, plots=plots,
-        admin_key=None,
+        admin_key=12345,
         base_url=_env.get("PD_BASE_URL",""),
         now=_date.today().strftime("%d %b %Y"),
     )
