@@ -1088,6 +1088,17 @@ def api_stage_groups_reset(user):
 
 # ── Checklist Editor (tenant admin page) ─────────────────────────────────────
 
+@portal_bp.route("/api/checklist/visibility/all", methods=["GET"])
+@_require_admin_role
+def api_all_visibility(user):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify([])
+    res = supabase.table("pd_stage_visibility").select("*").eq("tenant_id", tenant_id).execute()
+    return jsonify(res.data or [])
+
+
 @portal_bp.route("/checklist")
 @_require_admin_role
 def checklist_editor(user):
@@ -1120,10 +1131,13 @@ def api_checklist_get(user, stage_number):
     tenant = _get_tenant()
     tenant_id = tenant.get("id")
     if not tenant_id:
-        return jsonify({"overrides": []})
+        return jsonify({"overrides": [], "visibility": {}})
     res = supabase.table("pd_checklist_overrides").select("*").eq(
         "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
-    return jsonify({"overrides": res.data or []})
+    vis_res = supabase.table("pd_stage_visibility").select("*").eq(
+        "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
+    visibility = (vis_res.data or [{}])[0] if vis_res.data else {}
+    return jsonify({"overrides": res.data or [], "visibility": visibility})
 
 
 @portal_bp.route("/api/checklist/<int:stage_number>", methods=["POST"])
@@ -1140,10 +1154,38 @@ def api_checklist_save(user, stage_number):
         if not item_id: continue
         record = {"tenant_id": tenant_id, "stage_number": stage_number, "item_id": item_id,
                   "updated_at": datetime.now(timezone.utc).isoformat()}
-        for f in ["text","photo_required","enabled","sort_order"]:
+        for f in ["text","photo_required","enabled","sort_order","example_photo_url","example_guidance","hidden_for","is_custom"]:
             if f in item: record[f] = item[f]
         supabase.table("pd_checklist_overrides").upsert(
             record, on_conflict="tenant_id,stage_number,item_id").execute()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>/visibility", methods=["GET"])
+@_require_admin_role
+def api_stage_visibility_get(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({})
+    res = supabase.table("pd_stage_visibility").select("*").eq(
+        "tenant_id", tenant_id).eq("stage_number", stage_number).execute()
+    return jsonify((res.data or [{}])[0] if res.data else {})
+
+
+@portal_bp.route("/api/checklist/<int:stage_number>/visibility", methods=["POST"])
+@_require_admin_role
+def api_stage_visibility_save(user, stage_number):
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id")
+    if not tenant_id:
+        return jsonify({"ok": False, "error": "No tenant"}), 400
+    data = request.get_json() or {}
+    record = {"tenant_id": tenant_id, "stage_number": stage_number}
+    for f in ["hidden_for","hidden_globally","name_override","applies_to_override"]:
+        if f in data: record[f] = data[f]
+    supabase.table("pd_stage_visibility").upsert(
+        record, on_conflict="tenant_id,stage_number").execute()
     return jsonify({"ok": True})
 
 
