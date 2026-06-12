@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QS Sign-off Complete — Plot {{ plot.plot_number }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: white; border-radius: 16px; padding: 40px 32px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+  .icon { font-size: 52px; margin-bottom: 16px; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  h1.approved { color: #166534; }
+  h1.rejected { color: #991b1b; }
+  p { color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 4px; }
+  .meta { background: #f9f9fb; border-radius: 10px; padding: 14px 18px; margin: 20px 0; text-align: left; font-size: 13px; color: #374151; }
+  .meta div { padding: 3px 0; }
+  .meta b { color: #1a1a2e; }
+  .pdf-btn { display: inline-block; margin-top: 16px; background: #C5962A; color: #1a1a2e; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="card">
+  {% if sub.qs_status == 'approved' %}
+  <div class="icon">✅</div>
+  <h1 class="approved">Approved for Payment</h1>
+  <p>Thank you — this stage has been signed off and the subcontractor's payment can now be progressed.</p>
+  {% elif sub.qs_status == 'rejected' %}
+  <div class="icon">⚠️</div>
+  <h1 class="rejected">Rejected</h1>
+  <p>Your decision has been recorded. The site manager will be informed.</p>
+  {% else %}
+  <div class="icon">⏳</div>
+  <h1>Already Reviewed</h1>
+  <p>This stage has already been reviewed by the QS.</p>
+  {% endif %}
+
+  <div class="meta">
+    <div><b>Site:</b> {{ site.name }}</div>
+    <div><b>Plot:</b> {{ plot.plot_number }}</div>
+    <div><b>Stage:</b> {{ sub.stage_name }}</div>
+    {% if sub.qs_reviewed_by %}<div><b>Signed off by:</b> {{ sub.qs_reviewed_by }}</div>{% endif %}
+    {% if sub.qs_reviewed_at %}<div><b>Date:</b> {{ sub.qs_reviewed_at[:10] }}</div>{% endif %}
+  </div>
+
+  <a href="/pd/review/{{ sub.review_token }}/pdf" target="_blank" class="pdf-btn">⬇ Download Full Report PDF</a>
+</div>
+</body>
+</html>
