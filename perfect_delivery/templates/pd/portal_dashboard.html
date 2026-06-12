@@ -23,7 +23,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-  /* ── Nav bar ── */
   .navbar {
     background: rgba(255,255,255,0.85);
     backdrop-filter: blur(20px);
@@ -50,7 +49,6 @@
   .btn-signout { font-size: 13px; color: var(--red); font-weight: 600; cursor: pointer; background: none; border: none; padding: 6px 12px; border-radius: 8px; }
   .btn-signout:hover { background: #fff2f2; }
 
-  /* ── Layout ── */
   .sidebar {
     position: fixed;
     left: 0; top: 56px; bottom: 0;
@@ -63,7 +61,6 @@
   }
   .main { margin-left: 220px; padding: 24px; min-height: calc(100vh - 56px); }
 
-  /* ── Sidebar nav ── */
   .nav-section { margin-bottom: 24px; }
   .nav-section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 0 8px; margin-bottom: 6px; }
   .nav-item {
@@ -78,7 +75,6 @@
   .nav-item.active .nav-icon { color: var(--gold); }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
 
-  /* ── Cards ── */
   .page { display: none; }
   .page.active { display: block; }
   .page-title { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; margin-bottom: 4px; }
@@ -89,7 +85,6 @@
   .card-title { font-size: 15px; font-weight: 600; color: var(--text); }
   .card-body { padding: 20px; }
 
-  /* ── Stat cards ── */
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
   .stat-card { background: var(--card); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
   .stat-card .n { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
@@ -100,7 +95,6 @@
   .n-blue  { color: var(--blue); }
   .n-dark  { color: var(--text); }
 
-  /* ── Table ── */
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
@@ -108,7 +102,6 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #f9f9fb; }
 
-  /* ── Badges ── */
   .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
   .badge-green  { background: #e8faf0; color: #1a7a3c; }
   .badge-amber  { background: #fff4e6; color: #b35900; }
@@ -116,7 +109,6 @@
   .badge-grey   { background: #f2f2f7; color: #8e8e93; }
   .badge-blue   { background: #e8f1ff; color: #0051a8; }
 
-  /* ── Buttons ── */
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.12s; text-decoration: none; }
   .btn-primary { background: var(--accent); color: white; }
   .btn-primary:hover { background: #252540; }
@@ -126,10 +118,8 @@
   .btn-red { background: var(--red); color: white; }
   .btn-sm { padding: 6px 12px; font-size: 12px; }
 
-  /* ── Form ── */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .form-full { grid-column: 1/-1; }
-  .field { }
   .field label { display: block; font-size: 13px; font-weight: 600; color: #3a3a3c; margin-bottom: 6px; }
   .field input, .field select {
     width: 100%; padding: 11px 14px;
@@ -140,33 +130,27 @@
   .field input:focus, .field select:focus { outline: none; border-color: var(--accent); background: white; }
   .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238e8e93' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
 
-  /* ── Empty state ── */
   .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
   .empty-icon { font-size: 36px; margin-bottom: 12px; }
 
-  /* ── Site list ── */
   .site-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #f2f2f7; }
   .site-row:last-child { border-bottom: none; }
   .site-info h3 { font-size: 15px; font-weight: 600; }
   .site-info p { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
-  /* ── Plot progress mini ── */
   .plot-progress-bar { height: 4px; background: #e5e5ea; border-radius: 4px; margin-top: 6px; }
   .plot-progress-fill { height: 100%; background: var(--green); border-radius: 4px; }
 
-  /* ── Toast ── */
   .toast { position: fixed; bottom: 24px; right: 24px; background: var(--accent); color: white; padding: 12px 18px; border-radius: 12px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.15); transform: translateY(80px); opacity: 0; transition: all 0.3s; z-index: 999; }
   .toast.show { transform: translateY(0); opacity: 1; }
   .toast.error { background: var(--red); }
 
-  /* ── Modal ── */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 500; display: none; align-items: center; justify-content: center; padding: 20px; }
   .modal-overlay.show { display: flex; }
   .modal { background: white; border-radius: 20px; padding: 28px; width: 100%; max-width: 460px; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
   .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
-  /* ── Sortable table ── */
   .import-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #8e8e93; cursor: pointer; margin-bottom: -2px; transition: all 0.15s; }
   .import-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .import-tab:hover { color: var(--text); }
@@ -177,7 +161,6 @@
   .sort-asc .sort-icon::after { content: " ↑"; }
   .sort-desc .sort-icon::after { content: " ↓"; }
 
-  /* ── Mobile nav ── */
   .mobile-nav {
     display: none;
     position: fixed; bottom: 0; left: 0; right: 0;
@@ -216,7 +199,6 @@
 </head>
 <body>
 
-<!-- ── Navbar ── -->
 <div class="navbar">
   <div class="navbar-brand">
     {% if tenant and tenant.logo_url %}
@@ -239,7 +221,6 @@
   </div>
 </div>
 
-<!-- ── Sidebar ── -->
 <div class="sidebar">
   <div class="nav-section">
     <div class="nav-section-title">Overview</div>
@@ -272,7 +253,6 @@
   {% endif %}
 </div>
 
-<!-- ── Main ── -->
 <div class="main">
 
   <!-- Overview -->
@@ -370,8 +350,8 @@
     <div id="photoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
   </div>
 
-  <!-- Users (tenant_admin only) -->
   {% if user.role == 'tenant_admin' %}
+  <!-- Users -->
   <div class="page" id="page-users">
     <div class="page-title">Users</div>
     <div class="page-sub">Manage who can access this portal</div>
@@ -447,7 +427,7 @@
 
 </div>
 
-<!-- ── Add User Modal ── -->
+<!-- Add User Modal -->
 <div class="modal-overlay" id="userModal">
   <div class="modal" style="max-width:520px;width:calc(100vw - 32px)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -495,7 +475,7 @@
   </div>
 </div>
 
-<!-- ── Lightbox ── -->
+<!-- Lightbox -->
 <div id="lightbox" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:998;display:none;align-items:center;justify-content:center;flex-direction:column" onclick="closeLightbox()">
   <button style="position:absolute;top:20px;right:24px;color:white;font-size:28px;background:none;border:none;cursor:pointer" onclick="closeLightbox()">×</button>
   <button style="position:absolute;left:20px;top:50%;transform:translateY(-50%);color:white;font-size:32px;background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:48px;height:48px;cursor:pointer" onclick="event.stopPropagation();navPhoto(-1)">‹</button>
@@ -547,14 +527,10 @@
 <div class="modal-overlay" id="importModal">
   <div class="modal" style="max-width:640px">
     <div class="modal-title">Import Plots</div>
-
-    <!-- Tabs -->
     <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
       <button class="import-tab active" id="itab-ai" onclick="switchImportTab('ai')">📄 Upload Schedule (AI)</button>
       <button class="import-tab" id="itab-range" onclick="switchImportTab('range')">🔢 Enter Range</button>
     </div>
-
-    <!-- AI Upload tab -->
     <div id="import-ai">
       <p style="font-size:13px;color:#8e8e93;margin-bottom:16px">Upload a Pennyfarthing accommodation schedule (PDF or Excel). AI will extract all plot numbers and house types automatically.</p>
       <div class="field">
@@ -581,8 +557,6 @@
         <button class="btn btn-primary" onclick="runAiImport()" id="aiImportBtn">Extract Plots with AI</button>
       </div>
     </div>
-
-    <!-- Range tab -->
     <div id="import-range" style="display:none">
       <p style="font-size:13px;color:#8e8e93;margin-bottom:16px">Enter a range like <strong>1-164</strong> or a comma list like <strong>1,2,5,7</strong>. Supports prefixes like <strong>A1-A20</strong>.</p>
       <div class="form-grid">
@@ -597,7 +571,7 @@
           <input type="text" id="iRange" placeholder="e.g. 1-164 or 1,2,5,7 or A1-A20">
         </div>
         <div class="field form-full">
-          <label>House Type (optional — can be filled in later)</label>
+          <label>House Type (optional)</label>
           <input type="text" id="iHouseType" placeholder="e.g. Mixed — fill in per plot after">
         </div>
       </div>
@@ -605,8 +579,6 @@
         <button class="btn btn-primary" onclick="runRangeImport()">Create Plots</button>
       </div>
     </div>
-
-    <!-- Preview section -->
     <div id="importPreview" style="display:none;margin-top:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:14px;font-weight:700" id="previewTitle">Preview</div>
@@ -629,7 +601,6 @@
         </table>
       </div>
     </div>
-
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeImportModal()">Close</button>
     </div>
@@ -670,7 +641,6 @@ const SITES_DATA = {{ sites_json | safe }};
 const STAGES_FULL = {{ stages_full_json | default("{}") | safe }};
 let allPhotos = [], filteredPhotos = [], currentPhotoIdx = 0;
 
-// ── Navigation ───────────────────────────────────────────────────────────────
 function toggleSidebar() {
   document.querySelector('.sidebar').classList.toggle('open');
 }
@@ -695,7 +665,6 @@ function showPage(name, el) {
   if (name === 'submissions') loadSubmissions();
   if (name === 'photos')      loadPhotos();
   if (name === 'users')       loadUsers();
-  if (name === 'checklist')   { clLoadGroups().then(() => clRenderSidebar()); }
 }
 
 function toast(msg, type='') {
@@ -710,14 +679,13 @@ async function signOut() {
   window.location.href = '/pd/portal';
 }
 
-// ── Overview ─────────────────────────────────────────────────────────────────
 async function loadOverview() {
   const [sitesRes, subsRes] = await Promise.all([
     fetch('/pd/portal/api/sites'),
     fetch('/pd/portal/api/submissions?limit=8'),
   ]);
   const sites = await sitesRes.json();
-  allSitesList = sites; // store for plot modal dropdown
+  allSitesList = sites;
   const subs  = await subsRes.json();
 
   document.getElementById('statSites').textContent    = sites.length;
@@ -739,7 +707,6 @@ async function loadOverview() {
     </tr>`).join('');
 }
 
-// ── Sites ────────────────────────────────────────────────────────────────────
 let allSitesList = [];
 
 async function loadSites() {
@@ -757,56 +724,62 @@ async function loadSites() {
     );
     const plotsBySite = {};
     sites.forEach((s, i) => { plotsBySite[s.id] = plotResults[i] || []; });
-  el.innerHTML = '';
-  for (const site of sites) {
-    const plots = plotsBySite[site.id] || [];
-    const isAdmin = USER_ROLE === 'tenant_admin';
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="card-header">
+    el.innerHTML = '';
+    for (const site of sites) {
+      const plots = plotsBySite[site.id] || [];
+      const isAdmin = USER_ROLE === 'tenant_admin';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-header">
+          <div>
+            <div class="card-title">${site.name}</div>
+            <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''} ${site.manager_name ? '· ' + site.manager_name : ''}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span class="badge badge-blue">${plots.length} plots</span>
+            <a href="/pd/portal/site/${site.id}/qr-sheet" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af;text-decoration:none">🖨 QR Sheet</a>
+            ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="showSiteModal('${site.id}','${site.name.replace(/'/g,"\'")}','${(site.address||'').replace(/'/g,"\'")}','${(site.manager_name||'').replace(/'/g,"\'")}','${(site.manager_email||'')}','${(site.manager_phone||'')}')">Edit</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteSite('${site.id}','${site.name.replace(/'/g,"\'")}')">Delete</button>` : ''}
+          </div>
+        </div>
         <div>
-          <div class="card-title">${site.name}</div>
-          <div style="font-size:13px;color:#8e8e93;margin-top:2px">${site.address||''} ${site.manager_name ? '· ' + site.manager_name : ''}</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span class="badge badge-blue">${plots.length} plots</span>
-          <a href="/pd/portal/site/${site.id}/qr-sheet" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af;text-decoration:none">🖨 QR Sheet</a>
-          ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="showSiteModal('${site.id}','${site.name.replace(/'/g,"\'")}','${(site.address||'').replace(/'/g,"\'")}','${(site.manager_name||'').replace(/'/g,"\'")}','${(site.manager_email||'')}','${(site.manager_phone||'')}')">Edit</button>` : ''}
-          ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteSite('${site.id}','${site.name.replace(/'/g,"\'")}')">Delete</button>` : ''}
-        </div>
-      </div>
-      <div>
-        ${plots.map(p => `
-          <div class="site-row">
-            <div class="site-info">
-              <h3>Plot ${p.plot_number}${p.house_type ? ' <span style="font-weight:400;color:#8e8e93;font-size:13px">— ' + p.house_type + '</span>' : ''}</h3>
-              ${p.house_type_detail ? '<div style="font-size:11px;color:#c7c7cc;margin-top:1px">' + p.house_type_detail + '</div>' : ''}
-              <div class="plot-progress-bar" style="margin-top:4px"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
-              <p>${p.approved_count||0} of 37 stages approved</p>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
-              <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
-              <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
-              ${isAdmin ? `
-                <button class="btn btn-ghost btn-sm" onclick="editPlotHouseType('${p.id}','${p.plot_number}','${(p.house_type||'').replace(/'/g,"\'")}','${(p.house_type_detail||'').replace(/'/g,"\'")}')">✏️</button>
-                <button class="btn btn-sm" style="background:#fff4e6;color:#b35900" onclick="clearPlot('${p.id}','${p.plot_number}')">🗑 Clear</button>
-                <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕ Delete</button>` : ''}
-            </div>
-          </div>`).join('')}
-        ${isAdmin ? `<div style="padding:12px 20px;border-top:1px solid #f2f2f7">
-          <button class="btn btn-ghost btn-sm" onclick="showPlotModal('${site.id}')">+ Add Plot to ${site.name}</button>
-        </div>` : ''}
-      </div>`;
-    el.appendChild(card);
-  }
+          ${plots.map(p => `
+            <div class="site-row">
+              <div class="site-info">
+                <h3>Plot ${p.plot_number}${p.house_type ? ' <span style="font-weight:400;color:#8e8e93;font-size:13px">— ' + p.house_type + '</span>' : ''}</h3>
+                ${p.house_type_detail ? '<div style="font-size:11px;color:#c7c7cc;margin-top:1px">' + p.house_type_detail + '</div>' : ''}
+                <div class="plot-progress-bar" style="margin-top:4px"><div class="plot-progress-fill" style="width:${Math.round((p.approved_count||0)/37*100)}%"></div></div>
+                <p>${p.approved_count||0} of 37 stages approved</p>
+                ${isAdmin ? `
+                <select onchange="setDwellingType('${p.id}',this.value)" style="margin-top:6px;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #e5e5ea;background:#fff;color:#1a1a2e;font-weight:600">
+                  <option value="house" ${(p.dwelling_category||'house')==='house'?'selected':''}>🏠 House</option>
+                  <option value="bungalow" ${(p.dwelling_category||'house')==='bungalow'?'selected':''}>🏡 Bungalow</option>
+                  <option value="flat" ${(p.dwelling_category||'house')==='flat'?'selected':''}>🏢 Flat</option>
+                </select>` : `
+                <span style="margin-top:6px;display:inline-block;font-size:11px;padding:3px 8px;border-radius:6px;background:#f2f2f7;color:#666;font-weight:600">${({house:'🏠 House',bungalow:'🏡 Bungalow',flat:'🏢 Flat'})[p.dwelling_category||'house']}</span>`}
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <a href="/pd/portal/plot/${p.id}/progress" class="btn btn-ghost btn-sm">📊 Progress</a>
+                <a href="/pd/portal/plot/${p.id}/report" class="btn btn-sm" style="background:#f0fdf4;color:#166534">📄 Report</a>
+                <a href="/pd/portal/plot/${p.id}/report/pdf" class="btn btn-sm" style="background:#eff6ff;color:#1e40af">⬇ PDF</a>
+                ${isAdmin ? `
+                  <button class="btn btn-ghost btn-sm" onclick="editPlotHouseType('${p.id}','${p.plot_number}','${(p.house_type||'').replace(/'/g,"\'")}','${(p.house_type_detail||'').replace(/'/g,"\'")}')">✏️</button>
+                  <button class="btn btn-sm" style="background:#fff4e6;color:#b35900" onclick="clearPlot('${p.id}','${p.plot_number}')">🗑 Clear</button>
+                  <button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deletePlot('${p.id}','${p.plot_number}')">✕ Delete</button>` : ''}
+              </div>
+            </div>`).join('')}
+          ${isAdmin ? `<div style="padding:12px 20px;border-top:1px solid #f2f2f7">
+            <button class="btn btn-ghost btn-sm" onclick="showPlotModal('${site.id}')">+ Add Plot to ${site.name}</button>
+          </div>` : ''}
+        </div>`;
+      el.appendChild(card);
+    }
   } catch(e) {
     document.getElementById('sitesList').innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>Error loading. <button class="btn btn-ghost btn-sm" onclick="loadSites()">Retry</button></div></div>';
   }
 }
 
-// ── Submissions ───────────────────────────────────────────────────────────────
 async function loadSubmissions() {
   const status = document.getElementById('filterStatus').value;
   let url = '/pd/portal/api/submissions?limit=200';
@@ -816,15 +789,12 @@ async function loadSubmissions() {
   renderSubmissions();
 }
 
-// ── Photos ───────────────────────────────────────────────────────────────────
 async function loadPhotos() {
   const siteId  = document.getElementById('photoFilterSite').value;
   const stageId = document.getElementById('photoFilterStage').value;
-
   let url = '/pd/portal/api/photos?limit=200';
   if (siteId)  url += '&site_id=' + siteId;
   if (stageId) url += '&stage_number=' + stageId;
-
   const res = await fetch(url);
   allPhotos = await res.json();
   filteredPhotos = [...allPhotos];
@@ -857,11 +827,7 @@ function renderPhotos() {
     </div>`).join('');
 }
 
-function openLightbox(idx) {
-  currentPhotoIdx = idx;
-  showLbPhoto();
-  document.getElementById('lightbox').style.display = 'flex';
-}
+function openLightbox(idx) { currentPhotoIdx = idx; showLbPhoto(); document.getElementById('lightbox').style.display = 'flex'; }
 function showLbPhoto() {
   const p = filteredPhotos[currentPhotoIdx];
   document.getElementById('lbImg').src = p.public_url;
@@ -876,15 +842,12 @@ document.addEventListener('keydown', e => {
   if (e.key==='ArrowLeft')  navPhoto(-1);
 });
 
-// ── Users ────────────────────────────────────────────────────────────────────
 async function loadUsers() {
   const res   = await fetch('/pd/portal/api/users');
   const users = await res.json();
   const tbody = document.getElementById('usersTable');
-  if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="padding:32px;text-align:center;color:#8e8e93">No users yet.</td></tr>';
-    return;
-  }
+  if (!tbody) return;
+  if (!users.length) { tbody.innerHTML = '<tr><td colspan="4" style="padding:32px;text-align:center;color:#8e8e93">No users yet.</td></tr>'; return; }
   window._userMap = {};
   const siteMap = {};
   const siteList = window.allSitesList || allSitesList || [];
@@ -895,7 +858,6 @@ async function loadUsers() {
       if (Array.isArray(sd)) { window.allSitesList = sd; sd.forEach(s => { siteMap[s.id] = s.name; }); }
     } catch(e) {}
   } else { siteList.forEach(s => { siteMap[s.id] = s.name; }); }
-
   tbody.innerHTML = '';
   users.forEach(u => {
     let siteIds = u.site_ids || [];
@@ -903,11 +865,9 @@ async function loadUsers() {
     if (!Array.isArray(siteIds)) siteIds = [];
     u.site_ids = siteIds;
     window._userMap[u.id] = u;
-
     const roleLabel = u.role === 'tenant_admin' ? 'Admin' : 'Site Manager';
     const roleBg    = u.role === 'tenant_admin' ? '#1a1a2e' : '#f0f4ff';
     const roleColor = u.role === 'tenant_admin' ? '#fff' : '#1a1a2e';
-
     let sitesHtml = '';
     if (u.role === 'tenant_admin') {
       sitesHtml = '<span style="font-size:12px;color:#16a34a;font-weight:600">All sites</span>';
@@ -919,7 +879,6 @@ async function loadUsers() {
       });
       if (siteIds.length > 3) sitesHtml += '<span style="font-size:11px;color:#8e8e93">+' + (siteIds.length-3) + ' more</span>';
     }
-
     const tr = document.createElement('tr');
     const td1 = document.createElement('td');
     td1.innerHTML = '<div style="font-weight:600;color:#1a1a2e">' + u.name + '</div><div style="font-size:12px;color:#8e8e93;margin-top:2px">' + u.email + '</div>';
@@ -938,13 +897,11 @@ async function loadUsers() {
     delBtn.style.cssText = 'background:#fff0f0;color:#c0392b;margin-left:6px';
     delBtn.textContent = 'Remove';
     delBtn.addEventListener('click', () => deleteUser(u.id, u.name));
-    td4.appendChild(editBtn);
-    td4.appendChild(delBtn);
+    td4.appendChild(editBtn); td4.appendChild(delBtn);
     tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
     tbody.appendChild(tr);
   });
 }
-
 
 function togglePasswordVis() {
   const inp = document.getElementById('uPassword');
@@ -967,10 +924,7 @@ function renderSiteCards(selectedIds) {
   if (!container) return;
   container.innerHTML = '';
   const sites = window.allSitesList || allSitesList || [];
-  if (!sites.length) {
-    container.innerHTML = '<div style="grid-column:1/-1;padding:12px;text-align:center;color:#8e8e93;font-size:13px">No sites found</div>';
-    return;
-  }
+  if (!sites.length) { container.innerHTML = '<div style="grid-column:1/-1;padding:12px;text-align:center;color:#8e8e93;font-size:13px">No sites found</div>'; return; }
   sites.forEach(site => {
     const sel = (selectedIds || []).includes(site.id);
     const card = document.createElement('div');
@@ -1018,7 +972,6 @@ function showUserModal(u) {
   renderSiteCards(siteIds);
 }
 
-
 function editUser(u) { showUserModal(u); }
 function closeUserModal() { document.getElementById('userModal').classList.remove('show'); }
 
@@ -1051,7 +1004,6 @@ async function deleteUser(id, name) {
   else toast('Error removing user');
 }
 
-// ── Settings ─────────────────────────────────────────────────────────────────
 async function saveSettings() {
   const fd = new FormData(document.getElementById('settingsForm'));
   const res = await fetch('/pd/admin/settings?key=' + '{{ admin_key }}', { method: 'POST', body: fd });
@@ -1064,22 +1016,14 @@ async function saveSettings() {
   } else toast('Error saving','error');
 }
 
-// ── Submissions sort ─────────────────────────────────────────────────────────
 let subsData = [];
 let sortField = 'date';
 let sortDir   = 'desc';
 
 function sortSubs(field) {
-  if (sortField === field) {
-    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-  } else {
-    sortField = field;
-    sortDir   = 'asc';
-  }
-  // Update header classes
-  document.querySelectorAll('.sortable').forEach(th => {
-    th.classList.remove('sort-active','sort-asc','sort-desc');
-  });
+  if (sortField === field) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+  else { sortField = field; sortDir = 'asc'; }
+  document.querySelectorAll('.sortable').forEach(th => th.classList.remove('sort-active','sort-asc','sort-desc'));
   const th = document.getElementById('sort-' + field);
   if (th) { th.classList.add('sort-active', 'sort-' + sortDir); }
   renderSubmissions();
@@ -1096,12 +1040,8 @@ function renderSubmissions() {
     const cmp = av.localeCompare(bv);
     return sortDir === 'asc' ? cmp : -cmp;
   });
-
   const tbody = document.getElementById('submissionsTable');
-  if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>';
-    return;
-  }
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>'; return; }
   tbody.innerHTML = sorted.map(s => `
     <tr>
       <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
@@ -1116,49 +1056,28 @@ function renderSubmissions() {
     </tr>`).join('');
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function statusBadge(s) {
-  return {approved:'badge-green',pending:'badge-amber',rejected:'badge-red'}[s]||'badge-grey';
-}
-function statusLabel(s) {
-  return {approved:'✓ Approved',pending:'⏳ Pending',rejected:'✗ Rejected'}[s]||s;
-}
+function statusBadge(s) { return {approved:'badge-green',pending:'badge-amber',rejected:'badge-red'}[s]||'badge-grey'; }
+function statusLabel(s) { return {approved:'✓ Approved',pending:'⏳ Pending',rejected:'✗ Rejected'}[s]||s; }
 
-// ── Populate photo filters ────────────────────────────────────────────────────
 function initPhotoFilters() {
   const siteSelect = document.getElementById('photoFilterSite');
-  SITES_DATA.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.name;
-    siteSelect.appendChild(o);
-  });
+  SITES_DATA.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; siteSelect.appendChild(o); });
   const stageSelect = document.getElementById('photoFilterStage');
   const STAGE_NAMES = {{ stages_json | safe }};
-  Object.entries(STAGE_NAMES).forEach(([num, stage]) => {
-    const o = document.createElement('option');
-    o.value = num;
-    o.textContent = String(num).padStart(2,'0') + ' — ' + stage.name;
-    stageSelect.appendChild(o);
-  });
+  Object.entries(STAGE_NAMES).forEach(([num, stage]) => { const o = document.createElement('option'); o.value = num; o.textContent = String(num).padStart(2,'0') + ' — ' + stage.name; stageSelect.appendChild(o); });
 }
 
 initPhotoFilters();
 loadOverview();
 
-// ── Plot import ──────────────────────────────────────────────────────────────
 let importPreviewData = [];
 let importSiteId = '';
 
 function showImportModal() {
-  // Populate site dropdowns
   ['iSiteIdAi','iSiteIdRange'].forEach(id => {
     const sel = document.getElementById(id);
     sel.innerHTML = '<option value="">— Select site —</option>';
-    allSitesList.forEach(s => {
-      const o = document.createElement('option');
-      o.value = s.id; o.textContent = s.name;
-      sel.appendChild(o);
-    });
+    allSitesList.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
   });
   document.getElementById('importPreview').style.display = 'none';
   document.getElementById('importModal').classList.add('show');
@@ -1196,21 +1115,15 @@ async function runAiImport() {
   const file   = document.getElementById('importFile').files[0];
   if (!siteId) { toast('Please select a site','error'); return; }
   if (!file)   { toast('Please upload a file','error'); return; }
-
   const btn = document.getElementById('aiImportBtn');
   btn.disabled = true; btn.textContent = 'Extracting with AI…';
-
   const fd = new FormData();
   fd.append('file', file);
   fd.append('site_id', siteId);
-
   const res  = await fetch('/pd/portal/api/plots/import-preview', { method: 'POST', body: fd });
   const json = await res.json();
-
   btn.disabled = false; btn.textContent = 'Extract Plots with AI';
-
   if (!json.ok) { toast(json.error || 'AI extraction failed','error'); return; }
-
   importPreviewData = json.plots;
   importSiteId = siteId;
   showImportPreview();
@@ -1236,61 +1149,40 @@ function showImportPreview() {
 async function confirmImport() {
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true; btn.textContent = 'Importing…';
-
-  const res  = await fetch('/pd/portal/api/plots/import-confirm', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ plots: importPreviewData, site_id: importSiteId }),
-  });
+  const res  = await fetch('/pd/portal/api/plots/import-confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ plots: importPreviewData, site_id: importSiteId }) });
   const json = await res.json();
   btn.disabled = false;
-
-  if (json.ok) {
-    closeImportModal();
-    loadSites();
-    const msg = `${json.created} plots imported${json.skipped ? ', ' + json.skipped + ' skipped (already exist)' : ''}`;
-    toast(msg);
-    if (json.errors?.length) console.warn('Import errors:', json.errors);
-  } else {
-    toast(json.error || 'Import failed','error');
-  }
+  if (json.ok) { closeImportModal(); loadSites(); toast(`${json.created} plots imported${json.skipped ? ', ' + json.skipped + ' skipped' : ''}`); if (json.errors?.length) console.warn('Import errors:', json.errors); }
+  else toast(json.error || 'Import failed','error');
 }
 
 async function runRangeImport() {
   const siteId    = document.getElementById('iSiteIdRange').value;
   const range     = document.getElementById('iRange').value.trim();
   const houseType = document.getElementById('iHouseType').value.trim();
-
   if (!siteId || !range) { toast('Site and range are required','error'); return; }
-
-  const res  = await fetch('/pd/portal/api/plots/import-range', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ site_id: siteId, range, house_type: houseType }),
-  });
+  const res  = await fetch('/pd/portal/api/plots/import-range', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ site_id: siteId, range, house_type: houseType }) });
   const json = await res.json();
-
-  if (json.ok) {
-    closeImportModal();
-    loadSites();
-    toast(`${json.created} plots created${json.skipped ? ', ' + json.skipped + ' already existed' : ''}`);
-  } else {
-    toast(json.error || 'Error creating plots','error');
-  }
+  if (json.ok) { closeImportModal(); loadSites(); toast(`${json.created} plots created${json.skipped ? ', ' + json.skipped + ' already existed' : ''}`); }
+  else toast(json.error || 'Error creating plots','error');
 }
 
-// Edit plot house type inline
+async function setDwellingType(id, value) {
+  const res  = await fetch(`/pd/portal/api/plots/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ dwelling_category: value }) });
+  const json = await res.json();
+  if (json.ok) { toast('Plot type updated — checklist will reflect ' + value); loadSites(); }
+  else toast('Error updating plot type','error');
+}
+
 async function editPlotHouseType(id, number, houseType, houseTypeDetail) {
   const newHT = prompt(`House type for Plot ${number}:`, houseType);
   if (newHT === null) return;
-  const res  = await fetch(`/pd/portal/api/plots/${id}`, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ house_type: newHT }),
-  });
+  const res  = await fetch(`/pd/portal/api/plots/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ house_type: newHT }) });
   const json = await res.json();
   if (json.ok) { loadSites(); toast('House type updated'); }
   else toast('Error updating','error');
 }
 
-// ── Site management ───────────────────────────────────────────────────────────
 function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='') {
   document.getElementById('siteModalTitle').textContent = id ? 'Edit Site' : 'Add Site';
   document.getElementById('editSiteId').value  = id;
@@ -1305,22 +1197,13 @@ function closeSiteModal() { document.getElementById('siteModal').classList.remov
 
 async function saveSite() {
   const id = document.getElementById('editSiteId').value;
-  const payload = {
-    name:          document.getElementById('siteName').value.trim(),
-    address:       document.getElementById('siteAddress').value.trim(),
-    manager_name:  document.getElementById('siteManagerName').value.trim(),
-    manager_email: document.getElementById('siteManagerEmail').value.trim(),
-    manager_phone: document.getElementById('siteManagerPhone').value.trim(),
-  };
+  const payload = { name: document.getElementById('siteName').value.trim(), address: document.getElementById('siteAddress').value.trim(), manager_name: document.getElementById('siteManagerName').value.trim(), manager_email: document.getElementById('siteManagerEmail').value.trim(), manager_phone: document.getElementById('siteManagerPhone').value.trim() };
   if (!payload.name || !payload.manager_email) { toast('Site name and manager email are required','error'); return; }
   const url = id ? `/pd/portal/api/sites/${id}` : '/pd/portal/api/sites';
   const res  = await fetch(url, { method: id ? 'PUT' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   const json = await res.json();
-  if (json.ok) {
-    closeSiteModal();
-    loadSites();
-    toast(id ? 'Site updated' : 'Site created');
-  } else { toast(json.error||'Error','error'); }
+  if (json.ok) { closeSiteModal(); loadSites(); toast(id ? 'Site updated' : 'Site created'); }
+  else { toast(json.error||'Error','error'); }
 }
 
 async function deleteSite(id, name) {
@@ -1331,38 +1214,26 @@ async function deleteSite(id, name) {
   else toast(json.error||'Error deleting','error');
 }
 
-// ── Plot management ───────────────────────────────────────────────────────────
 function showPlotModal(preselectedSiteId='') {
   const select = document.getElementById('pSiteId');
   select.innerHTML = '<option value="">— Select site —</option>';
-  allSitesList.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.name;
-    if (s.id === preselectedSiteId) o.selected = true;
-    select.appendChild(o);
-  });
+  allSitesList.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; if (s.id === preselectedSiteId) o.selected = true; select.appendChild(o); });
   document.getElementById('pNumber').value = '';
   document.getElementById('plotModal').classList.add('show');
 }
 function closePlotModal() { document.getElementById('plotModal').classList.remove('show'); }
 
 async function savePlot() {
-  const payload = {
-    site_id:      document.getElementById('pSiteId').value,
-    plot_number:  document.getElementById('pNumber').value.trim(),
-  };
+  const payload = { site_id: document.getElementById('pSiteId').value, plot_number: document.getElementById('pNumber').value.trim() };
   if (!payload.site_id || !payload.plot_number) { toast('Site and plot number are required','error'); return; }
   const res  = await fetch('/pd/portal/api/plots', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
   const json = await res.json();
-  if (json.ok) {
-    closePlotModal();
-    loadSites();
-    toast(`Plot ${payload.plot_number} created`);
-  } else { toast(json.error||'Error','error'); }
+  if (json.ok) { closePlotModal(); loadSites(); toast(`Plot ${payload.plot_number} created`); }
+  else { toast(json.error||'Error','error'); }
 }
 
 async function clearPlot(id, number) {
-  if (!confirm(`Clear ALL submission data for Plot ${number}?\n\nThis deletes all checklist answers, photos and signatures but keeps the plot and QR code.\n\nThis cannot be undone.`)) return;
+  if (!confirm(`Clear ALL submission data for Plot ${number}?\nThis deletes all checklist answers, photos and signatures but keeps the plot and QR code.\nThis cannot be undone.`)) return;
   const res  = await fetch(`/pd/portal/api/plots/${id}/clear`, { method: 'DELETE' });
   const json = await res.json();
   if (json.ok) { loadSites(); toast(`Plot ${number} data cleared`); }
@@ -1376,12 +1247,6 @@ async function deletePlot(id, number) {
   if (json.ok) { loadSites(); toast(`Plot ${number} deleted`); }
   else toast('Error deleting plot','error');
 }
-
-// ── Better user site assignment ───────────────────────────────────────────────
-
-// updateSiteAssignVisibility replaced by updateSiteVisibility
-
-document.getElementById('uRole')?.addEventListener('change', updateSiteAssignVisibility);
 </script>
 </body>
 </html>
