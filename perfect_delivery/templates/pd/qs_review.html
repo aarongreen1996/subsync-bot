@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QS Sign-off — {{ sub.stage_name }} | Plot {{ plot.plot_number }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+  .header { background: #1a1a2e; padding: 20px 24px; }
+  .header h1 { color: #C5962A; font-size: 18px; font-weight: 700; }
+  .header p { color: #9ca3af; font-size: 13px; margin-top: 3px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-top: 8px; }
+  .badge-pending  { background: #e0f2fe; color: #075985; }
+  .badge-approved { background: #dcfce7; color: #166534; }
+  .badge-rejected { background: #fee2e2; color: #991b1b; }
+  .container { max-width: 760px; margin: 0 auto; padding: 20px 16px 80px; }
+  .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  .card-title { font-size: 15px; font-weight: 700; color: #1a1a2e; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #f0f2f5; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .meta-item label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .meta-item p { font-size: 15px; font-weight: 600; color: #1a1a2e; margin-top: 3px; }
+  .stats-row { display: flex; gap: 10px; margin-bottom: 16px; }
+  .stat { flex: 1; text-align: center; padding: 12px 8px; border-radius: 10px; }
+  .stat-yes { background: #dcfce7; } .stat-no { background: #fee2e2; } .stat-na { background: #f3f4f6; }
+  .stat .n { font-size: 24px; font-weight: 800; } .stat .l { font-size: 12px; color: #555; margin-top: 2px; }
+  .stat-yes .n { color: #16a34a; } .stat-no .n { color: #dc2626; } .stat-na .n { color: #6b7280; }
+  .item-list { display: flex; flex-direction: column; gap: 10px; }
+  .ci { border-left: 3px solid #e5e7eb; padding: 12px 14px; border-radius: 0 8px 8px 0; background: #fafafa; font-size: 14px; }
+  .ci.yes { border-left-color: #16a34a; background: #f0fdf4; }
+  .ci.no  { border-left-color: #dc2626; background: #fff5f5; }
+  .ci.na  { border-left-color: #9ca3af; background: #f9fafb; }
+  .ci-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .ci-text { flex: 1; line-height: 1.5; color: #374151; }
+  .ci-badge { flex-shrink: 0; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+  .ci-badge.yes { background: #dcfce7; color: #166534; }
+  .ci-badge.no  { background: #fee2e2; color: #991b1b; }
+  .ci-badge.na  { background: #f3f4f6; color: #6b7280; }
+  .ci-badge.none { background: #fef3c7; color: #92400e; }
+  .ci-extra { margin-top: 6px; font-size: 13px; color: #6b7280; }
+  .ci-extra span { font-weight: 600; color: #374151; }
+  .photo-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .photo-grid img { width: 88px; height: 88px; object-fit: cover; border-radius: 8px; border: 2px solid #e5e7eb; cursor: pointer; }
+  .decide-card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); border-top: 3px solid #0ea5e9; }
+  .decide-btns { display: flex; gap: 12px; margin-bottom: 20px; }
+  .decide-btn { flex: 1; padding: 14px; border-radius: 10px; border: 2px solid #e5e7eb; font-size: 15px; font-weight: 700; cursor: pointer; background: white; transition: all 0.15s; }
+  .decide-btn.approve-btn { color: #16a34a; } .decide-btn.reject-btn { color: #dc2626; }
+  .decide-btn.approve-btn.selected { background: #dcfce7; border-color: #16a34a; }
+  .decide-btn.reject-btn.selected  { background: #fee2e2; border-color: #dc2626; }
+  .field-lbl { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  textarea, input[type=text] { width: 100%; padding: 12px; border: 1.5px solid #e5e7eb; border-radius: 10px; font-size: 14px; color: #1a1a2e; margin-bottom: 16px; }
+  textarea { resize: vertical; min-height: 90px; }
+  .submit-btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .submit-btn:disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; }
+  .submit-btn.approve { background: #16a34a; color: white; }
+  .submit-btn.reject  { background: #dc2626; color: white; }
+  .reviewed-banner { padding: 20px; border-radius: 12px; margin-bottom: 16px; text-align: center; }
+  .reviewed-banner h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+  .reviewed-banner.approved { background: #dcfce7; color: #166534; }
+  .reviewed-banner.rejected { background: #fee2e2; color: #991b1b; }
+  .reviewed-banner.pending  { background: #e0f2fe; color: #075985; }
+  .notes-display { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px 16px; border-radius: 0 8px 8px 0; font-size: 14px; color: #374151; white-space: pre-wrap; }
+  .notes-display strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #92400e; margin-bottom: 6px; }
+  .approved-banner { background: #dcfce7; color: #166534; padding: 14px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; }
+  .approved-banner strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  /* Signature pad */
+  .sig-wrap { border: 1.5px solid #e5e7eb; border-radius: 10px; background: #fafafa; margin-bottom: 16px; touch-action: none; }
+  .sig-wrap canvas { display: block; width: 100%; height: 140px; border-radius: 10px; }
+  .sig-clear { font-size: 12px; color: #6b7280; background: none; border: none; cursor: pointer; text-decoration: underline; margin-bottom: 16px; }
+  @media(min-width:600px) { .meta-grid { grid-template-columns: repeat(3,1fr); } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>QS Review &amp; Payment Sign-off</h1>
+  <p>{{ site.name }} · Plot {{ plot.plot_number }}</p>
+  <span class="badge badge-{{ sub.qs_status }}">
+    {% if sub.qs_status == 'pending' %}⏳ Awaiting QS Decision
+    {% elif sub.qs_status == 'approved' %}✓ Approved for Payment
+    {% else %}✗ Rejected{% endif %}
+  </span>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <a href="/pd/review/{{ sub.review_token }}/pdf" target="_blank"
+       style="background:#C5962A;color:#1a1a2e;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">
+      ⬇ Download PDF
+    </a>
+    <button onclick="window.print()"
+       style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+      🖨 Print
+    </button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Site manager approval banner -->
+  <div class="approved-banner">
+    <strong>Already approved by site manager</strong>
+    {{ sub.reviewed_by or 'Site Manager' }} approved this stage{% if sub.reviewed_at %} on {{ sub.reviewed_at[:10] }}{% endif %}.
+    {% if sub.manager_notes %}<br>Notes: {{ sub.manager_notes }}{% endif %}
+  </div>
+
+  <!-- Meta -->
+  <div class="card">
+    <div class="card-title">Submission Details</div>
+    <div class="meta-grid">
+      <div class="meta-item"><label>Stage</label><p>{{ sub.stage_name }}</p></div>
+      <div class="meta-item"><label>Plot</label><p>{{ plot.plot_number }}</p></div>
+      <div class="meta-item"><label>Site</label><p>{{ site.name }}</p></div>
+      <div class="meta-item"><label>Submitted by</label><p>{{ sub.submitted_by_name }}</p></div>
+      <div class="meta-item"><label>Company</label><p>{{ sub.submitted_by_company }}</p></div>
+      <div class="meta-item"><label>Email</label><p style="font-size:13px">{{ sub.submitted_by_email }}</p></div>
+    </div>
+    {% if sub.additional_notes %}
+    <div style="margin-top:14px">
+      <div class="notes-display"><strong>Subcontractor Notes</strong>{{ sub.additional_notes }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Answer stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat stat-yes"><div class="n" id="yesCount" style="color:#16a34a">—</div><div class="l">Yes</div></div>
+    <div class="stat stat-no"><div class="n" id="noCount" style="color:#dc2626">—</div><div class="l">No</div></div>
+    <div class="stat stat-na"><div class="n" id="naCount" style="color:#6b7280">—</div><div class="l">N/A</div></div>
+    <div class="stat" style="background:#fef3c7"><div class="n" id="unCount" style="color:#d97706">—</div><div class="l">Skipped</div></div>
+  </div>
+
+  <!-- Checklist answers -->
+  <div class="card">
+    <div class="card-title">Checklist Answers</div>
+    <div class="item-list" id="itemList">
+      <p style="color:#9ca3af;font-size:14px">Loading answers…</p>
+    </div>
+  </div>
+
+  <!-- Subcontractor signature -->
+  {% if sub.signature_url %}
+  <div class="card">
+    <div class="card-title">Subcontractor Signature</div>
+    <img src="{{ sub.signature_url }}" style="max-width:280px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fafafa">
+    <p style="font-size:12px;color:#9ca3af;margin-top:6px">Signed by {{ sub.submitted_by_name }} · {{ sub.submitted_at[:10] if sub.submitted_at else '' }}</p>
+  </div>
+  {% endif %}
+
+  <!-- QS Decision panel -->
+  {% if sub.qs_status == 'pending' %}
+  <div class="decide-card">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Quantity Surveyor Sign-off</div>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:20px">Review the work above and sign off to agree this stage for payment.</p>
+    <form method="POST" action="/pd/qs-review/{{ sub.qs_review_token }}/decide" id="decideForm">
+      <div class="decide-btns">
+        <button type="button" class="decide-btn approve-btn" onclick="selectDecision('approved',this)">✓ Approve for Payment</button>
+        <button type="button" class="decide-btn reject-btn"  onclick="selectDecision('rejected',this)">✗ Reject</button>
+      </div>
+      <input type="hidden" name="decision" id="decisionInput" value="">
+      <label class="field-lbl">Your Name <span style="color:#dc2626">*</span></label>
+      <input type="text" name="reviewed_by" id="reviewedByInput" placeholder="Your full name" value="{{ site.qs_name or '' }}">
+      <label class="field-lbl">Notes</label>
+      <textarea name="manager_notes" placeholder="Required if rejecting. Optional notes for approval."></textarea>
+
+      <label class="field-lbl">Your Signature <span style="color:#dc2626">*</span></label>
+      <div class="sig-wrap"><canvas id="sigCanvas"></canvas></div>
+      <button type="button" class="sig-clear" onclick="clearSig()">Clear signature</button>
+      <input type="hidden" name="signature" id="signatureInput" value="">
+
+      <button type="submit" class="submit-btn" id="submitDecisionBtn" disabled>Select a decision above</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="reviewed-banner {{ sub.qs_status }}">
+    {% if sub.qs_status == 'approved' %}<h2>✓ Approved for Payment</h2>{% else %}<h2>✗ Rejected by QS</h2>{% endif %}
+    <p>Signed off by {{ sub.qs_reviewed_by or 'QS' }}{% if sub.qs_reviewed_at %} · {{ sub.qs_reviewed_at[:10] }}{% endif %}</p>
+  </div>
+  {% if sub.qs_notes %}
+  <div class="card">
+    <div class="notes-display"><strong>QS Notes</strong>{{ sub.qs_notes }}</div>
+  </div>
+  {% endif %}
+  {% if sub.qs_signature_url %}
+  <div class="card">
+    <div class="card-title">QS Signature</div>
+    <img src="{{ sub.qs_signature_url }}" style="max-width:280px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fafafa">
+  </div>
+  {% endif %}
+  {% endif %}
+
+</div>
+
+<script>
+const RAW_ANSWERS = {{ sub.answers | tojson }};
+const STAGE_ITEMS = {{ stage_items_json | safe }};
+const PHOTOS_BY_ITEM = {{ photos_by_item | tojson }};
+
+function renderAnswers() {
+  const list = document.getElementById('itemList');
+  list.innerHTML = '';
+  let yes = 0, no = 0, na = 0, un = 0;
+
+  STAGE_ITEMS.forEach((item) => {
+    const a = RAW_ANSWERS[item.id] || {};
+    const val = a.value || '';
+    const cls = val === 'n/a' ? 'na' : (val || '');
+
+    if (val === 'yes') yes++;
+    else if (val === 'no') no++;
+    else if (val === 'n/a') na++;
+    else un++;
+
+    const badgeCls = val ? (val === 'n/a' ? 'na' : val) : 'none';
+    const badgeTxt = val === 'yes' ? '✓ Yes' : val === 'no' ? '✗ No' : val === 'n/a' ? '— N/A' : 'Not answered';
+
+    const div = document.createElement('div');
+    div.className = 'ci ' + cls;
+
+    let inner = `<div class="ci-header">
+      <span class="ci-text">${item.text}</span>
+      <span class="ci-badge ${badgeCls}">${badgeTxt}</span>
+    </div>`;
+
+    if (a.text) {
+      inner += `<div class="ci-extra">Confirmed: <span>${a.text}</span></div>`;
+    }
+
+    const photos = PHOTOS_BY_ITEM[item.id] || [];
+    if (photos.length) {
+      inner += '<div class="photo-grid">';
+      photos.forEach((url) => {
+        inner += `<img src="${url}" alt="Photo" loading="lazy" onclick="window.open('${url}','_blank')">`;
+      });
+      inner += '</div>';
+    }
+
+    div.innerHTML = inner;
+    list.appendChild(div);
+  });
+
+  document.getElementById('yesCount').textContent = yes;
+  document.getElementById('noCount').textContent = no;
+  document.getElementById('naCount').textContent = na;
+  document.getElementById('unCount').textContent = un;
+}
+renderAnswers();
+
+// ── Signature pad ────────────────────────────────────────────────────────────
+let canvas, ctx, drawing = false, hasSig = false;
+function initSig() {
+  canvas = document.getElementById('sigCanvas');
+  if (!canvas) return;
+  ctx = canvas.getContext('2d');
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = 140 * (window.devicePixelRatio || 1);
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+  resize();
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+  function start(e){ e.preventDefault(); drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }
+  function move(e){ e.preventDefault(); if(!drawing) return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasSig=true; }
+  function end(e){ e.preventDefault(); drawing=false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end, {passive:false});
+}
+function clearSig() {
+  if (!canvas) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  hasSig = false;
+}
+initSig();
+
+let chosenDecision = '';
+function selectDecision(d, btn) {
+  chosenDecision = d;
+  document.getElementById('decisionInput').value = d;
+  document.querySelectorAll('.decide-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  const sb = document.getElementById('submitDecisionBtn');
+  sb.disabled = false;
+  sb.textContent = d === 'approved' ? '✓ Confirm Approval & Sign' : '✗ Confirm Rejection';
+  sb.className = 'submit-btn ' + (d === 'approved' ? 'approve' : 'reject');
+}
+
+document.getElementById('decideForm')?.addEventListener('submit', function(e) {
+  if (!chosenDecision) { e.preventDefault(); alert('Please select Approve or Reject.'); return; }
+  const name = document.getElementById('reviewedByInput').value.trim();
+  if (!name) { e.preventDefault(); alert('Please enter your name.'); return; }
+  if (chosenDecision === 'rejected') {
+    const notes = document.querySelector('[name=manager_notes]').value.trim();
+    if (!notes) { e.preventDefault(); alert('Please add notes explaining the rejection.'); return; }
+  }
+  if (!hasSig) { e.preventDefault(); alert('Please sign before submitting.'); return; }
+  document.getElementById('signatureInput').value = canvas.toDataURL('image/png');
+});
+</script>
+</body>
+</html>
