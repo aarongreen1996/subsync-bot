@@ -10,7 +10,7 @@ SUPABASE_URL  = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")h
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
@@ -28,7 +28,7 @@ def check_auth():
     return request.headers.get("X-Admin-Password", "") == ADMIN_PASSWORD
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# Auth
 @admin_bp.route("/api/admin/auth", methods=["POST"])
 def admin_auth():
     data = request.json or {}
@@ -37,7 +37,7 @@ def admin_auth():
     return jsonify({"ok": False}), 401
 
 
-# ── Overview ──────────────────────────────────────────────────────────────────
+# Overview
 @admin_bp.route("/api/admin/overview")
 def admin_overview():
     if not check_auth():
@@ -133,7 +133,7 @@ def admin_overview():
     })
 
 
-# ── Health checks ─────────────────────────────────────────────────────────────
+# Health checks
 @admin_bp.route("/api/admin/health")
 def admin_health():
     if not check_auth():
@@ -186,7 +186,7 @@ def admin_health():
     return jsonify(results)
 
 
-# ── Customer detail ───────────────────────────────────────────────────────────
+# Customer detail
 @admin_bp.route("/api/admin/customer/<int:company_id>")
 def admin_customer(company_id):
     if not check_auth():
@@ -227,7 +227,7 @@ def admin_customer(company_id):
     })
 
 
-# ── Cancel subscription ───────────────────────────────────────────────────────
+# Cancel subscription
 @admin_bp.route("/api/admin/cancel-subscription", methods=["POST"])
 def cancel_subscription():
     if not check_auth():
@@ -245,7 +245,7 @@ def cancel_subscription():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Send welcome message ──────────────────────────────────────────────────────
+# Send welcome message
 @admin_bp.route("/api/admin/send-welcome", methods=["POST"])
 def admin_send_welcome():
     data = request.json or {}
