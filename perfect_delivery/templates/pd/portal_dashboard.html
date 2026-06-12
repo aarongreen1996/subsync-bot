@@ -495,6 +495,11 @@
       <div class="field"><label>Manager Name <span style="color:var(--red)">*</span></label><input type="text" id="siteManagerName" placeholder="Full name"></div>
       <div class="field"><label>Manager Email <span style="color:var(--red)">*</span></label><input type="email" id="siteManagerEmail" placeholder="manager@company.co.uk"></div>
       <div class="field"><label>Manager Phone</label><input type="text" id="siteManagerPhone" placeholder="+44 7700 000000"></div>
+      <div class="field form-full" style="border-top:1px solid #f2f2f7;padding-top:14px;margin-top:4px">
+        <label style="color:#0ea5e9">QS Contact (for payment sign-off — optional)</label>
+      </div>
+      <div class="field"><label>QS Name</label><input type="text" id="siteQsName" placeholder="Full name"></div>
+      <div class="field"><label>QS Email</label><input type="email" id="siteQsEmail" placeholder="qs@company.co.uk"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeSiteModal()">Cancel</button>
@@ -739,7 +744,7 @@ async function loadSites() {
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="badge badge-blue">${plots.length} plots</span>
             <a href="/pd/portal/site/${site.id}/qr-sheet" target="_blank" class="btn btn-sm" style="background:#eff6ff;color:#1e40af;text-decoration:none">🖨 QR Sheet</a>
-            ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="showSiteModal('${site.id}','${site.name.replace(/'/g,"\'")}','${(site.address||'').replace(/'/g,"\'")}','${(site.manager_name||'').replace(/'/g,"\'")}','${(site.manager_email||'')}','${(site.manager_phone||'')}')">Edit</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="showSiteModal('${site.id}','${site.name.replace(/'/g,"\'")}','${(site.address||'').replace(/'/g,"\'")}','${(site.manager_name||'').replace(/'/g,"\'")}','${(site.manager_email||'')}','${(site.manager_phone||'')}','${(site.qs_name||'').replace(/'/g,"\'")}','${(site.qs_email||'')}')">Edit</button>` : ''}
             ${isAdmin ? `<button class="btn btn-sm" style="background:#fff0f0;color:#c0392b" onclick="deleteSite('${site.id}','${site.name.replace(/'/g,"\'")}')">Delete</button>` : ''}
           </div>
         </div>
@@ -1183,7 +1188,7 @@ async function editPlotHouseType(id, number, houseType, houseTypeDetail) {
   else toast('Error updating','error');
 }
 
-function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='') {
+function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhone='', qsName='', qsEmail='') {
   document.getElementById('siteModalTitle').textContent = id ? 'Edit Site' : 'Add Site';
   document.getElementById('editSiteId').value  = id;
   document.getElementById('siteName').value        = name;
@@ -1191,13 +1196,15 @@ function showSiteModal(id='', name='', address='', mgName='', mgEmail='', mgPhon
   document.getElementById('siteManagerName').value = mgName;
   document.getElementById('siteManagerEmail').value= mgEmail;
   document.getElementById('siteManagerPhone').value= mgPhone;
+  document.getElementById('siteQsName').value      = qsName;
+  document.getElementById('siteQsEmail').value     = qsEmail;
   document.getElementById('siteModal').classList.add('show');
 }
 function closeSiteModal() { document.getElementById('siteModal').classList.remove('show'); }
 
 async function saveSite() {
   const id = document.getElementById('editSiteId').value;
-  const payload = { name: document.getElementById('siteName').value.trim(), address: document.getElementById('siteAddress').value.trim(), manager_name: document.getElementById('siteManagerName').value.trim(), manager_email: document.getElementById('siteManagerEmail').value.trim(), manager_phone: document.getElementById('siteManagerPhone').value.trim() };
+  const payload = { name: document.getElementById('siteName').value.trim(), address: document.getElementById('siteAddress').value.trim(), manager_name: document.getElementById('siteManagerName').value.trim(), manager_email: document.getElementById('siteManagerEmail').value.trim(), manager_phone: document.getElementById('siteManagerPhone').value.trim(), qs_name: document.getElementById('siteQsName').value.trim(), qs_email: document.getElementById('siteQsEmail').value.trim() };
   if (!payload.name || !payload.manager_email) { toast('Site name and manager email are required','error'); return; }
   const url = id ? `/pd/portal/api/sites/${id}` : '/pd/portal/api/sites';
   const res  = await fetch(url, { method: id ? 'PUT' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
