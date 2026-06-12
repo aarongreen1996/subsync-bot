@@ -212,7 +212,7 @@ def _user_site_filter(user: dict, query):
     return query
 
 
-# -- Auth routes
+# ── Auth routes ───────────────────────────────────────────────────────────────
 
 @portal_bp.route("", methods=["GET"])
 @portal_bp.route("/", methods=["GET"])
@@ -279,7 +279,7 @@ def signout():
     return resp
 
 
-# -- Dashboard
+# ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @portal_bp.route("/dashboard")
 @_require_login
@@ -323,7 +323,7 @@ def dashboard(user):
     )
 
 
-# -- Plot progress (portal version)
+# ── Plot progress (portal version) ────────────────────────────────────────────
 
 @portal_bp.route("/plot/<plot_id>/progress")
 @_require_login
@@ -391,7 +391,7 @@ def portal_qr(user, plot_id):
     )
 
 
-# -- Site & Plot management (tenant admin)
+# ── Site & Plot management (tenant admin) ────────────────────────────────────
 
 @portal_bp.route("/api/sites", methods=["POST"])
 @_require_admin_role
@@ -405,6 +405,8 @@ def api_sites_create(user):
         "manager_name":  (data.get("manager_name") or "").strip(),
         "manager_email": (data.get("manager_email") or "").strip(),
         "manager_phone": (data.get("manager_phone") or "").strip(),
+        "qs_name":       (data.get("qs_name") or "").strip(),
+        "qs_email":      (data.get("qs_email") or "").strip(),
         "tenant_id":     tenant_id,
     }
     if not record["name"] or not record["manager_email"]:
@@ -418,7 +420,7 @@ def api_sites_create(user):
 def api_sites_update(user, site_id):
     data = request.get_json() or {}
     updates = {}
-    for f in ["name","address","manager_name","manager_email","manager_phone"]:
+    for f in ["name","address","manager_name","manager_email","manager_phone","qs_name","qs_email"]:
         if data.get(f) is not None:
             updates[f] = data[f].strip()
     if not updates:
@@ -475,7 +477,7 @@ def api_plots_clear(user, plot_id):
     return jsonify({"ok": True})
 
 
-# -- Plot import (AI-powered + manual)
+# ── Plot import (AI-powered + manual) ────────────────────────────────────────
 
 @portal_bp.route("/api/plots/import-preview", methods=["POST"])
 @_require_admin_role
@@ -794,7 +796,7 @@ def api_plots_update(user, plot_id):
     return jsonify({"ok": True})
 
 
-# -- Plot report (portal)
+# ── Plot report (portal) ─────────────────────────────────────────────────────
 
 @portal_bp.route("/plot/<plot_id>/report")
 @_require_login
@@ -959,7 +961,7 @@ def plot_report_pdf(user, plot_id):
     return _sf(_io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 
-# -- API routes
+# ── API routes ────────────────────────────────────────────────────────────────
 
 @portal_bp.route("/api/sites")
 @_require_login
@@ -1115,7 +1117,7 @@ def api_photos(user):
     return jsonify(photos)
 
 
-# -- Stage Groups API
+# ── Stage Groups API ──────────────────────────────────────────────────────────
 
 DEFAULT_STAGE_GROUPS = [
     {"name": "Groundworks & Structure", "stages": [1,2,3,4,5,6,7,8,9,11]},
@@ -1203,7 +1205,7 @@ def api_stage_groups_reset(user):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# -- Checklist Editor (tenant admin page)
+# ── Checklist Editor (tenant admin page) ─────────────────────────────────────
 
 @portal_bp.route("/api/checklist/visibility/all", methods=["GET"])
 @_require_admin_role
@@ -1240,7 +1242,7 @@ def checklist_editor(user):
     )
 
 
-# -- Checklist Editor API
+# ── Checklist Editor API ──────────────────────────────────────────────────────
 
 @portal_bp.route("/api/checklist/<int:stage_number>", methods=["GET"])
 @_require_admin_role
@@ -1360,7 +1362,7 @@ def api_checklist_item_reset(user, item_id):
     return jsonify({"ok": True})
 
 
-# -- User management API
+# ── User management API ───────────────────────────────────────────────────────
 
 @portal_bp.route("/api/users", methods=["GET"])
 @_require_admin_role
