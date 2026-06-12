@@ -219,7 +219,7 @@ function switchDwelling(dt, btn) {
   btn.classList.add('active');
   var labels = {house:'house', bungalow:'bungalow', flat:'flat'};
   document.getElementById('dwellingHint').innerHTML =
-    'Editing what site teams see for <strong>' + labels[dt] + '</strong> plots. Stages or items hidden here won\\'t appear on ' + labels[dt] + ' build checklists.';
+    'Editing what site teams see for <strong>' + labels[dt] + '</strong> plots. Stages or items hidden here won\'t appear on ' + labels[dt] + ' build checklists.';
   dirty = false;
   showSaveBar(false);
   renderStageList();
@@ -322,7 +322,7 @@ function renderEditor() {
       var exampleGuidance = ov.example_guidance || '';
 
       html += '<div class="item-row' + (enabled ? '' : ' disabled') + (isNew ? ' is-new' : '') + '" id="item-' + item.id + '" data-item-id="' + item.id + '">';
-      html += '<div class="item-toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleItem(\\'' + item.id + '\\',this.checked)" title="Enable/disable this item"></div>';
+      html += '<div class="item-toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleItem(\'' + item.id + '\',this.checked)" title="Enable/disable this item"></div>';
       html += '<div class="item-body">';
       html += '<textarea class="item-text-edit" id="text-' + item.id + '" onchange="markDirty()" rows="2">' + escHtml(text) + '</textarea>';
       html += '<div class="item-meta">';
@@ -346,13 +346,13 @@ function renderEditor() {
       if (exampleUrl) {
         html += '<img class="example-thumb" src="' + exampleUrl + '" alt="Example">';
       } else {
-        html += '<div class="example-empty" onclick="document.getElementById(\\'file-' + item.id + '\\').click()">📷</div>';
+        html += '<div class="example-empty" onclick="document.getElementById(\'file-' + item.id + '\').click()">📷</div>';
       }
       html += '<div class="example-controls">';
       html += '<input type="text" placeholder="Guidance for this example (optional)" id="guidance-' + item.id + '" value="' + escAttr(exampleGuidance) + '" onchange="markDirty()">';
-      html += '<input type="file" accept="image/*" id="file-' + item.id + '" onchange="uploadExample(\\'' + item.id + '\\',' + n + ')" style="display:none">';
-      html += '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\\'file-' + item.id + '\\').click()">' + (exampleUrl ? 'Replace example photo' : 'Add example photo') + '</button>';
-      if (exampleUrl) html += ' <button class="btn btn-outline btn-sm" onclick="removeExample(\\'' + item.id + '\\')">Remove</button>';
+      html += '<input type="file" accept="image/*" id="file-' + item.id + '" onchange="uploadExample(\'' + item.id + '\',' + n + ')" style="display:none">';
+      html += '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\'file-' + item.id + '\').click()">' + (exampleUrl ? 'Replace example photo' : 'Add example photo') + '</button>';
+      if (exampleUrl) html += ' <button class="btn btn-outline btn-sm" onclick="removeExample(\'' + item.id + '\')">Remove</button>';
       html += '</div>';
       html += '</div>';
       html += '</div>';
@@ -361,9 +361,9 @@ function renderEditor() {
 
       html += '<div class="item-actions">';
       if (isCustomItem) {
-        html += '<button class="btn btn-red btn-sm" onclick="removeCustomItem(\\'' + item.id + '\\')" title="Delete item">🗑</button>';
+        html += '<button class="btn btn-red btn-sm" onclick="removeCustomItem(\'' + item.id + '\')" title="Delete item">🗑</button>';
       } else {
-        html += '<button class="btn btn-outline btn-sm" onclick="resetItem(\\'' + item.id + '\\')" title="Reset to default">↺</button>';
+        html += '<button class="btn btn-outline btn-sm" onclick="resetItem(\'' + item.id + '\')" title="Reset to default">↺</button>';
       }
       html += '</div>';
       html += '</div>';
