@@ -40,6 +40,122 @@ def _get_tenant() -> dict:
         return {}
 
 
+def get_effective_checklist(tenant_id: str, dwelling_category: str = "house") -> dict:
+    """Return STAGES dict filtered/customised for this tenant + dwelling type.
+    Applies pd_stage_visibility (hidden_globally, hidden_for, name_override,
+    applies_to_override) and pd_checklist_overrides (text, enabled, photo_required,
+    hidden_for, example_photo_url/guidance, custom items) for the given dwelling
+    category. Stages or items hidden for this dwelling type are removed entirely.
+    Use this everywhere a stage checklist is rendered or validated for a plot."""
+    from .checklist_data import STAGES as _DEFAULT_STAGES
+    import copy as _copy
+
+    result = _copy.deepcopy(_DEFAULT_STAGES)
+    if not tenant_id:
+        return result
+
+    try:
+        vis_res = supabase.table("pd_stage_visibility").select("*").eq("tenant_id", tenant_id).execute()
+        vis_map = {v["stage_number"]: v for v in (vis_res.data or [])}
+    except Exception:
+        vis_map = {}
+
+    try:
+        ov_res = supabase.table("pd_checklist_overrides").select("*").eq("tenant_id", tenant_id).execute()
+        overrides = ov_res.data or []
+    except Exception:
+        overrides = []
+
+    ov_by_stage = {}
+    for o in overrides:
+        ov_by_stage.setdefault(o["stage_number"], {})[o["item_id"]] = o
+
+    final = {}
+    for n, stage in result.items():
+        v = vis_map.get(n, {})
+        if v.get("hidden_globally"):
+            continue
+        hidden_for = v.get("hidden_for") or []
+        if dwelling_category in hidden_for:
+            continue
+
+        stage = _copy.deepcopy(stage)
+        if v.get("name_override"):
+            stage["name"] = v["name_override"]
+        if v.get("applies_to_override"):
+            stage["applies_to"] = v["applies_to_override"]
+
+        item_overrides = ov_by_stage.get(n, {})
+        default_ids = {i["id"] for i in stage.get("items", [])}
+
+        new_items = []
+        for item in stage.get("items", []):
+            ov = item_overrides.get(item["id"], {})
+            if ov.get("enabled") is False:
+                continue
+            ih = ov.get("hidden_for") or []
+            if dwelling_category in ih:
+                continue
+            item = _copy.deepcopy(item)
+            if "text" in ov: item["text"] = ov["text"]
+            if "photo_required" in ov: item["photo"] = ov["photo_required"]
+            if ov.get("example_photo_url"): item["example_photo_url"] = ov["example_photo_url"]
+            if ov.get("example_guidance"):  item["example_guidance"]  = ov["example_guidance"]
+            new_items.append(item)
+
+        # Custom items not in defaults
+        for item_id, ov in item_overrides.items():
+            if item_id in default_ids:
+                continue
+            if not ov.get("is_custom"):
+                continue
+            if ov.get("enabled") is False:
+                continue
+            ih = ov.get("hidden_for") or []
+            if dwelling_category in ih:
+                continue
+            new_items.append({
+                "id": item_id,
+                "text": ov.get("text",""),
+                "photo": ov.get("photo_required", True),
+                "example_photo_url": ov.get("example_photo_url",""),
+                "example_guidance": ov.get("example_guidance",""),
+            })
+
+        stage["items"] = new_items
+        final[n] = stage
+
+    # Custom stages (stage_number >= 1000) stored only via visibility rows with name_override
+    for n, v in vis_map.items():
+        if n < 1000 or v.get("hidden_globally"):
+            continue
+        hidden_for = v.get("hidden_for") or []
+        if dwelling_category in hidden_for:
+            continue
+        item_overrides = ov_by_stage.get(n, {})
+        new_items = []
+        for item_id, ov in item_overrides.items():
+            if ov.get("enabled") is False:
+                continue
+            ih = ov.get("hidden_for") or []
+            if dwelling_category in ih:
+                continue
+            new_items.append({
+                "id": item_id,
+                "text": ov.get("text",""),
+                "photo": ov.get("photo_required", True),
+                "example_photo_url": ov.get("example_photo_url",""),
+                "example_guidance": ov.get("example_guidance",""),
+            })
+        final[n] = {
+            "name": v.get("name_override", f"Custom Stage {n}"),
+            "applies_to": v.get("applies_to_override",""),
+            "items": new_items,
+        }
+
+    return final
+
+
 def _get_current_user():
     token = request.cookies.get("pd_session")
     if not token:
@@ -671,6 +787,7 @@ def api_plots_update(user, plot_id):
     if "plot_number"      in data: updates["plot_number"]      = str(data["plot_number"]).strip()
     if "house_type"       in data: updates["house_type"]       = data["house_type"].strip()
     if "house_type_detail"in data: updates["house_type_detail"]= data["house_type_detail"].strip()
+    if "dwelling_category"in data: updates["dwelling_category"]= data["dwelling_category"].strip()
     if not updates:
         return jsonify({"ok": False, "error": "Nothing to update"}), 400
     supabase.table("pd_plots").update(updates).eq("id", plot_id).execute()
@@ -888,7 +1005,7 @@ def api_sites(user):
 def api_plots(user):
     try:
         site_id = request.args.get("site_id")
-        query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail")
+        query = supabase.table("pd_plots").select("id, plot_number, site_id, status, access_token, house_type, house_type_detail, dwelling_category")
         if site_id:
             query = query.eq("site_id", site_id)
         res = query.execute()
