@@ -6,55 +6,98 @@
 <title>Checklist Editor — Perfect Delivery</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f7fa;color:#1a1a2e;min-height:100vh}
-.topbar{background:#009430;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
-.topbar h1{font-size:17px;font-weight:700}
-.topbar a{color:#fff;text-decoration:none;font-size:13px;opacity:.85}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f7;color:#1a1a2e;min-height:100vh}
+.topbar{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.topbar h1{font-size:17px;font-weight:700;color:#C5962A}
+.topbar a{color:#fff;text-decoration:none;font-size:13px;opacity:.85;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:6px 12px;border-radius:8px}
 .topbar a:hover{opacity:1}
-.container{max-width:960px;margin:0 auto;padding:24px 16px}
+.container{max-width:1200px;margin:0 auto;padding:20px 16px 80px}
 .page-title{font-size:22px;font-weight:700;margin-bottom:4px}
-.page-sub{font-size:13px;color:#666;margin-bottom:24px}
-.stage-grid{display:grid;grid-template-columns:280px 1fr;gap:20px}
-.stage-list{background:#fff;border-radius:12px;border:1px solid #e0e0e0;overflow:hidden;height:fit-content;position:sticky;top:20px}
-.stage-list h3{padding:14px 16px;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e0e0e0}
-.stage-item{padding:11px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
-.stage-item:hover{background:#f5f7fa}
-.stage-item.active{background:#e8f5e9;color:#009430;font-weight:600}
-.stage-item .badge{font-size:10px;background:#e0e0e0;padding:2px 7px;border-radius:10px;color:#666}
-.stage-item.active .badge{background:#009430;color:#fff}
-.editor-panel{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:20px}
-.editor-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f0f0f0}
-.editor-header h2{font-size:16px;font-weight:700}
-.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
-.btn-green{background:#009430;color:#fff}
-.btn-green:hover{background:#007a28}
+.page-sub{font-size:13px;color:#666;margin-bottom:18px}
+
+.dwelling-tabs{display:flex;gap:8px;margin-bottom:16px;background:#fff;border-radius:12px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.06);max-width:fit-content}
+.dwelling-tab{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:none;color:#666;transition:all .15s}
+.dwelling-tab.active{background:#1a1a2e;color:#C5962A}
+.dwelling-hint{font-size:12px;color:#8e8e93;margin-bottom:16px}
+
+.layout{display:grid;grid-template-columns:280px 1fr;gap:16px}
+.stage-list{background:#fff;border-radius:12px;border:1px solid #e5e5ea;overflow:hidden;height:fit-content;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto}
+.stage-list h3{padding:14px 16px;font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #f2f2f7;position:sticky;top:0;background:#fff}
+.stage-item{padding:11px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid #f2f2f7;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:background .12s}
+.stage-item:hover{background:#f9f9fb}
+.stage-item.active{background:#1a1a2e;color:#fff}
+.stage-item.hidden-stage{opacity:.4}
+.stage-item .num{font-weight:700;color:#8e8e93;font-size:11px;flex-shrink:0;width:20px}
+.stage-item.active .num{color:#C5962A}
+.stage-item .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eye-badge{font-size:13px;flex-shrink:0}
+
+.add-stage-btn{padding:12px 16px;border-top:1px solid #f2f2f7}
+
+.editor-panel{background:#fff;border-radius:12px;border:1px solid #e5e5ea;padding:20px}
+.editor-header{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f2f2f7}
+.stage-name-edit{font-size:18px;font-weight:700;border:none;outline:none;width:100%;padding:4px 0;border-bottom:2px solid transparent;transition:border-color .15s}
+.stage-name-edit:focus{border-bottom-color:#1a1a2e}
+.applies-to-edit{font-size:12px;color:#8e8e93;border:none;outline:none;width:100%;margin-top:4px;padding:2px 0;border-bottom:1px solid transparent}
+.applies-to-edit:focus{border-bottom-color:#ddd}
+
+.stage-controls{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+.btn-green{background:#1a1a2e;color:#C5962A}
+.btn-green:hover{background:#252540}
 .btn-outline{background:#fff;color:#666;border:1px solid #ddd}
-.btn-outline:hover{border-color:#009430;color:#009430}
-.btn-red{background:#fff;color:#e53935;border:1px solid #e53935}
-.btn-red:hover{background:#ffebee}
-.btn-sm{padding:5px 10px;font-size:12px}
-.item-row{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid #e8e8e8;border-radius:8px;margin-bottom:8px;background:#fafafa;transition:border-color .15s}
-.item-row:hover{border-color:#009430}
-.item-row.disabled{opacity:.5}
+.btn-outline:hover{border-color:#1a1a2e;color:#1a1a2e}
+.btn-red{background:#fff;color:#e53935;border:1px solid #fecaca}
+.btn-red:hover{background:#fff0f0}
+.btn-sm{padding:5px 10px;font-size:11px}
+.toggle-switch{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#666;cursor:pointer;user-select:none}
+.toggle-switch input{accent-color:#1a1a2e;width:16px;height:16px}
+
+/* dwelling type chips */
+.dt-chips{display:flex;gap:6px}
+.dt-chip{font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;cursor:pointer;border:1.5px solid #ddd;color:#999;background:#fff;transition:all .12s}
+.dt-chip.active{background:#1a1a2e;color:#C5962A;border-color:#1a1a2e}
+
+/* items */
+.item-row{display:flex;align-items:flex-start;gap:10px;padding:14px;border:1px solid #e8e8e8;border-radius:10px;margin-bottom:10px;background:#fafafa;transition:border-color .15s}
+.item-row:hover{border-color:#1a1a2e}
+.item-row.disabled{opacity:.45}
+.item-row.is-new{border-color:#16a34a;background:#f0fdf4}
 .item-toggle{flex-shrink:0;margin-top:2px}
-.item-toggle input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:#009430}
-.item-body{flex:1}
-.item-text{font-size:13px;line-height:1.5;margin-bottom:6px}
-.item-text-edit{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;min-height:36px;font-family:inherit}
-.item-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.item-meta label{font-size:11px;color:#666;display:flex;align-items:center;gap:4px;cursor:pointer}
-.item-meta input[type=checkbox]{accent-color:#009430}
-.tag{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.item-toggle input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:#1a1a2e}
+.item-body{flex:1;min-width:0}
+.item-text-edit{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;min-height:38px;font-family:inherit;line-height:1.4}
+.item-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.item-meta label{font-size:11px;color:#666;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600}
+.item-meta input[type=checkbox]{accent-color:#1a1a2e}
+.tag{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}
 .tag-photo{background:#e3f2fd;color:#1565c0}
 .tag-modified{background:#fff3e0;color:#e65100}
-.item-actions{display:flex;gap:4px;flex-shrink:0}
-.empty-state{text-align:center;padding:40px 20px;color:#999}
-.save-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e0e0e0;padding:12px 24px;display:flex;justify-content:flex-end;gap:10px;z-index:100;transform:translateY(100%);transition:transform .2s}
+.tag-new{background:#dcfce7;color:#166534}
+.item-actions{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+
+/* example photo */
+.example-section{margin-top:10px;padding-top:10px;border-top:1px dashed #e0e0e0}
+.example-row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.example-thumb{width:80px;height:60px;border-radius:6px;object-fit:cover;border:1px solid #ddd;flex-shrink:0;background:#fff}
+.example-empty{width:80px;height:60px;border-radius:6px;border:1.5px dashed #ddd;display:flex;align-items:center;justify-content:center;font-size:20px;color:#ccc;flex-shrink:0;cursor:pointer;background:#fff}
+.example-controls{flex:1;min-width:160px}
+.example-controls input[type=text]{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px}
+.example-controls input[type=file]{font-size:11px}
+
+.empty-state{text-align:center;padding:60px 20px;color:#999}
+.add-item-btn{width:100%;padding:14px;border:2px dashed #ddd;border-radius:10px;background:none;color:#8e8e93;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.add-item-btn:hover{border-color:#1a1a2e;color:#1a1a2e}
+
+.save-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e5ea;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;z-index:100;transform:translateY(100%);transition:transform .2s;box-shadow:0 -2px 12px rgba(0,0,0,.06)}
 .save-bar.show{transform:translateY(0)}
-.toast{position:fixed;top:20px;right:20px;background:#009430;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.save-bar-msg{font-size:12px;color:#8e8e93}
+
+.toast{position:fixed;top:20px;right:20px;background:#1a1a2e;color:#C5962A;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.15)}
 .toast.show{opacity:1}
-.toast.error{background:#e53935}
-@media(max-width:700px){.stage-grid{grid-template-columns:1fr}.stage-list{position:static}}
+.toast.error{background:#e53935;color:#fff}
+
+@media(max-width:760px){.layout{grid-template-columns:1fr}.stage-list{position:static;max-height:300px}}
 </style>
 </head>
 <body>
@@ -62,64 +105,125 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="topbar">
   <div style="display:flex;align-items:center;gap:16px">
     <a href="/pd/portal/dashboard">← Dashboard</a>
-    <h1>Checklist Editor</h1>
+    <h1>📋 Checklist Editor</h1>
   </div>
   <div style="font-size:13px;opacity:.85">{{ user.name }} &bull; {{ tenant.name if tenant else '' }}</div>
 </div>
 
 <div class="container">
   <div class="page-title">Checklist Editor</div>
-  <div class="page-sub">Customise the checklist items for each build stage. Changes apply to all sites in your company.</div>
+  <div class="page-sub">Customise build stages and checklist items for your company. Changes apply to all sites.</div>
 
-  <div class="stage-grid">
-    <!-- Stage list -->
+  <div class="dwelling-tabs">
+    <button class="dwelling-tab active" data-dt="house" onclick="switchDwelling('house', this)">🏠 Houses</button>
+    <button class="dwelling-tab" data-dt="bungalow" onclick="switchDwelling('bungalow', this)">🏡 Bungalows</button>
+    <button class="dwelling-tab" data-dt="flat" onclick="switchDwelling('flat', this)">🏢 Flats</button>
+  </div>
+  <div class="dwelling-hint" id="dwellingHint">Editing what site teams see for <strong>house</strong> plots. Stages or items hidden here won't appear on house build checklists.</div>
+
+  <div class="layout">
     <div class="stage-list">
       <h3>Build Stages</h3>
       <div id="stage-list-items">
-        <div style="padding:20px;text-align:center;color:#999;font-size:13px">Loading stages...</div>
+        <div style="padding:20px;text-align:center;color:#999;font-size:13px">Loading...</div>
+      </div>
+      <div class="add-stage-btn">
+        <button class="btn btn-outline" style="width:100%" onclick="addCustomStage()">+ Add custom stage</button>
       </div>
     </div>
 
-    <!-- Editor panel -->
     <div class="editor-panel" id="editor-panel">
       <div class="empty-state">
-        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <div style="font-size:36px;margin-bottom:10px">📋</div>
         <div style="font-weight:600;margin-bottom:4px">Select a stage to edit</div>
-        <div style="font-size:13px">Choose a build stage from the left to view and customise its checklist items.</div>
+        <div style="font-size:13px">Choose a build stage from the left to view and customise its checklist.</div>
       </div>
     </div>
   </div>
 </div>
 
 <div class="save-bar" id="save-bar">
-  <button class="btn btn-outline" onclick="discardChanges()">Discard changes</button>
-  <button class="btn btn-green" onclick="saveChanges()">Save changes</button>
+  <span class="save-bar-msg">You have unsaved changes</span>
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-outline" onclick="discardChanges()">Discard</button>
+    <button class="btn btn-green" onclick="saveChanges()">Save changes</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 var STAGES = {{ stages_json | safe }};
+var DWELLING = 'house';
 var currentStage = null;
-var currentItems = [];
-var overrides = {};
+var overrides = {};      // item_id -> override row
+var visibility = {};     // current stage visibility row
+var allVisibility = {};  // stage_number -> visibility row (for sidebar dots)
+var customItems = [];    // new items added this session for current stage, not yet saved
 var dirty = false;
+var customStages = {};   // extra custom stage numbers added this session -> {name, items:[]}
+var nextCustomStageNum = 1000;
 
 function stageNums() {
-  return Object.keys(STAGES).map(Number).sort(function(a,b){return a-b;});
+  var nums = Object.keys(STAGES).map(Number);
+  Object.keys(customStages).forEach(function(k){ nums.push(Number(k)); });
+  return nums.sort(function(a,b){return a-b;});
+}
+
+async function init() {
+  await loadAllVisibility();
+  renderStageList();
+}
+
+async function loadAllVisibility() {
+  try {
+    var r = await fetch('/pd/portal/api/checklist/visibility/all');
+    var d = await r.json();
+    allVisibility = {};
+    (d || []).forEach(function(v){ allVisibility[v.stage_number] = v; });
+  } catch(e) { allVisibility = {}; }
+}
+
+function isStageHiddenForDwelling(n) {
+  var v = allVisibility[n];
+  if (!v) return false;
+  if (v.hidden_globally) return true;
+  var hf = v.hidden_for || [];
+  return hf.indexOf(DWELLING) !== -1;
 }
 
 function renderStageList() {
   var nums = stageNums();
   var html = '';
   nums.forEach(function(n) {
-    var s = STAGES[n];
+    var s = STAGES[n] || customStages[n];
+    if (!s) return;
+    var v = allVisibility[n] || {};
+    var name = v.name_override || s.name;
     var isActive = currentStage === n ? ' active' : '';
-    html += '<div class="stage-item' + isActive + '" onclick="loadStage(' + n + ')" id="stage-li-' + n + '">';
-    html += '<span>' + n + '. ' + s.name + '</span>';
+    var hiddenCls = isStageHiddenForDwelling(n) ? ' hidden-stage' : '';
+    var eyeIcon = isStageHiddenForDwelling(n) ? '🚫' : '';
+    html += '<div class="stage-item' + isActive + hiddenCls + '" onclick="loadStage(' + n + ')">';
+    html += '<span class="num">' + (n < 1000 ? n : '+') + '</span>';
+    html += '<span class="name">' + escHtml(name) + '</span>';
+    html += '<span class="eye-badge">' + eyeIcon + '</span>';
     html += '</div>';
   });
   document.getElementById('stage-list-items').innerHTML = html;
+}
+
+function switchDwelling(dt, btn) {
+  if (dirty && !confirm('Discard unsaved changes and switch view?')) return;
+  DWELLING = dt;
+  document.querySelectorAll('.dwelling-tab').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  var labels = {house:'house', bungalow:'bungalow', flat:'flat'};
+  document.getElementById('dwellingHint').innerHTML =
+    'Editing what site teams see for <strong>' + labels[dt] + '</strong> plots. Stages or items hidden here won\\'t appear on ' + labels[dt] + ' build checklists.';
+  dirty = false;
+  showSaveBar(false);
+  renderStageList();
+  if (currentStage !== null) loadStage(currentStage);
 }
 
 async function loadStage(n) {
@@ -129,73 +233,154 @@ async function loadStage(n) {
     showSaveBar(false);
   }
   currentStage = n;
+  customItems = [];
   renderStageList();
 
-  // Fetch overrides for this stage
-  try {
-    var r = await fetch('/pd/portal/api/checklist/' + n);
-    var d = await r.json();
+  if (n >= 1000) {
+    // custom stage — no backend overrides yet beyond visibility
     overrides = {};
-    (d.overrides || []).forEach(function(o) { overrides[o.item_id] = o; });
-  } catch(e) {
-    overrides = {};
+  } else {
+    try {
+      var r = await fetch('/pd/portal/api/checklist/' + n);
+      var d = await r.json();
+      overrides = {};
+      (d.overrides || []).forEach(function(o) { overrides[o.item_id] = o; });
+      visibility = d.visibility || {};
+      allVisibility[n] = visibility;
+    } catch(e) {
+      overrides = {}; visibility = {};
+    }
   }
-
   renderEditor();
+}
+
+function getStage(n) {
+  return STAGES[n] || customStages[n];
 }
 
 function renderEditor() {
   var n = currentStage;
-  var stage = STAGES[n];
+  var stage = getStage(n);
   if (!stage) return;
 
-  var items = stage.items || [];
+  var vis = allVisibility[n] || {};
+  var hiddenForArr = vis.hidden_for || [];
+  var hiddenGlobally = !!vis.hidden_globally;
+  var nameVal = vis.name_override || stage.name;
+  var appliesVal = vis.applies_to_override || (stage.applies_to || '');
+
+  var items = (stage.items || []).slice();
+  // Append custom items added this session
+  customItems.forEach(function(ci){ items.push(ci); });
+  // Append previously-saved custom items (overrides with is_custom flag and not in default items)
+  var defaultIds = (stage.items||[]).map(function(i){return i.id;});
+  Object.keys(overrides).forEach(function(id){
+    if (defaultIds.indexOf(id) === -1 && customItems.findIndex(function(ci){return ci.id===id;}) === -1) {
+      var ov = overrides[id];
+      items.push({id: id, text: ov.text || '', photo: ov.photo_required !== false, _saved_custom: true});
+    }
+  });
+
   var html = '';
 
   html += '<div class="editor-header">';
-  html += '<div>';
-  html += '<h2>Stage ' + n + ': ' + stage.name + '</h2>';
-  if (stage.applies_to) html += '<div style="font-size:12px;color:#666;margin-top:2px">Applies to: ' + stage.applies_to + '</div>';
+  html += '<input class="stage-name-edit" id="stageNameInput" value="' + escAttr(nameVal) + '" onchange="markDirty()" placeholder="Stage name">';
+  html += '<input class="applies-to-edit" id="stageAppliesInput" value="' + escAttr(appliesVal) + '" onchange="markDirty()" placeholder="Applies to (e.g. Groundworker, Bricklayer...)">';
+
+  html += '<div class="stage-controls">';
+  html += '<label class="toggle-switch"><input type="checkbox" id="hideGloballyChk" ' + (hiddenGlobally?'checked':'') + ' onchange="markDirty()"> Hide this stage entirely</label>';
+  html += '<span style="font-size:11px;color:#8e8e93;font-weight:600">Hide for dwelling type:</span>';
+  html += '<div class="dt-chips" id="dtChips">';
+  ['house','bungalow','flat'].forEach(function(dt){
+    var active = hiddenForArr.indexOf(dt) !== -1;
+    html += '<span class="dt-chip' + (active?' active':'') + '" data-dt="' + dt + '" onclick="toggleStageDt(this)">' + dt + '</span>';
+  });
   html += '</div>';
-  html += '<div style="display:flex;gap:8px">';
-  html += '<button class="btn btn-outline btn-sm" onclick="resetStage()">Reset to default</button>';
+  if (n >= 1000) {
+    html += '<button class="btn btn-red btn-sm" onclick="removeCustomStage()">🗑 Remove stage</button>';
+  } else {
+    html += '<button class="btn btn-outline btn-sm" onclick="resetStage()">↺ Reset stage to default</button>';
+  }
   html += '</div>';
   html += '</div>';
 
   if (!items.length) {
-    html += '<div class="empty-state">No checklist items for this stage.</div>';
+    html += '<div class="empty-state" style="padding:30px">No checklist items for this stage yet.</div>';
   } else {
     html += '<div id="items-container">';
     items.forEach(function(item) {
       var ov = overrides[item.id] || {};
+      var isNew = customItems.findIndex(function(ci){return ci.id===item.id;}) !== -1;
+      var isSavedCustom = !!item._saved_custom;
+      var isCustomItem = isNew || isSavedCustom;
       var enabled = ov.hasOwnProperty('enabled') ? ov.enabled : true;
-      var text = ov.text || item.text;
+      var text = ov.text !== undefined ? ov.text : item.text;
       var photoRequired = ov.hasOwnProperty('photo_required') ? ov.photo_required : (item.photo !== false);
-      var isModified = Object.keys(ov).length > 0;
+      var itemHiddenFor = ov.hidden_for || [];
+      var isModified = Object.keys(ov).length > 0 && !isCustomItem;
+      var exampleUrl = ov.example_photo_url || '';
+      var exampleGuidance = ov.example_guidance || '';
 
-      html += '<div class="item-row' + (enabled ? '' : ' disabled') + '" id="item-' + item.id + '">';
-      html += '<div class="item-toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleItem(\'' + item.id + '\',this.checked)" title="Enable/disable this item"></div>';
+      html += '<div class="item-row' + (enabled ? '' : ' disabled') + (isNew ? ' is-new' : '') + '" id="item-' + item.id + '" data-item-id="' + item.id + '">';
+      html += '<div class="item-toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleItem(\\'' + item.id + '\\',this.checked)" title="Enable/disable this item"></div>';
       html += '<div class="item-body">';
       html += '<textarea class="item-text-edit" id="text-' + item.id + '" onchange="markDirty()" rows="2">' + escHtml(text) + '</textarea>';
-      html += '<div class="item-meta" style="margin-top:6px">';
+      html += '<div class="item-meta">';
       html += '<label><input type="checkbox" ' + (photoRequired ? 'checked' : '') + ' id="photo-' + item.id + '" onchange="markDirty()"> Require photo</label>';
-      if (isModified) html += '<span class="tag tag-modified">Modified</span>';
-      if (item.photo !== false) html += '<span class="tag tag-photo">📷 Photo stage</span>';
+      html += '<span style="font-size:11px;color:#8e8e93;font-weight:600">Hide for:</span>';
+      html += '<div class="dt-chips" data-item-dt="' + item.id + '">';
+      ['house','bungalow','flat'].forEach(function(dt){
+        var active = itemHiddenFor.indexOf(dt) !== -1;
+        html += '<span class="dt-chip' + (active?' active':'') + '" data-dt="' + dt + '" onclick="toggleItemDt(this)">' + dt + '</span>';
+      });
+      html += '</div>';
+      if (isNew) html += '<span class="tag tag-new">New — unsaved</span>';
+      else if (isSavedCustom) html += '<span class="tag tag-new">Custom item</span>';
+      else if (isModified) html += '<span class="tag tag-modified">Modified</span>';
+      if (item.photo !== false && !isCustomItem) html += '<span class="tag tag-photo">📷 Photo stage</span>';
+      html += '</div>';
+
+      // Example photo section
+      html += '<div class="example-section">';
+      html += '<div class="example-row">';
+      if (exampleUrl) {
+        html += '<img class="example-thumb" src="' + exampleUrl + '" alt="Example">';
+      } else {
+        html += '<div class="example-empty" onclick="document.getElementById(\\'file-' + item.id + '\\').click()">📷</div>';
+      }
+      html += '<div class="example-controls">';
+      html += '<input type="text" placeholder="Guidance for this example (optional)" id="guidance-' + item.id + '" value="' + escAttr(exampleGuidance) + '" onchange="markDirty()">';
+      html += '<input type="file" accept="image/*" id="file-' + item.id + '" onchange="uploadExample(\\'' + item.id + '\\',' + n + ')" style="display:none">';
+      html += '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\\'file-' + item.id + '\\').click()">' + (exampleUrl ? 'Replace example photo' : 'Add example photo') + '</button>';
+      if (exampleUrl) html += ' <button class="btn btn-outline btn-sm" onclick="removeExample(\\'' + item.id + '\\')">Remove</button>';
       html += '</div>';
       html += '</div>';
+      html += '</div>';
+
+      html += '</div>'; // item-body
+
       html += '<div class="item-actions">';
-      html += '<button class="btn btn-outline btn-sm" onclick="resetItem(\'' + item.id + '\')" title="Reset to default">↺</button>';
+      if (isCustomItem) {
+        html += '<button class="btn btn-red btn-sm" onclick="removeCustomItem(\\'' + item.id + '\\')" title="Delete item">🗑</button>';
+      } else {
+        html += '<button class="btn btn-outline btn-sm" onclick="resetItem(\\'' + item.id + '\\')" title="Reset to default">↺</button>';
+      }
       html += '</div>';
       html += '</div>';
     });
     html += '</div>';
   }
 
+  html += '<button class="add-item-btn" onclick="addCustomItem()">+ Add checklist item</button>';
+
   document.getElementById('editor-panel').innerHTML = html;
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return escHtml(s).replace(/"/g,'&quot;');
 }
 
 function toggleItem(itemId, enabled) {
@@ -205,90 +390,214 @@ function toggleItem(itemId, enabled) {
   markDirty();
 }
 
-function markDirty() {
-  dirty = true;
-  showSaveBar(true);
+function toggleStageDt(el) {
+  el.classList.toggle('active');
+  markDirty();
+}
+function toggleItemDt(el) {
+  el.classList.toggle('active');
+  markDirty();
 }
 
+function markDirty() { dirty = true; showSaveBar(true); }
 function showSaveBar(show) {
-  var bar = document.getElementById('save-bar');
-  if (show) bar.classList.add('show');
-  else bar.classList.remove('show');
+  document.getElementById('save-bar').classList.toggle('show', show);
 }
 
 function discardChanges() {
   dirty = false;
   showSaveBar(false);
+  customItems = [];
   loadStage(currentStage);
+}
+
+function addCustomItem() {
+  var id = 'custom_' + Date.now();
+  customItems.push({id: id, text: '', photo: true});
+  markDirty();
+  renderEditor();
+  setTimeout(function(){
+    var el = document.getElementById('text-' + id);
+    if (el) el.focus();
+  }, 50);
+}
+
+function removeCustomItem(itemId) {
+  customItems = customItems.filter(function(ci){ return ci.id !== itemId; });
+  // If it was a saved custom item, queue a delete
+  if (overrides[itemId]) {
+    fetch('/pd/portal/api/checklist/item/' + itemId + '/reset', {method:'DELETE'})
+      .then(function(){ delete overrides[itemId]; renderEditor(); showToast('Item removed', false); })
+      .catch(function(){ showToast('Error removing item', true); });
+  } else {
+    renderEditor();
+  }
+}
+
+function addCustomStage() {
+  var name = prompt('Name for the new build stage:');
+  if (!name) return;
+  var num = nextCustomStageNum++;
+  customStages[num] = {name: name, applies_to: '', items: []};
+  renderStageList();
+  loadStage(num);
+  markDirty();
+}
+
+function removeCustomStage() {
+  if (!confirm('Remove this custom stage? This cannot be undone.')) return;
+  var n = currentStage;
+  delete customStages[n];
+  fetch('/pd/portal/api/checklist/' + n + '/visibility', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({hidden_globally: true})
+  });
+  currentStage = null;
+  dirty = false; showSaveBar(false);
+  renderStageList();
+  document.getElementById('editor-panel').innerHTML =
+    '<div class="empty-state"><div style="font-size:36px;margin-bottom:10px">📋</div><div style="font-weight:600">Select a stage to edit</div></div>';
+}
+
+async function uploadExample(itemId, stageNum) {
+  var fileInput = document.getElementById('file-' + itemId);
+  var file = fileInput.files[0];
+  if (!file) return;
+  var fd = new FormData();
+  fd.append('photo', file);
+  fd.append('item_id', itemId);
+  fd.append('stage_number', stageNum);
+  try {
+    var r = await fetch('/pd/portal/api/checklist/upload-example', {method:'POST', body: fd});
+    var d = await r.json();
+    if (d.ok) {
+      if (!overrides[itemId]) overrides[itemId] = {};
+      overrides[itemId].example_photo_url = d.url;
+      renderEditor();
+      markDirty();
+      showToast('Example photo uploaded — remember to save', false);
+    } else {
+      showToast(d.error || 'Upload failed', true);
+    }
+  } catch(e) {
+    showToast('Upload failed', true);
+  }
+}
+
+function removeExample(itemId) {
+  if (overrides[itemId]) overrides[itemId].example_photo_url = '';
+  markDirty();
+  renderEditor();
 }
 
 async function saveChanges() {
   var n = currentStage;
-  var stage = STAGES[n];
+  var stage = getStage(n);
   if (!stage) return;
 
-  var items = stage.items || [];
-  var payload = [];
+  var btn = event.target;
+  btn.disabled = true; btn.textContent = 'Saving...';
 
-  items.forEach(function(item) {
+  // 1. Save stage visibility / name override
+  var hideGlobally = document.getElementById('hideGloballyChk').checked;
+  var hiddenFor = [];
+  document.querySelectorAll('#dtChips .dt-chip.active').forEach(function(el){ hiddenFor.push(el.dataset.dt); });
+  var nameVal = document.getElementById('stageNameInput').value.trim();
+  var appliesVal = document.getElementById('stageAppliesInput').value.trim();
+
+  await fetch('/pd/portal/api/checklist/' + n + '/visibility', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      hidden_globally: hideGlobally,
+      hidden_for: hiddenFor,
+      name_override: nameVal !== stage.name ? nameVal : '',
+      applies_to_override: appliesVal !== (stage.applies_to||'') ? appliesVal : '',
+    })
+  });
+  allVisibility[n] = {hidden_globally: hideGlobally, hidden_for: hiddenFor, name_override: nameVal, applies_to_override: appliesVal};
+
+  // 2. Save items (default + custom, all together)
+  var items = (stage.items || []).slice();
+  customItems.forEach(function(ci){ items.push(ci); });
+  var defaultIds = (stage.items||[]).map(function(i){return i.id;});
+  Object.keys(overrides).forEach(function(id){
+    if (defaultIds.indexOf(id) === -1 && customItems.findIndex(function(ci){return ci.id===id;}) === -1) {
+      items.push({id: id, text: overrides[id].text || ''});
+    }
+  });
+
+  var payload = [];
+  items.forEach(function(item, idx) {
     var textEl = document.getElementById('text-' + item.id);
     var photoEl = document.getElementById('photo-' + item.id);
+    var guidanceEl = document.getElementById('guidance-' + item.id);
     var row = document.getElementById('item-' + item.id);
+    if (!row) return;
     var enabled = !row.classList.contains('disabled');
-    var text = textEl ? textEl.value.trim() : item.text;
+    var text = textEl ? textEl.value.trim() : (item.text||'');
     var photoRequired = photoEl ? photoEl.checked : (item.photo !== false);
+    var hiddenForItem = [];
+    document.querySelectorAll('[data-item-dt="' + item.id + '"] .dt-chip.active').forEach(function(el){ hiddenForItem.push(el.dataset.dt); });
+    var existingOv = overrides[item.id] || {};
 
-    payload.push({
+    var isCustom = defaultIds.indexOf(item.id) === -1;
+
+    var rec = {
       item_id: item.id,
       text: text,
       photo_required: photoRequired,
       enabled: enabled,
-      sort_order: items.indexOf(item),
-    });
+      sort_order: idx,
+      hidden_for: hiddenForItem,
+      example_photo_url: existingOv.example_photo_url || '',
+      example_guidance: guidanceEl ? guidanceEl.value.trim() : (existingOv.example_guidance||''),
+    };
+    if (isCustom) rec.is_custom = true;
+    payload.push(rec);
   });
 
   try {
     var r = await fetch('/pd/portal/api/checklist/' + n, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload)
     });
     var d = await r.json();
     if (d.ok) {
-      dirty = false;
-      showSaveBar(false);
-      showToast('Stage ' + n + ' saved ✓', false);
-      // Reload overrides
+      dirty = false; showSaveBar(false);
+      customItems = [];
+      showToast('Stage saved ✓', false);
+      renderStageList();
       await loadStage(n);
     } else {
       showToast('Error: ' + (d.error || 'Unknown'), true);
     }
   } catch(e) {
     showToast('Save failed: ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save changes';
   }
 }
 
 async function resetStage() {
-  if (!confirm('Reset all items in this stage to default? Your customisations will be lost.')) return;
-  try {
-    await fetch('/pd/portal/api/checklist/' + currentStage + '/reset', {method: 'DELETE'});
-    showToast('Stage reset to default ✓', false);
-    await loadStage(currentStage);
-  } catch(e) {
-    showToast('Reset failed', true);
-  }
+  if (!confirm('Reset this stage to default? All customisations (text, photos, hidden items, visibility) will be lost.')) return;
+  await fetch('/pd/portal/api/checklist/' + currentStage + '/reset', {method: 'DELETE'});
+  await fetch('/pd/portal/api/checklist/' + currentStage + '/visibility', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({hidden_globally:false, hidden_for:[], name_override:'', applies_to_override:''})
+  });
+  showToast('Stage reset to default ✓', false);
+  customItems = [];
+  dirty = false; showSaveBar(false);
+  await loadAllVisibility();
+  renderStageList();
+  await loadStage(currentStage);
 }
 
 async function resetItem(itemId) {
-  try {
-    await fetch('/pd/portal/api/checklist/item/' + itemId + '/reset', {method: 'DELETE'});
-    showToast('Item reset ✓', false);
-    dirty = false;
-    showSaveBar(false);
-    await loadStage(currentStage);
-  } catch(e) {
-    showToast('Reset failed', true);
-  }
+  await fetch('/pd/portal/api/checklist/item/' + itemId + '/reset', {method: 'DELETE'});
+  showToast('Item reset ✓', false);
+  dirty = false; showSaveBar(false);
+  await loadStage(currentStage);
 }
 
 function showToast(msg, isError) {
@@ -298,10 +607,7 @@ function showToast(msg, isError) {
   setTimeout(function(){ t.className = 'toast'; }, 3000);
 }
 
-// Init
-renderStageList();
-// Auto-load stage 1
-loadStage(1);
+init();
 </script>
 
 </body>
