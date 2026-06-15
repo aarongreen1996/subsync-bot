@@ -196,6 +196,58 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0}}
     _send(sub_email, subject, html, pdf_bytes if is_approved else None, pdf_filename)
 
 
+def send_qs_notification(submission: dict, plot: dict, site: dict, qs_review_url: str):
+    """Notify the site QS that a stage has been approved by the site manager
+    and is now awaiting QS sign-off for payment agreement."""
+    stage_name  = submission.get("stage_name", "")
+    plot_number = plot.get("plot_number", "")
+    site_name   = site.get("name", "")
+    sub_company = submission.get("submitted_by_company", "")
+    manager_name = site.get("manager_name", "Site Manager")
+    reviewed_at = (submission.get("reviewed_at") or "")[:16].replace("T", " ")
+
+    subject = f"PD — QS Approval Needed | {site_name} | Plot {plot_number} | {stage_name}"
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}}
+.w{{max-width:600px;margin:0 auto;background:#fff}}
+.h{{background:#1a1a2e;padding:24px 32px}}
+.h h1{{color:#C5962A;margin:0;font-size:20px}}
+.h p{{color:#aaa;margin:4px 0 0;font-size:13px}}
+.b{{padding:32px}}
+.badge{{display:inline-block;background:#e0f2fe;color:#075985;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:bold;margin-bottom:20px}}
+.grid{{background:#f8f9fa;border-radius:8px;padding:16px 20px;margin:16px 0}}
+.row{{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e9ecef;font-size:14px}}
+.row:last-child{{border-bottom:none}}
+.lbl{{color:#6c757d}} .val{{font-weight:bold;color:#212529}}
+.cta{{text-align:center;margin:28px 0}}
+.btn{{display:inline-block;background:#C5962A;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold}}
+.ft{{background:#f8f9fa;padding:16px 32px;text-align:center;font-size:12px;color:#999}}
+</style></head>
+<body><div class="w">
+<div class="h"><h1>Perfect Delivery — QS Approval</h1><p>Pennyfarthing Homes · Quality Management</p></div>
+<div class="b">
+<span class="badge">✅ Approved by Site Manager — Awaiting QS Sign-off</span>
+<p>The stage below has been approved by the site manager and is now ready for your secondary review and payment agreement.</p>
+<div class="grid">
+  <div class="row"><span class="lbl">Site</span><span class="val">{site_name}</span></div>
+  <div class="row"><span class="lbl">Plot</span><span class="val">{plot_number}</span></div>
+  <div class="row"><span class="lbl">Stage</span><span class="val">{stage_name}</span></div>
+  <div class="row"><span class="lbl">Subcontractor</span><span class="val">{sub_company}</span></div>
+  <div class="row"><span class="lbl">Approved by</span><span class="val">{manager_name}</span></div>
+  <div class="row"><span class="lbl">Approved at</span><span class="val">{reviewed_at}</span></div>
+</div>
+<p style="font-size:14px;color:#555">Please review the checklist, photos and signature, then sign off for payment agreement.</p>
+<div class="cta"><a href="{qs_review_url}" class="btn">Review &amp; Sign Off →</a></div>
+<p style="font-size:12px;color:#999;text-align:center">Or copy: {qs_review_url}</p>
+</div>
+<div class="ft">Pennyfarthing Perfect Delivery · Auto-generated</div>
+</div></body></html>"""
+
+    _send(site.get("qs_email", ""), subject, html)
+
+
 def send_welcome_email(user: dict, tenant: dict, password: str, sites: list):
     """Send welcome email to a new portal user (site manager or tenant admin)."""
     name         = user.get("name", "")
