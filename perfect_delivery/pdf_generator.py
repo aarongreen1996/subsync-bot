@@ -71,6 +71,7 @@ def generate_submission_pdf(
     NO_RED     = colors.Color(0.863, 0.149, 0.149)
     NA_GREY    = colors.Color(0.5, 0.5, 0.5)
     AMBER      = colors.Color(0.855, 0.647, 0.125)
+    QS_BLUE    = colors.Color(0.055, 0.647, 0.914)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -91,7 +92,7 @@ def generate_submission_pdf(
 
     story = []
 
-    # ── Header ───────────────────────────────────────────────────────────────
+    # ── Header ────────────────────────────────────────────────────────────────
     logo_cell = None
     if logo_url:
         img_bytes = _fetch_image_bytes(logo_url)
@@ -125,9 +126,8 @@ def generate_submission_pdf(
     story.append(hdr)
     story.append(Spacer(1, 4*mm))
 
-    # ── Meta grid ────────────────────────────────────────────────────────────
+    # ── Meta grid ─────────────────────────────────────────────────────────────
     sub_date = str(submission.get("submitted_at",""))[:16].replace("T"," ")
-    rev_date = str(submission.get("reviewed_at",""))[:16].replace("T"," ") if submission.get("reviewed_at") else "—"
     status   = (submission.get("status") or "pending").upper()
 
     meta = [
@@ -137,8 +137,6 @@ def generate_submission_pdf(
          Paragraph('<b>Submitted</b>', s_bold), Paragraph(sub_date, s_body)],
         [Paragraph('<b>Subcontractor</b>', s_bold), Paragraph(str(submission.get("submitted_by_name") or ""), s_body),
          Paragraph('<b>Company</b>', s_bold),   Paragraph(str(submission.get("submitted_by_company") or ""), s_body)],
-        [Paragraph('<b>Reviewed by</b>', s_bold), Paragraph(str(submission.get("reviewed_by") or "—"), s_body),
-         Paragraph('<b>Review date</b>', s_bold), Paragraph(rev_date, s_body)],
     ]
     mt = Table(meta, colWidths=[W*0.18, W*0.32, W*0.18, W*0.32])
     mt.setStyle(TableStyle([
@@ -219,7 +217,6 @@ def generate_submission_pdf(
 
     answers = submission.get("answers") or {}
 
-    # Stats
     yes_c = sum(1 for a in answers.values() if isinstance(a,dict) and a.get("value")=="yes")
     no_c  = sum(1 for a in answers.values() if isinstance(a,dict) and a.get("value")=="no")
     na_c  = sum(1 for a in answers.values() if isinstance(a,dict) and a.get("value")=="n/a")
@@ -241,7 +238,6 @@ def generate_submission_pdf(
     story.append(stat_row)
     story.append(Spacer(1, 3*mm))
 
-    # Items
     for idx, item in enumerate(stage_items, 1):
         item_id  = item.get("id","")
         item_txt = str(item.get("text") or "")
@@ -287,7 +283,6 @@ def generate_submission_pdf(
             ]))
             els.append(ct)
 
-        # Photos
         item_photos = (photos_by_item or {}).get(item_id, [])
         if item_photos:
             imgs = []
@@ -316,32 +311,137 @@ def generate_submission_pdf(
         story.append(KeepTogether(els))
         story.append(Spacer(1, 1*mm))
 
-    # ── Signature ─────────────────────────────────────────────────────────────
-    sig_url = submission.get("signature_url")
-    if sig_url:
-        sig_bytes = _fetch_image_bytes(sig_url)
-        if sig_bytes:
-            try:
-                story.append(Spacer(1, 4*mm))
-                sig_table = Table(
-                    [[
-                        Paragraph('<b>Subcontractor Signature</b>', s_bold),
-                        RLImage(io.BytesIO(sig_bytes), width=50*mm, height=20*mm, kind='bound'),
-                    ]],
-                    colWidths=[W*0.5, W*0.5],
-                )
-                sig_table.setStyle(TableStyle([
-                    ('BACKGROUND',    (0,0),(-1,-1), LIGHT_GREY),
-                    ('GRID',          (0,0),(-1,-1), 0.5, MID_GREY),
-                    ('LEFTPADDING',   (0,0),(-1,-1), 8),
-                    ('RIGHTPADDING',  (0,0),(-1,-1), 8),
-                    ('TOPPADDING',    (0,0),(-1,-1), 6),
-                    ('BOTTOMPADDING', (0,0),(-1,-1), 6),
-                    ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
-                ]))
-                story.append(sig_table)
-            except Exception as e:
-                print(f"Signature in PDF error: {e}")
+    # ── Three-panel Signoff Section ───────────────────────────────────────────
+    story.append(Spacer(1, 6*mm))
+    story.append(Paragraph("Sign-off Record", s_head))
+    story.append(Spacer(1, 3*mm))
+
+    def _sig_panel(title, color, name, company_or_role, date_str, status_label, notes, sig_url):
+        """Build a single signoff panel cell."""
+        lines = []
+        lines.append(Paragraph(title, s(f'spt_{title}', fontSize=8, fontName='Helvetica-Bold',
+                                         textColor=WHITE, alignment=TA_CENTER)))
+
+        inner_rows = []
+        if name:
+            inner_rows.append([Paragraph('<b>Name</b>', s_small), Paragraph(str(name), s_body)])
+        if company_or_role:
+            inner_rows.append([Paragraph('<b>Role</b>', s_small), Paragraph(str(company_or_role), s_body)])
+        if date_str:
+            inner_rows.append([Paragraph('<b>Date</b>', s_small), Paragraph(str(date_str), s_body)])
+        if status_label:
+            inner_rows.append([Paragraph('<b>Status</b>', s_small), Paragraph(str(status_label), s_body)])
+        if notes:
+            inner_rows.append([Paragraph('<b>Notes</b>', s_small), Paragraph(str(notes)[:120], s_small)])
+
+        if inner_rows:
+            details = Table(inner_rows, colWidths=[18*mm, None])
+            details.setStyle(TableStyle([
+                ('LEFTPADDING',   (0,0),(-1,-1), 3),
+                ('RIGHTPADDING',  (0,0),(-1,-1), 3),
+                ('TOPPADDING',    (0,0),(-1,-1), 2),
+                ('BOTTOMPADDING', (0,0),(-1,-1), 2),
+                ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+            ]))
+        else:
+            details = Paragraph('<i>Not yet reviewed</i>', s_small)
+
+        # Signature image
+        sig_el = None
+        if sig_url:
+            sig_bytes = _fetch_image_bytes(sig_url)
+            if sig_bytes:
+                try:
+                    sig_el = RLImage(io.BytesIO(sig_bytes), width=42*mm, height=16*mm, kind='bound')
+                except Exception:
+                    sig_el = None
+
+        panel_rows = [
+            [Paragraph(title, s(f'sph_{title}', fontSize=8, fontName='Helvetica-Bold',
+                                 textColor=WHITE, alignment=TA_CENTER))],
+            [details],
+        ]
+        if sig_el:
+            panel_rows.append([Paragraph('<b>Signature</b>', s_small)])
+            panel_rows.append([sig_el])
+        else:
+            sig_line_box = Table(
+                [[Paragraph('Signature: ___________________________', s_small)]],
+                colWidths=[None]
+            )
+            sig_line_box.setStyle(TableStyle([
+                ('TOPPADDING', (0,0),(-1,-1), 8),
+                ('BOTTOMPADDING', (0,0),(-1,-1), 8),
+            ]))
+            panel_rows.append([sig_line_box])
+
+        panel = Table(panel_rows, colWidths=[None])
+        panel.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0),(0,0), color),
+            ('BACKGROUND',    (0,1),(-1,-1), LIGHT_GREY),
+            ('GRID',          (0,0),(-1,-1), 0.5, MID_GREY),
+            ('LEFTPADDING',   (0,0),(-1,-1), 5),
+            ('RIGHTPADDING',  (0,0),(-1,-1), 5),
+            ('TOPPADDING',    (0,0),(0,0),   6),
+            ('BOTTOMPADDING', (0,0),(0,0),   6),
+            ('TOPPADDING',    (0,1),(-1,-1), 4),
+            ('BOTTOMPADDING', (0,1),(-1,-1), 4),
+            ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+            ('ALIGN',         (0,3),(-1,3),  'CENTER'),
+        ]))
+        return panel
+
+    # Build the three panels
+    sub_name    = submission.get("submitted_by_name", "")
+    sub_company = submission.get("submitted_by_company", "")
+    sub_date_s  = str(submission.get("submitted_at",""))[:10]
+    sub_sig_url = submission.get("signature_url","")
+
+    mgr_name    = submission.get("reviewed_by","")
+    mgr_date    = str(submission.get("reviewed_at",""))[:10] if submission.get("reviewed_at") else ""
+    mgr_status  = {"approved":"✓ Approved","rejected":"✗ Rejected","pending":"⏳ Pending"}.get(submission.get("status",""),"")
+    mgr_notes   = submission.get("manager_notes","")
+    mgr_sig_url = submission.get("manager_signature_url","")
+
+    qs_status   = submission.get("qs_status","not_required")
+    qs_name     = submission.get("qs_reviewed_by","")
+    qs_date     = str(submission.get("qs_reviewed_at",""))[:10] if submission.get("qs_reviewed_at") else ""
+    qs_label    = {"approved":"✓ Approved for Payment","rejected":"✗ Rejected","pending":"⏳ Awaiting QS"}.get(qs_status,"")
+    qs_notes    = submission.get("qs_notes","")
+    qs_sig_url  = submission.get("qs_signature_url","")
+
+    panel_sub = _sig_panel(
+        "Subcontractor", colors.Color(0.2, 0.2, 0.4),
+        sub_name, sub_company, sub_date_s, "Submitted", "", sub_sig_url
+    )
+    panel_mgr = _sig_panel(
+        "Site Manager", YES_GREEN if submission.get("status")=="approved" else (NO_RED if submission.get("status")=="rejected" else AMBER),
+        mgr_name, site.get("manager_name","") or "Site Manager", mgr_date, mgr_status, mgr_notes, mgr_sig_url
+    )
+
+    has_qs = qs_status and qs_status != "not_required"
+
+    if has_qs:
+        qs_color = YES_GREEN if qs_status=="approved" else (NO_RED if qs_status=="rejected" else QS_BLUE)
+        panel_qs = _sig_panel(
+            "Quantity Surveyor", qs_color,
+            qs_name, "QS / Payment", qs_date, qs_label, qs_notes, qs_sig_url
+        )
+        col_w = [W/3, W/3, W/3]
+        signoff_row = [[panel_sub, panel_mgr, panel_qs]]
+    else:
+        col_w = [W/2, W/2]
+        signoff_row = [[panel_sub, panel_mgr]]
+
+    signoff_table = Table(signoff_row, colWidths=col_w)
+    signoff_table.setStyle(TableStyle([
+        ('LEFTPADDING',   (0,0),(-1,-1), 3),
+        ('RIGHTPADDING',  (0,0),(-1,-1), 3),
+        ('TOPPADDING',    (0,0),(-1,-1), 0),
+        ('BOTTOMPADDING', (0,0),(-1,-1), 0),
+        ('VALIGN',        (0,0),(-1,-1), 'TOP'),
+    ]))
+    story.append(signoff_table)
 
     # ── Footer ────────────────────────────────────────────────────────────────
     story.append(Spacer(1, 6*mm))
@@ -390,6 +490,7 @@ def generate_plot_report_pdf(
     NO_RED    = colors.Color(0.863, 0.149, 0.149)
     AMBER     = colors.Color(0.855, 0.647, 0.125)
     GREY_TEXT = colors.Color(0.5, 0.5, 0.5)
+    QS_BLUE   = colors.Color(0.055, 0.647, 0.914)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -407,7 +508,7 @@ def generate_plot_report_pdf(
 
     story = []
 
-    # ── Header ───────────────────────────────────────────────────────────────
+    # ── Header ────────────────────────────────────────────────────────────────
     logo_cell = None
     if logo_url:
         ib = _fetch_image_bytes(logo_url)
@@ -433,7 +534,7 @@ def generate_plot_report_pdf(
     story.append(hdr)
     story.append(Spacer(1,4*mm))
 
-    # ── Plot meta ────────────────────────────────────────────────────────────
+    # ── Plot meta ─────────────────────────────────────────────────────────────
     from datetime import date as _d
     meta = Table([
         [Paragraph("<b>Site</b>",s_bold),  Paragraph(str(site.get("name","") or ""),s_body),
@@ -482,8 +583,8 @@ def generate_plot_report_pdf(
     story.append(Paragraph("Stage Audit Trail", s_head))
     story.append(Spacer(1,2*mm))
 
-    col_w = [W*0.05, W*0.22, W*0.18, W*0.12, W*0.18, W*0.10, W*0.15]
-    hdrs  = ["#","Stage","Trade","Status","Submitted by","Date","Reviewed by"]
+    col_w = [W*0.05, W*0.20, W*0.16, W*0.10, W*0.17, W*0.10, W*0.12, W*0.10]
+    hdrs  = ["#","Stage","Trade","Status","Submitted by","Date","Manager","QS"]
     hdr_row = [Paragraph(h, s("th",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT)) for h in hdrs]
 
     table_data = [hdr_row]
@@ -495,11 +596,10 @@ def generate_plot_report_pdf(
         status     = sub["status"] if sub else "not_started"
         group      = stage_to_group.get(n, "")
 
-        # Group header row
         if group != current_group:
             current_group = group
             group_row = [Paragraph(group, s("gr",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT))]
-            group_row += [""] * 6
+            group_row += [""] * 7
             table_data.append(group_row)
 
         if status == "approved":   sc, st = YES_GREEN, "Approved"
@@ -507,14 +607,22 @@ def generate_plot_report_pdf(
         elif status == "rejected": sc, st = NO_RED,   "Rejected"
         else:                      sc, st = GREY_TEXT, "—"
 
+        # QS status
+        qs_s = sub.get("qs_status","") if sub else ""
+        if qs_s == "approved":   qs_c, qs_t = YES_GREEN, "Payment"
+        elif qs_s == "rejected": qs_c, qs_t = NO_RED,   "Rejected"
+        elif qs_s == "pending":  qs_c, qs_t = QS_BLUE,  "Pending"
+        else:                    qs_c, qs_t = GREY_TEXT, "—"
+
         row = [
             Paragraph(str(n).zfill(2), s_small),
             Paragraph(str(stage_data.get("name","") or ""), s_body),
             Paragraph(str(stage_data.get("applies_to","") or ""), s_small),
             Paragraph(st, s(f"st{n}", fontSize=7, fontName="Helvetica-Bold", textColor=sc)),
-            Paragraph(str(sub.get("submitted_by_name","") or "") + ("<br/>" + str(sub.get("submitted_by_company","") or "") if sub else ""), s_small) if sub else Paragraph("—",s_small),
+            Paragraph((str(sub.get("submitted_by_name","") or "") + "<br/>" + str(sub.get("submitted_by_company","") or "") if sub else "—"), s_small),
             Paragraph(str((sub.get("submitted_at","")[:10] if sub else "") or ""), s_small),
             Paragraph(str(sub.get("reviewed_by","") or "—") if sub else "—", s_small),
+            Paragraph(qs_t, s(f"qs{n}", fontSize=7, fontName="Helvetica-Bold", textColor=qs_c)),
         ]
         table_data.append(row)
 
@@ -530,7 +638,6 @@ def generate_plot_report_pdf(
         ("VALIGN",(0,0),(-1,-1),"TOP"),
         ("FONTSIZE",(0,0),(-1,-1),7),
     ]
-    # Shade alternate rows and group headers
     row_idx = 1
     for n in range(1, 38):
         group = stage_to_group.get(n, "")
