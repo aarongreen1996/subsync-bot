@@ -81,25 +81,47 @@ def form(token: str):
     tenant_id = tenant.get("id")
     dwelling_category = plot_row.get("dwelling_category") or "house"
 
+    # Fetch ALL visibility and override data in 2 queries instead of 74 (N+1 fix)
+    try:
+        vis_res = supabase.table("pd_stage_visibility").select("*").eq("tenant_id", tenant_id).execute()
+        vis_map = {v["stage_number"]: v for v in (vis_res.data or [])}
+    except Exception:
+        vis_map = {}
+    try:
+        ov_res = supabase.table("pd_checklist_overrides").select("*").eq("tenant_id", tenant_id).execute()
+        ov_by_stage = {}
+        for o in (ov_res.data or []):
+            ov_by_stage.setdefault(o["stage_number"], {})[o["item_id"]] = o
+    except Exception:
+        ov_by_stage = {}
+
     # Build stages with overrides applied, dropping any hidden for this dwelling type
     stages_with_overrides = {}
     for k, v in STAGES.items():
-        merged = _get_stage_with_overrides(k, tenant_id, dwelling_category)
+        merged = _apply_overrides(k, v, vis_map, ov_by_stage, dwelling_category)
         if merged is not None:
             stages_with_overrides[k] = merged
 
-    # Add tenant custom stages (not hidden for this dwelling type)
-    custom_stages = _get_custom_stages(tenant_id, dwelling_category)
+    # Add tenant custom stages
+    custom_stages = _get_custom_stages_from_cache(vis_map, ov_by_stage, dwelling_category)
     stages_with_overrides.update(custom_stages)
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
 
-    # Filter stages_by_group to only include visible stages
+    # Build stages_by_group safely — get_stages_by_group() may return a dict or list
+    raw_groups = get_stages_by_group()
     stages_by_group = []
-    for group in get_stages_by_group():
-        visible_nums = [n for n in group.get("stages", []) if n in stages_with_overrides]
-        if visible_nums:
-            stages_by_group.append({**group, "stages": visible_nums})
+    if isinstance(raw_groups, dict):
+        for group_name, stage_nums in raw_groups.items():
+            visible = [n for n in stage_nums if n in stages_with_overrides]
+            if visible:
+                stages_by_group.append({"name": group_name, "stages": visible})
+    else:
+        for group in raw_groups:
+            if isinstance(group, dict):
+                visible = [n for n in group.get("stages", []) if n in stages_with_overrides]
+                if visible:
+                    stages_by_group.append({**group, "stages": visible})
     if custom_stages:
         stages_by_group.append({"name": "Custom Stages", "stages": list(custom_stages.keys())})
 
@@ -581,22 +603,43 @@ def resubmit_form(resubmit_token: str):
     tenant_id = tenant.get("id")
     dwelling_category = plot_row.get("dwelling_category") or "house"
 
+    try:
+        vis_res = supabase.table("pd_stage_visibility").select("*").eq("tenant_id", tenant_id).execute()
+        vis_map = {v["stage_number"]: v for v in (vis_res.data or [])}
+    except Exception:
+        vis_map = {}
+    try:
+        ov_res = supabase.table("pd_checklist_overrides").select("*").eq("tenant_id", tenant_id).execute()
+        ov_by_stage = {}
+        for o in (ov_res.data or []):
+            ov_by_stage.setdefault(o["stage_number"], {})[o["item_id"]] = o
+    except Exception:
+        ov_by_stage = {}
+
     stages_with_overrides = {}
     for k, v in STAGES.items():
-        merged = _get_stage_with_overrides(k, tenant_id, dwelling_category)
+        merged = _apply_overrides(k, v, vis_map, ov_by_stage, dwelling_category)
         if merged is not None:
             stages_with_overrides[k] = merged
 
-    custom_stages = _get_custom_stages(tenant_id, dwelling_category)
+    custom_stages = _get_custom_stages_from_cache(vis_map, ov_by_stage, dwelling_category)
     stages_with_overrides.update(custom_stages)
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
 
+    raw_groups = get_stages_by_group()
     stages_by_group = []
-    for group in get_stages_by_group():
-        visible_nums = [n for n in group.get("stages", []) if n in stages_with_overrides]
-        if visible_nums:
-            stages_by_group.append({**group, "stages": visible_nums})
+    if isinstance(raw_groups, dict):
+        for group_name, stage_nums in raw_groups.items():
+            visible = [n for n in stage_nums if n in stages_with_overrides]
+            if visible:
+                stages_by_group.append({"name": group_name, "stages": visible})
+    else:
+        for group in raw_groups:
+            if isinstance(group, dict):
+                visible = [n for n in group.get("stages", []) if n in stages_with_overrides]
+                if visible:
+                    stages_by_group.append({**group, "stages": visible})
     if custom_stages:
         stages_by_group.append({"name": "Custom Stages", "stages": list(custom_stages.keys())})
 
@@ -993,6 +1036,90 @@ def checklist_upload_example():
     )
     url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(path)
     return jsonify({"ok": True, "url": url})
+
+
+def _apply_overrides(stage_number: int, stage: dict, vis_map: dict, ov_by_stage: dict, dwelling_category: str = "house"):
+    """Apply pre-fetched visibility + override data to a stage. Returns None if hidden."""
+    import copy
+    vis = vis_map.get(stage_number, {})
+    if vis.get("hidden_globally"):
+        return None
+    if dwelling_category in (vis.get("hidden_for") or []):
+        return None
+
+    stage_copy = copy.deepcopy(stage)
+    if vis.get("name_override"):
+        stage_copy["name"] = vis["name_override"]
+    if vis.get("applies_to_override"):
+        stage_copy["applies_to"] = vis["applies_to_override"]
+
+    ov_map = ov_by_stage.get(stage_number, {})
+    merged = []
+    for item in stage_copy.get("items", []):
+        ov = ov_map.get(item["id"], {})
+        if ov.get("enabled") is False:
+            continue
+        if dwelling_category in (ov.get("hidden_for") or []):
+            continue
+        if "text" in ov and ov["text"]:
+            item["text"] = ov["text"]
+        if "photo_required" in ov and ov["photo_required"] is not None:
+            item["photo"] = bool(ov["photo_required"])
+        if ov.get("example_photo_url"):
+            item["example_photo_url"] = ov["example_photo_url"]
+        if ov.get("example_guidance"):
+            item["example_guidance"] = ov["example_guidance"]
+        merged.append(item)
+
+    default_ids = {i["id"] for i in stage.get("items", [])}
+    for item_id, ov in ov_map.items():
+        if item_id in default_ids:
+            continue
+        if not (ov.get("is_custom") or item_id.startswith("custom_")):
+            continue
+        if ov.get("enabled") is False:
+            continue
+        if dwelling_category in (ov.get("hidden_for") or []):
+            continue
+        merged.append({
+            "id": item_id, "text": ov.get("text", ""), "type": "check",
+            "photo": ov.get("photo_required", True),
+            "example_photo_url": ov.get("example_photo_url", ""),
+            "example_guidance": ov.get("example_guidance", ""),
+        })
+
+    stage_copy["items"] = merged
+    return stage_copy
+
+
+def _get_custom_stages_from_cache(vis_map: dict, ov_by_stage: dict, dwelling_category: str = "house") -> dict:
+    """Return tenant custom stages (number >= 1000) using pre-fetched cache data."""
+    custom = {}
+    for n, v in vis_map.items():
+        if n < 1000:
+            continue
+        if v.get("hidden_globally"):
+            continue
+        if dwelling_category in (v.get("hidden_for") or []):
+            continue
+        items = []
+        for item_id, ov in ov_by_stage.get(n, {}).items():
+            if ov.get("enabled") is False:
+                continue
+            if dwelling_category in (ov.get("hidden_for") or []):
+                continue
+            items.append({
+                "id": item_id, "text": ov.get("text", ""), "type": "check",
+                "photo": ov.get("photo_required", True),
+                "example_photo_url": ov.get("example_photo_url", ""),
+                "example_guidance": ov.get("example_guidance", ""),
+            })
+        custom[n] = {
+            "name": v.get("name_override") or f"Custom Stage {n}",
+            "applies_to": v.get("applies_to_override", ""),
+            "items": items,
+        }
+    return custom
 
 
 def _get_stage_with_overrides(stage_number: int, tenant_id: str = None, dwelling_category: str = "house"):
