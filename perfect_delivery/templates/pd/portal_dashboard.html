@@ -453,6 +453,7 @@
         <label>Role</label>
         <select id="uRole" onchange="updateSiteVisibility()">
           <option value="site_manager">Site Manager</option>
+          <option value="site_qs">Quantity Surveyor (QS)</option>
           <option value="tenant_admin">Tenant Admin</option>
         </select>
         <p style="font-size:11px;color:#8e8e93;margin:4px 0 0" id="uRoleHint">Can review and approve submissions</p>
@@ -871,9 +872,9 @@ async function loadUsers() {
     if (!Array.isArray(siteIds)) siteIds = [];
     u.site_ids = siteIds;
     window._userMap[u.id] = u;
-    const roleLabel = u.role === 'tenant_admin' ? 'Admin' : 'Site Manager';
-    const roleBg    = u.role === 'tenant_admin' ? '#1a1a2e' : '#f0f4ff';
-    const roleColor = u.role === 'tenant_admin' ? '#fff' : '#1a1a2e';
+    const roleLabel = u.role === 'tenant_admin' ? 'Admin' : u.role === 'site_qs' ? 'QS' : 'Site Manager';
+    const roleBg    = u.role === 'tenant_admin' ? '#1a1a2e' : u.role === 'site_qs' ? '#e0f2fe' : '#f0f4ff';
+    const roleColor = u.role === 'tenant_admin' ? '#fff' : u.role === 'site_qs' ? '#075985' : '#1a1a2e';
     let sitesHtml = '';
     if (u.role === 'tenant_admin') {
       sitesHtml = '<span style="font-size:12px;color:#16a34a;font-weight:600">All sites</span>';
@@ -922,7 +923,14 @@ function updateSiteVisibility() {
   const rh = document.getElementById('uRoleHint');
   if (sw) sw.style.display = isAdmin ? 'none' : 'block';
   if (an) an.style.display = isAdmin ? 'block' : 'none';
-  if (rh) rh.textContent  = isAdmin ? 'Full access to all areas and settings' : 'Can review and approve submissions';
+  if (rh) {
+    const hints = {
+      'site_manager': 'Can review and approve submissions',
+      'site_qs': 'Receives QS sign-off requests after manager approval — auto-set as site QS contact',
+      'tenant_admin': 'Full access to all areas and settings',
+    };
+    rh.textContent = hints[role] || 'Can review and approve submissions';
+  }
 }
 
 function renderSiteCards(selectedIds) {
