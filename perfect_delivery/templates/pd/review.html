@@ -41,6 +41,26 @@
   .ci-extra span { font-weight: 600; color: #374151; }
   .photo-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .photo-grid a img { width: 88px; height: 88px; object-fit: cover; border-radius: 8px; border: 2px solid #e5e7eb; }
+
+  /* Signature / signoff cards */
+  .signoff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .signoff-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  .signoff-card .sc-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
+  .sc-subcontractor .sc-label { color: #6b7280; }
+  .sc-manager .sc-label { color: #16a34a; }
+  .sc-qs .sc-label { color: #0ea5e9; }
+  .signoff-card .sc-name { font-size: 15px; font-weight: 700; color: #1a1a2e; }
+  .signoff-card .sc-date { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .signoff-card .sc-status { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+  .sc-approved { background: #dcfce7; color: #166534; }
+  .sc-rejected { background: #fee2e2; color: #991b1b; }
+  .sc-pending  { background: #e0f2fe; color: #075985; }
+  .sc-na       { background: #f3f4f6; color: #6b7280; }
+  .signoff-card .sc-sig { margin-top: 10px; }
+  .signoff-card .sc-sig img { max-width: 180px; max-height: 60px; object-fit: contain; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px; background: #fafafa; }
+  .signoff-card .sc-notes { margin-top: 8px; font-size: 12px; color: #374151; background: #f9f9fb; border-radius: 6px; padding: 8px 10px; border-left: 3px solid #e5e7eb; }
+
+  /* Decision panel */
   .decide-card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); border-top: 3px solid #C5962A; }
   .decide-btns { display: flex; gap: 12px; margin-bottom: 20px; }
   .decide-btn { flex: 1; padding: 14px; border-radius: 10px; border: 2px solid #e5e7eb; font-size: 15px; font-weight: 700; cursor: pointer; background: white; transition: all 0.15s; }
@@ -54,14 +74,10 @@
   .submit-btn:disabled { background: #d1d5db; color: #9ca3af; cursor: not-allowed; }
   .submit-btn.approve { background: #16a34a; color: white; }
   .submit-btn.reject  { background: #dc2626; color: white; }
-  .reviewed-banner { padding: 20px; border-radius: 12px; margin-bottom: 16px; text-align: center; }
-  .reviewed-banner h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
-  .reviewed-banner.approved { background: #dcfce7; color: #166534; }
-  .reviewed-banner.rejected { background: #fee2e2; color: #991b1b; }
   .notes-display { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 14px 16px; border-radius: 0 8px 8px 0; font-size: 14px; color: #374151; white-space: pre-wrap; }
   .notes-display strong { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #92400e; margin-bottom: 6px; }
-  @media(min-width:600px) { .meta-grid { grid-template-columns: repeat(3,1fr); } }
-  /* ── Photo flagging ── */
+
+  /* Photo flagging */
   .photo-item-wrap { position: relative; display: inline-block; }
   .photo-flag-btn {
     position: absolute; top: -6px; right: -6px;
@@ -92,6 +108,7 @@
   .flagged-summary h4 { color: #dc2626; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
   .flagged-summary ul { margin: 0; padding-left: 16px; font-size: 13px; color: #374151; }
 
+  @media(min-width:600px) { .meta-grid { grid-template-columns: repeat(3,1fr); } }
   @media print {
     .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .decide-card { display: none; }
@@ -143,7 +160,7 @@
     {% endif %}
   </div>
 
-  <!-- Answer stats (counted in JS) -->
+  <!-- Answer stats -->
   <div class="stats-row" id="statsRow">
     <div class="stat stat-yes"><div class="n" id="yesCount" style="color:#16a34a">—</div><div class="l">Yes</div></div>
     <div class="stat stat-no"><div class="n" id="noCount" style="color:#dc2626">—</div><div class="l">No</div></div>
@@ -151,7 +168,7 @@
     <div class="stat" style="background:#fef3c7"><div class="n" id="unCount" style="color:#d97706">—</div><div class="l">Skipped</div></div>
   </div>
 
-  <!-- Checklist answers — rendered from JSON in JS -->
+  <!-- Checklist answers -->
   <div class="card">
     <div class="card-title">Checklist Answers</div>
     <div class="item-list" id="itemList">
@@ -159,16 +176,73 @@
     </div>
   </div>
 
-  <!-- Signature -->
-  {% if sub.signature_url %}
-  <div class="card">
-    <div class="card-title">Subcontractor Signature</div>
-    <img src="{{ sub.signature_url }}" style="max-width:280px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fafafa">
-    <p style="font-size:12px;color:#9ca3af;margin-top:6px">Signed by {{ sub.submitted_by_name }} · {{ sub.submitted_at[:10] if sub.submitted_at else '' }}</p>
-  </div>
-  {% endif %}
+  <!-- Signatures & Sign-offs -->
+  <div class="signoff-grid">
 
-  <!-- Decision panel -->
+    <!-- Subcontractor -->
+    <div class="signoff-card sc-subcontractor">
+      <div class="sc-label">📝 Subcontractor</div>
+      <div class="sc-name">{{ sub.submitted_by_name }}</div>
+      <div class="sc-date">{{ sub.submitted_by_company }}<br>{{ sub.submitted_at[:10] if sub.submitted_at else '' }}</div>
+      {% if sub.signature_url %}
+      <div class="sc-sig"><img src="{{ sub.signature_url }}" alt="Subcontractor signature"></div>
+      {% else %}
+      <div style="margin-top:8px;font-size:12px;color:#9ca3af">No signature</div>
+      {% endif %}
+    </div>
+
+    <!-- Site Manager -->
+    <div class="signoff-card sc-manager">
+      <div class="sc-label">✅ Site Manager</div>
+      {% if sub.status == 'pending' %}
+        <span class="sc-status sc-pending">⏳ Pending</span>
+      {% elif sub.status == 'approved' %}
+        <div class="sc-name">{{ sub.reviewed_by or 'Site Manager' }}</div>
+        <div class="sc-date">{{ sub.reviewed_at[:10] if sub.reviewed_at else '' }}</div>
+        <span class="sc-status sc-approved">✓ Approved</span>
+        {% if sub.manager_notes %}
+        <div class="sc-notes">{{ sub.manager_notes }}</div>
+        {% endif %}
+      {% else %}
+        <div class="sc-name">{{ sub.reviewed_by or 'Site Manager' }}</div>
+        <div class="sc-date">{{ sub.reviewed_at[:10] if sub.reviewed_at else '' }}</div>
+        <span class="sc-status sc-rejected">✗ Rejected</span>
+        {% if sub.manager_notes %}
+        <div class="sc-notes">{{ sub.manager_notes }}</div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <!-- QS -->
+    {% if sub.qs_status and sub.qs_status != 'not_required' %}
+    <div class="signoff-card sc-qs">
+      <div class="sc-label">💼 Quantity Surveyor</div>
+      {% if sub.qs_status == 'pending' %}
+        <span class="sc-status sc-pending">⏳ Awaiting QS</span>
+      {% elif sub.qs_status == 'approved' %}
+        <div class="sc-name">{{ sub.qs_reviewed_by or 'QS' }}</div>
+        <div class="sc-date">{{ sub.qs_reviewed_at[:10] if sub.qs_reviewed_at else '' }}</div>
+        <span class="sc-status sc-approved">✓ Approved for Payment</span>
+        {% if sub.qs_notes %}
+        <div class="sc-notes">{{ sub.qs_notes }}</div>
+        {% endif %}
+        {% if sub.qs_signature_url %}
+        <div class="sc-sig"><img src="{{ sub.qs_signature_url }}" alt="QS signature"></div>
+        {% endif %}
+      {% else %}
+        <div class="sc-name">{{ sub.qs_reviewed_by or 'QS' }}</div>
+        <div class="sc-date">{{ sub.qs_reviewed_at[:10] if sub.qs_reviewed_at else '' }}</div>
+        <span class="sc-status sc-rejected">✗ Rejected</span>
+        {% if sub.qs_notes %}
+        <div class="sc-notes">{{ sub.qs_notes }}</div>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Decision panel (only when pending) -->
   {% if sub.status == 'pending' %}
   <div class="decide-card">
     <div style="font-size:17px;font-weight:700;margin-bottom:20px">Your Decision</div>
@@ -185,22 +259,11 @@
       <button type="submit" class="submit-btn" id="submitDecisionBtn" disabled>Select a decision above</button>
     </form>
   </div>
-  {% else %}
-  <div class="reviewed-banner {{ sub.status }}">
-    {% if sub.status == 'approved' %}<h2>✓ Approved</h2>{% else %}<h2>✗ Rejected</h2>{% endif %}
-    <p>Reviewed by {{ sub.reviewed_by or 'Site Manager' }}{% if sub.reviewed_at %} · {{ sub.reviewed_at[:10] }}{% endif %}</p>
-  </div>
-  {% if sub.manager_notes %}
-  <div class="card">
-    <div class="notes-display"><strong>Site Manager Notes</strong>{{ sub.manager_notes }}</div>
-  </div>
-  {% endif %}
   {% endif %}
 
 </div>
 
 <script>
-// Render checklist answers from embedded JSON (avoids Jinja2 complexity)
 const RAW_ANSWERS = {{ sub.answers | tojson }};
 const STAGE_ITEMS = {{ stage_items_json | safe }};
 const PHOTOS_BY_ITEM = {{ photos_by_item | tojson }};
@@ -263,8 +326,8 @@ function renderAnswers() {
 
 renderAnswers();
 
-// ── Photo flagging ──────────────────────────────────────────────────────────
-const flaggedItems = {}; // { item_id: { photos: [url], comment: '' } }
+// Photo flagging
+const flaggedItems = {};
 
 function toggleFlag(itemId, photoUrl, flagId) {
   const btn  = document.getElementById('btn_' + flagId);
@@ -276,11 +339,9 @@ function toggleFlag(itemId, photoUrl, flagId) {
   const fi = flaggedItems[itemId];
 
   if (fi.photos.includes(photoUrl)) {
-    // Unflag
     fi.photos = fi.photos.filter(u => u !== photoUrl);
     btn.classList.remove('flagged');
     btn.textContent = '🚩';
-    // Remove overlay
     const overlay = wrap.querySelector('.photo-flagged-overlay');
     if (overlay) overlay.remove();
     if (!fi.photos.length) {
@@ -289,7 +350,6 @@ function toggleFlag(itemId, photoUrl, flagId) {
       box.classList.remove('show');
     }
   } else {
-    // Flag
     fi.photos.push(photoUrl);
     btn.classList.add('flagged');
     btn.textContent = '✕';
@@ -348,7 +408,6 @@ document.getElementById('decideForm')?.addEventListener('submit', function(e) {
       e.preventDefault(); alert('Please add notes or flag specific photos explaining the rejection.'); return;
     }
   }
-  // Add flagged items as hidden input
   const fi = document.createElement('input');
   fi.type = 'hidden'; fi.name = 'flagged_items';
   fi.value = JSON.stringify(flaggedItems);
