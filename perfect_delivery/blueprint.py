@@ -110,6 +110,7 @@ def form(token: str):
     stages_with_overrides.update(custom_stages)
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
+    visible_stage_nums = set(stages_with_overrides.keys())
 
     # Build stages_by_group safely — get_stages_by_group() may return a dict or list
     stages_by_group = get_stages_by_group()
@@ -148,6 +149,7 @@ def form(token: str):
         site=site,
         stages_by_group=stages_by_group,
         stages_json=stages_json,
+        visible_stage_nums=visible_stage_nums,
         drafts_json=drafts_json,
         stage_status_json=stage_status_json,
     )
@@ -691,6 +693,7 @@ def resubmit_form(resubmit_token: str):
     stages_with_overrides.update(custom_stages)
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
+    visible_stage_nums = set(stages_with_overrides.keys())
 
     stages_by_group = get_stages_by_group()
 
@@ -703,6 +706,7 @@ def resubmit_form(resubmit_token: str):
         site=site,
         stages_by_group=stages_by_group,
         stages_json=stages_json,
+        visible_stage_nums=visible_stage_nums,
         previous_answers=previous_answers,
         flagged_items=flagged_items,
         preselected_stage=sub.get("stage_number"),
