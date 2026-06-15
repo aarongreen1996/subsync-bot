@@ -40,10 +40,13 @@ def _require_admin():
 
 
 def _get_plot(token: str):
-    res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("access_token", token).single().execute()
-    if not res.data:
+    try:
+        res = supabase.table("pd_plots").select("*, pd_sites(*)").eq("access_token", token).single().execute()
+        if not res.data:
+            abort(404)
+        return res.data
+    except Exception:
         abort(404)
-    return res.data
 
 
 def _get_submission_by_review_token(token: str):
@@ -109,21 +112,7 @@ def form(token: str):
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
 
     # Build stages_by_group safely — get_stages_by_group() may return a dict or list
-    raw_groups = get_stages_by_group()
-    stages_by_group = []
-    if isinstance(raw_groups, dict):
-        for group_name, stage_nums in raw_groups.items():
-            visible = [n for n in stage_nums if n in stages_with_overrides]
-            if visible:
-                stages_by_group.append({"name": group_name, "stages": visible})
-    else:
-        for group in raw_groups:
-            if isinstance(group, dict):
-                visible = [n for n in group.get("stages", []) if n in stages_with_overrides]
-                if visible:
-                    stages_by_group.append({**group, "stages": visible})
-    if custom_stages:
-        stages_by_group.append({"name": "Custom Stages", "stages": list(custom_stages.keys())})
+    stages_by_group = get_stages_by_group()
 
     # Load existing drafts for this plot so form can pre-fill
     try:
@@ -627,21 +616,7 @@ def resubmit_form(resubmit_token: str):
 
     stages_json = json.dumps(stages_with_overrides, ensure_ascii=False)
 
-    raw_groups = get_stages_by_group()
-    stages_by_group = []
-    if isinstance(raw_groups, dict):
-        for group_name, stage_nums in raw_groups.items():
-            visible = [n for n in stage_nums if n in stages_with_overrides]
-            if visible:
-                stages_by_group.append({"name": group_name, "stages": visible})
-    else:
-        for group in raw_groups:
-            if isinstance(group, dict):
-                visible = [n for n in group.get("stages", []) if n in stages_with_overrides]
-                if visible:
-                    stages_by_group.append({**group, "stages": visible})
-    if custom_stages:
-        stages_by_group.append({"name": "Custom Stages", "stages": list(custom_stages.keys())})
+    stages_by_group = get_stages_by_group()
 
     previous_answers = json.dumps(sub.get("answers") or {})
     flagged_items    = json.dumps(sub.get("flagged_items") or {})
