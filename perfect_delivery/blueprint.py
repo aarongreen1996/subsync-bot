@@ -19,7 +19,7 @@ def _natural_sort_plots(plots):
         parts = _re.split(r'(\d+)', str(p.get("plot_number") or ""))
         return [int(x) if x.isdigit() else x.lower() for x in parts]
     return sorted(plots, key=_key)
-from .email_utils import send_manager_notification, send_decision_to_subcontractor, send_qs_notification
+from .email_utils import send_manager_notification, send_decision_to_subcontractor, send_qs_notification, send_qs_decision_to_manager
 from .qr_utils import generate_qr_png
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -493,10 +493,15 @@ def decide(review_token: str):
         except Exception as e:
             print(f"PDF generation for email error: {e}")
 
-    try:
-        send_decision_to_subcontractor(sub, plot, site, decision, manager_notes, flagged_items, resubmit_url, pdf_bytes)
-    except Exception as e:
-        print(f"Subcontractor email error: {e}")
+    # Send subcontractor email:
+    # - Always on rejection (so they know to resubmit)
+    # - On approval ONLY if no QS email on site (QS flow sends it instead)
+    site_has_qs = bool(decision == "approved" and site.get("qs_email"))
+    if not site_has_qs:
+        try:
+            send_decision_to_subcontractor(sub, plot, site, decision, manager_notes, flagged_items, resubmit_url, pdf_bytes)
+        except Exception as e:
+            print(f"Subcontractor email error: {e}")
 
     # If approved and the site has a QS contact, trigger secondary QS approval flow
     if decision == "approved" and site.get("qs_email"):
@@ -595,6 +600,38 @@ def qs_decide(qs_token: str):
         updates["qs_signature_url"] = qs_signature_url
 
     supabase.table("pd_submissions").update(updates).eq("id", sub["id"]).execute()
+
+    # Re-fetch updated submission for emails
+    updated_sub = supabase.table("pd_submissions").select("*").eq("id", sub["id"]).single().execute().data or sub
+
+    if decision == "approved":
+        # Send subcontractor the full signed completion/payment-ready email with PDF
+        try:
+            from .pdf_generator import generate_submission_pdf
+            tenant = _get_tenant()
+            stage = get_stage(sub["stage_number"])
+            stage_items = stage.get("items", []) if stage else []
+            photos_res = supabase.table("pd_photos").select("*").eq("submission_id", sub["id"]).execute()
+            photos_by_item = {}
+            for p in (photos_res.data or []):
+                photos_by_item.setdefault(p["item_id"], []).append(p["public_url"])
+            pdf_bytes = generate_submission_pdf(updated_sub, plot, site, stage_items, photos_by_item, tenant)
+        except Exception as e:
+            print(f"QS approval PDF error: {e}")
+            pdf_bytes = None
+        try:
+            send_decision_to_subcontractor(
+                updated_sub, plot, site, "approved",
+                updated_sub.get("manager_notes",""), {}, None, pdf_bytes
+            )
+        except Exception as e:
+            print(f"QS approval subcontractor email error: {e}")
+
+    # Notify site manager of QS decision
+    try:
+        send_qs_decision_to_manager(updated_sub, plot, site, decision, qs_notes)
+    except Exception as e:
+        print(f"QS decision manager email error: {e}")
 
     return redirect(url_for("pd.qs_review_done", qs_token=qs_token))
 
