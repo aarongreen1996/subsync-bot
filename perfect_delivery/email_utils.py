@@ -434,3 +434,68 @@ def send_site_manager_assignment_email(user: dict, tenant: dict, new_sites: list
 
     subject = f"New site assigned — {', '.join(s.get('name','') for s in new_sites)}"
     _send(email, subject, html)
+
+
+def send_qs_decision_to_manager(submission: dict, plot: dict, site: dict, decision: str, qs_notes: str):
+    """Notify site manager (and all assigned managers) of QS sign-off decision."""
+    is_approved  = decision == "approved"
+    stage_name   = submission.get("stage_name", "")
+    plot_number  = plot.get("plot_number", "")
+    site_name    = site.get("name", "")
+    sub_name     = submission.get("submitted_by_name", "")
+    sub_company  = submission.get("submitted_by_company", "")
+    qs_name      = submission.get("qs_reviewed_by") or "Quantity Surveyor"
+    qs_date      = (submission.get("qs_reviewed_at") or "")[:10]
+
+    sc = "#16a34a" if is_approved else "#dc2626"
+    sb = "#dcfce7" if is_approved else "#fee2e2"
+    st = "APPROVED FOR PAYMENT ✓" if is_approved else "REJECTED BY QS ✗"
+    sm = (
+        "The QS has signed off this stage. Payment can now be raised for this subcontractor."
+        if is_approved else
+        "The QS has rejected this stage. Please review the notes below."
+    )
+
+    subject = f"PD QS {'Approved' if is_approved else 'Rejected'} — {site_name} | Plot {plot_number} | {stage_name}"
+
+    notes_html = (
+        f'<div style="background:#fff3cd;border-left:4px solid #f59e0b;padding:12px 14px;border-radius:0 8px 8px 0;margin:12px 0">'
+        f'<strong style="color:#92400e;display:block;margin-bottom:4px">QS Notes</strong>'
+        f'<p style="color:#374151;font-size:14px;margin:0;white-space:pre-wrap">{qs_notes}</p></div>'
+    ) if qs_notes else ""
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}}
+.w{{max-width:600px;margin:0 auto;background:#fff}}
+.h{{background:#1a1a2e;padding:24px 32px}}
+.h h1{{color:#C5962A;margin:0;font-size:20px}}
+.h p{{color:#aaa;margin:4px 0 0;font-size:13px}}
+.b{{padding:32px}}
+.grid{{background:#f8f9fa;border-radius:8px;padding:16px 20px;margin:16px 0}}
+.row{{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e9ecef;font-size:14px}}
+.row:last-child{{border-bottom:none}}
+.lbl{{color:#6c757d}} .val{{font-weight:bold;color:#212529}}
+.ft{{background:#f8f9fa;padding:16px 32px;text-align:center;font-size:12px;color:#999}}
+</style></head>
+<body><div class="w">
+<div class="h"><h1>Perfect Delivery — QS Decision</h1><p>Pennyfarthing Homes · Quality Management</p></div>
+<div class="b">
+<div style="background:{sb};border-left:4px solid {sc};padding:16px;border-radius:0 8px 8px 0;margin-bottom:16px">
+  <h2 style="color:{sc};margin:0 0 6px;font-size:17px">{st}</h2>
+  <p style="color:#333;margin:0;font-size:14px">{sm}</p>
+</div>
+<div class="grid">
+  <div class="row"><span class="lbl">Site</span><span class="val">{site_name}</span></div>
+  <div class="row"><span class="lbl">Plot</span><span class="val">{plot_number}</span></div>
+  <div class="row"><span class="lbl">Stage</span><span class="val">{stage_name}</span></div>
+  <div class="row"><span class="lbl">Subcontractor</span><span class="val">{sub_name} — {sub_company}</span></div>
+  <div class="row"><span class="lbl">QS sign-off by</span><span class="val">{qs_name}</span></div>
+  <div class="row"><span class="lbl">Date</span><span class="val">{qs_date}</span></div>
+</div>
+{notes_html}
+</div>
+<div class="ft">Pennyfarthing Perfect Delivery · Auto-generated</div>
+</div></body></html>"""
+
+    _send(site.get("manager_email", ""), subject, html)
