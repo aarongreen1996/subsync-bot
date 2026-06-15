@@ -348,10 +348,32 @@ def submit(token: str):
 
     site = plot_row["pd_sites"]
     review_url = f"{BASE_URL}/pd/review/{review_token}"
+
+    # Notify all site managers assigned to this site (not just site.manager_email)
     try:
         send_manager_notification(sub_record, plot_row, site, review_url)
     except Exception as e:
         print(f"Manager email error: {e}")
+
+    try:
+        mgr_res = supabase.table("pd_users").select("name, email, role, site_ids").in_(
+            "role", ["site_manager", "tenant_admin"]
+        ).execute()
+        site_id = plot_row.get("site_id", "")
+        primary_email = site.get("manager_email", "")
+        for u in (mgr_res.data or []):
+            if u.get("email") == primary_email:
+                continue  # already sent above
+            raw = u.get("site_ids") or "[]"
+            ids = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            if site_id in ids or u.get("role") == "tenant_admin":
+                _site_copy = {**site, "manager_email": u["email"], "manager_name": u["name"]}
+                try:
+                    send_manager_notification(sub_record, plot_row, _site_copy, review_url)
+                except Exception as e2:
+                    print(f"Additional manager email error ({u['email']}): {e2}")
+    except Exception as e:
+        print(f"Multi-manager lookup error: {e}")
 
     try:
         supabase.table("pd_drafts").delete().eq(
