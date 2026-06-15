@@ -36,7 +36,6 @@
   .field { margin-bottom: 16px; }
   .required { color: var(--no); }
 
-  /* Group + stage selector */
   .group-section { margin-bottom: 20px; }
   .group-header { background: var(--dark); color: var(--gold); font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 8px; margin-bottom: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
   .stage-list { display: flex; flex-direction: column; gap: 8px; }
@@ -49,7 +48,6 @@
   .stage-trade { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .stage-btn.selected .stage-num { background: var(--gold); color: var(--dark); }
 
-  /* Checklist items */
   .checklist-item { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); border-left: 3px solid transparent; }
   .checklist-item.answered-yes { border-left-color: var(--yes); }
   .checklist-item.answered-no { border-left-color: var(--no); }
@@ -66,7 +64,6 @@
   .text-confirm { margin-top: 10px; }
   .text-confirm input { font-size: 14px; }
 
-  /* Photo capture — every item */
   .photo-zone { margin-top: 12px; border-top: 1px solid #f0f2f5; padding-top: 12px; }
   .photo-trigger { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; background: #f8fafc; transition: all 0.15s; }
   .photo-trigger:active { background: #f0f2f5; }
@@ -83,13 +80,11 @@
   .geo-fail { background: #fee2e2; color: #991b1b; }
   .geo-pending { background: #fef3c7; color: #92400e; }
 
-  /* FABs */
   .fab { position: fixed; bottom: 24px; left: 16px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .fab:disabled { background: #ccc; color: #888; box-shadow: none; cursor: not-allowed; }
   .fab-back { position: fixed; bottom: 24px; left: 16px; z-index: 200; background: var(--dark2); color: white; border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 600; cursor: pointer; }
   .fab-next { position: fixed; bottom: 24px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); }
 
-  /* Summary */
   .summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .summary-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .summary-table td:first-child { font-weight: 600; color: var(--muted); width: 40%; }
@@ -100,7 +95,6 @@
   .info-note { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin-bottom: 16px; }
   textarea { resize: vertical; min-height: 80px; }
 
-  /* Signature pad */
   .sig-wrap { margin-top: 12px; }
   .sig-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
   .sig-canvas { width: 100%; height: 160px; border: 2px solid var(--border); border-radius: 12px; background: #fafafa; touch-action: none; cursor: crosshair; display: block; }
@@ -110,7 +104,6 @@
   .sig-placeholder { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 13px; color: #c7c7cc; pointer-events: none; text-align: center; }
   .sig-wrap-inner { position: relative; }
 
-  /* Example photo popup */
   .example-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; transition: background 0.12s; vertical-align: middle; }
   .example-btn:hover { background: #f0f2f5; }
   .example-popup { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 998; display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -121,7 +114,6 @@
   .example-popup-guide { font-size: 13px; color: #374151; line-height: 1.5; }
   .example-popup-close { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 14px; }
 
-  /* Loading */
   #loading { position: fixed; inset: 0; background: rgba(26,26,46,0.85); z-index: 999; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
   #loading.show { display: flex; }
   .spinner { width: 48px; height: 48px; border: 4px solid rgba(197,150,42,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -258,7 +250,6 @@
 <div id="loading"><div class="spinner"></div><p>Submitting… please wait</p></div>
 <div id="fileInputPool" style="display:none"></div>
 
-<!-- Example photo popup -->
 <div class="example-popup" id="examplePopup" onclick="closeExample()">
   <div class="example-popup-card" onclick="event.stopPropagation()">
     <div class="example-popup-title" id="exampleTitle">Example Photo</div>
@@ -277,6 +268,11 @@ const FLAGGED_ITEMS = {{ flagged_items | default('{}') | safe }};
 const PRESELECTED_STAGE = {{ preselected_stage | default('null') }};
 const STAGE_STATUS = {{ stage_status_json | default('{}') | safe }};
 const DRAFTS = {{ drafts_json | default('{}') | safe }};
+const PARENT_SUBMISSION_ID = "{{ parent_submission_id | default('') }}";
+const MANAGER_NOTES = "{{ manager_notes | default('') | replace('"', '\\"') }}";
+const RESUBMIT_NAME    = "{{ resubmit_name | default('') | replace('"', '\\"') }}";
+const RESUBMIT_COMPANY = "{{ resubmit_company | default('') | replace('"', '\\"') }}";
+const RESUBMIT_EMAIL   = "{{ resubmit_email | default('') | replace('"', '\\"') }}";
 
 const DEVICE_ID = (() => {
   try {
@@ -285,46 +281,38 @@ const DEVICE_ID = (() => {
     return id;
   } catch(e) { return 'unknown'; }
 })();
-const PARENT_SUBMISSION_ID = "{{ parent_submission_id | default('') }}";
-const MANAGER_NOTES = "{{ manager_notes | default('') | replace('"', '\"') }}";
 
 let selectedStage = null;
 let answers = {};
-let photoUrls = {};  // itemId -> url (pre-uploaded draft photos)
+let photoUrls = {};
 let photoFiles = {};
 let geoLocation = null;
 const captureTime = {};
 
-// ── Geolocation ──────────────────────────────────────────────────────────────
+// Geolocation
 let _geoRequested = false;
 function initGeo() {
   if (_geoRequested) return;
   _geoRequested = true;
   const el = document.getElementById('geoStatus');
   if (!navigator.geolocation) {
-    el.style.display = 'block';
-    el.className = 'geo-status geo-fail';
-    el.textContent = '⚠ Location not available';
-    return;
+    el.style.display = 'block'; el.className = 'geo-status geo-fail'; el.textContent = '⚠ Location not available'; return;
   }
   navigator.geolocation.getCurrentPosition(
     pos => {
       geoLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) };
-      el.style.display = 'block';
-      el.className = 'geo-status geo-ok';
+      el.style.display = 'block'; el.className = 'geo-status geo-ok';
       el.textContent = '📍 Location confirmed (±' + geoLocation.accuracy + 'm)';
     },
     err => {
-      el.style.display = 'block';
-      el.className = 'geo-status geo-fail';
+      el.style.display = 'block'; el.className = 'geo-status geo-fail';
       el.textContent = '⚠ Location unavailable — photos will still upload';
     },
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
   );
 }
-// Called lazily when stage is selected
 
-// ── Render stage status badges on load ───────────────────────────────────────
+// Stage status badges
 function renderStageBadges() {
   Object.entries(STAGE_STATUS).forEach(([num, info]) => {
     const el = document.getElementById('stageStatusBadge' + num);
@@ -336,22 +324,13 @@ function renderStageBadges() {
     };
     const c = colors[info.status] || {bg:'#f3f4f6',color:'#6b7280',text:info.status};
     el.innerHTML = '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:' + c.bg + ';color:' + c.color + '">' + c.text + '</span>';
-
-    // Also mark the button visually
     const btn = document.getElementById('stageBtnWrapper' + num);
-    if (btn && info.status === 'approved') {
-      btn.style.borderLeft = '3px solid #16a34a';
-      btn.style.background = '#f0fdf4';
-    } else if (btn && info.status === 'pending') {
-      btn.style.borderLeft = '3px solid #ca8a04';
-    } else if (btn && info.status === 'rejected') {
-      btn.style.borderLeft = '3px solid #dc2626';
-    }
+    if (btn && info.status === 'approved') { btn.style.borderLeft = '3px solid #16a34a'; btn.style.background = '#f0fdf4'; }
+    else if (btn && info.status === 'pending') { btn.style.borderLeft = '3px solid #ca8a04'; }
+    else if (btn && info.status === 'rejected') { btn.style.borderLeft = '3px solid #dc2626'; }
   });
-
-  // Show draft badges
   Object.entries(DRAFTS).forEach(([num, draft]) => {
-    if (STAGE_STATUS[num]) return; // already has a submission badge
+    if (STAGE_STATUS[num]) return;
     const el = document.getElementById('stageStatusBadge' + num);
     if (!el) return;
     el.innerHTML = '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#fef3c7;color:#92400e">💾 Draft</span>';
@@ -359,60 +338,21 @@ function renderStageBadges() {
 }
 document.addEventListener('DOMContentLoaded', renderStageBadges);
 
-// ── Resubmission setup ───────────────────────────────────────────────────────
+// Resubmission setup — skip straight to checklist
 if (IS_RESUBMIT && PRESELECTED_STAGE) {
-  setTimeout(() => {
-    const btn = document.getElementById('stageBtnWrapper' + PRESELECTED_STAGE);
-    if (btn) { selectStage(PRESELECTED_STAGE); btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-  }, 300);
+  document.addEventListener('DOMContentLoaded', () => {
+    const nameEl    = document.getElementById('inputName');
+    const companyEl = document.getElementById('inputCompany');
+    const emailEl   = document.getElementById('inputEmail');
+    if (nameEl    && RESUBMIT_NAME)    nameEl.value    = RESUBMIT_NAME;
+    if (companyEl && RESUBMIT_COMPANY) companyEl.value = RESUBMIT_COMPANY;
+    if (emailEl   && RESUBMIT_EMAIL)   emailEl.value   = RESUBMIT_EMAIL;
+    selectStage(PRESELECTED_STAGE);
+    goStep2();
+  });
 }
 
-const _origBuildChecklist = buildChecklist;
-buildChecklist = function() {
-  _origBuildChecklist();
-  if (!IS_RESUBMIT) return;
-  const stage = STAGES[selectedStage];
-  if (!stage) return;
-  stage.items.forEach(item => {
-    const prev    = PREVIOUS_ANSWERS[item.id];
-    const flagged = FLAGGED_ITEMS[item.id];
-    const itemEl  = document.getElementById('item_' + item.id);
-    if (!itemEl) return;
-    // Restore previous answer
-    if (prev && prev.value) {
-      const val = prev.value;
-      itemEl.querySelectorAll('.yn-btn').forEach(btn => {
-        if (btn.classList.contains(val === 'n/a' ? 'na' : val)) btn.classList.add('active');
-      });
-      itemEl.className = 'checklist-item answered-' + val.replace('/','');
-      answers[item.id] = { value: val, text: prev.text || '' };
-      const textInput = document.getElementById('textval_' + item.id);
-      if (textInput && prev.text) textInput.value = prev.text;
-    }
-    if (flagged) {
-      // Flagged — red highlight, show comment, leave editable
-      itemEl.style.borderLeftColor = '#dc2626';
-      itemEl.style.background = '#fff5f5';
-      const note = document.createElement('div');
-      note.style.cssText = 'background:#fee2e2;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#991b1b;font-weight:600';
-      note.textContent = 'Flagged: ' + (flagged.comment || 'Please review and update this item');
-      itemEl.insertBefore(note, itemEl.firstChild);
-    } else if (prev && prev.value) {
-      // Not flagged + already answered — lock it
-      itemEl.querySelectorAll('.yn-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed'; });
-      const ti = document.getElementById('textval_' + item.id);
-      if (ti) { ti.disabled = true; ti.style.opacity = '0.6'; }
-      const tick = document.createElement('div');
-      tick.style.cssText = 'background:#dcfce7;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12px;color:#166534;font-weight:600';
-      tick.textContent = 'Previously accepted — no change needed';
-      itemEl.appendChild(tick);
-      const pz = itemEl.querySelector('.photo-zone');
-      if (pz) { pz.style.opacity = '0.5'; pz.style.pointerEvents = 'none'; }
-    }
-  });
-};
-
-// ── Navigation ───────────────────────────────────────────────────────────────
+// Navigation
 function setProgress(pct) { document.getElementById('progressFill').style.width = pct + '%'; }
 function showStep(n) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -425,32 +365,25 @@ function goStep2() {
   if (!validateStep1()) return;
   buildChecklist();
   showStep(2);
-  // Show draft banner after checklist renders
   setTimeout(() => {
     const draft = DRAFTS[String(selectedStage)] || DRAFTS[selectedStage];
-    if (draft && !IS_RESUBMIT) {
-      window._currentDraft = draft;
-      _showDraftBanner(draft);
-    }
+    if (draft && !IS_RESUBMIT) { window._currentDraft = draft; _showDraftBanner(draft); }
+    if (IS_RESUBMIT) { applyResubmitAnswers(); }
   }, 300);
 }
-function goStep3() {
-  buildSummary();
-  showStep(3);
-  setTimeout(initSig, 100); // init after DOM renders
-}
+function goStep3() { buildSummary(); showStep(3); setTimeout(initSig, 100); }
 
 function validateStep1() {
-  const name = document.getElementById('inputName').value.trim();
+  const name    = document.getElementById('inputName').value.trim();
   const company = document.getElementById('inputCompany').value.trim();
-  const email = document.getElementById('inputEmail').value.trim();
+  const email   = document.getElementById('inputEmail').value.trim();
   if (!name || !company || !email) { alert('Please fill in your name, company and email.'); return false; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Please enter a valid email address.'); return false; }
   if (!selectedStage) { alert('Please select a build stage.'); return false; }
   return true;
 }
 
-// ── Stage selection ──────────────────────────────────────────────────────────
+// Stage selection
 function selectStage(num) {
   initGeo();
   const draftBtn = document.getElementById('fabDraft');
@@ -458,8 +391,6 @@ function selectStage(num) {
   window._currentDraft = null;
   answers = {};
   photoUrls = {};
-
-  // If draft exists, pre-fill contact fields so validation passes
   const draft = DRAFTS[String(num)] || DRAFTS[num];
   if (draft && !IS_RESUBMIT) {
     window._currentDraft = draft;
@@ -468,70 +399,51 @@ function selectStage(num) {
     if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el && !el.value) el.value = draft.submitted_by_email; }
   }
   document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('selected'));
-  document.getElementById('stageBtnWrapper' + num).classList.add('selected');
+  const stageBtn = document.getElementById('stageBtnWrapper' + num);
+  if (stageBtn) stageBtn.classList.add('selected');
   selectedStage = num;
   answers = {};
   photoFiles = {};
   document.getElementById('fabStep1').disabled = false;
 }
 
-// ── Build checklist ──────────────────────────────────────────────────────────
+// Build checklist
 function buildChecklist() {
   const stage = STAGES[selectedStage];
   document.getElementById('checklistTitle').textContent = stage.name;
   document.getElementById('checklistSub').textContent = 'Stage ' + String(selectedStage).padStart(2,'0') + ' · ' + stage.applies_to;
   const container = document.getElementById('itemsContainer');
   container.innerHTML = '';
-  stage.items.forEach((item, idx) => {
-    container.appendChild(buildItem(item, idx + 1));
-  });
+  stage.items.forEach((item, idx) => { container.appendChild(buildItem(item, idx + 1)); });
 }
 
 function buildItem(item, num) {
   const itemEl = document.createElement('div');
   itemEl.className = 'checklist-item';
   itemEl.id = 'item_' + item.id;
-
   const hasExample = item.example_photo_url || item.example_guidance;
   const exBtn = hasExample
-    ? `<button class="example-btn" onclick="showExample('${item.example_photo_url||''}','${(item.example_guidance||'').replace(/'/g,"\'")}','${item.text.slice(0,40).replace(/'/g,"\'")}…')" title="See example">💡</button>`
+    ? '<button class="example-btn" onclick="showExample(\'' + (item.example_photo_url||'') + '\',\'' + (item.example_guidance||'').replace(/'/g,"\\'") + '\',\'' + item.text.slice(0,40).replace(/'/g,"\\'") + '…\')" title="See example">💡</button>'
     : '';
-
-  let html = `
-    <div class="item-num">Item ${String(num).padStart(2,'0')}</div>
-    <div class="item-text">${item.text} ${exBtn}</div>
-    <div class="yn-group">
-      <button class="yn-btn yes" onclick="setAnswer('${item.id}','yes',this)">✓ Yes</button>
-      <button class="yn-btn no" onclick="setAnswer('${item.id}','no',this)">✗ No</button>
-      <button class="yn-btn na" onclick="setAnswer('${item.id}','n/a',this)">— N/A</button>
-    </div>`;
-
+  let html = '<div class="item-num">Item ' + String(num).padStart(2,'0') + '</div>'
+    + '<div class="item-text">' + item.text + ' ' + exBtn + '</div>'
+    + '<div class="yn-group">'
+    + '<button class="yn-btn yes" onclick="setAnswer(\'' + item.id + '\',\'yes\',this)">✓ Yes</button>'
+    + '<button class="yn-btn no" onclick="setAnswer(\'' + item.id + '\',\'no\',this)">✗ No</button>'
+    + '<button class="yn-btn na" onclick="setAnswer(\'' + item.id + '\',\'n/a\',this)">— N/A</button>'
+    + '</div>';
   if (item.type === 'text_with_check') {
-    html += `<div class="text-confirm">
-      <input type="text" placeholder="${item.placeholder || 'Enter details…'}" id="textval_${item.id}"
-        oninput="setTextAnswer('${item.id}', this.value)">
-    </div>`;
+    html += '<div class="text-confirm"><input type="text" placeholder="' + (item.placeholder || 'Enter details…') + '" id="textval_' + item.id + '" oninput="setTextAnswer(\'' + item.id + '\', this.value)"></div>';
   }
-
-  // Photo zone — respects photo_required from overrides
-  const photoRequired = item.photo !== false; // default true unless explicitly disabled
+  const photoRequired = item.photo !== false;
   if (photoRequired) {
     const photoId = 'photo_' + item.id;
-    html += `<div class="photo-zone">
-      <div class="photo-trigger" onclick="triggerPhoto('${photoId}','${item.id}')">
-        <div class="photo-trigger-inner">
-          <span style="font-size:20px">📷</span>
-          <span class="photo-trigger-text">Take photo</span>
-          <span class="photo-required-badge">REQUIRED</span>
-        </div>
-      </div>
-      <div class="photo-preview-grid" id="preview_${photoId}"></div>
-    </div>`;
+    html += '<div class="photo-zone">'
+      + '<div class="photo-trigger" onclick="triggerPhoto(\'' + photoId + '\',\'' + item.id + '\')">'
+      + '<div class="photo-trigger-inner"><span style="font-size:20px">📷</span><span class="photo-trigger-text">Take photo</span><span class="photo-required-badge">REQUIRED</span></div>'
+      + '</div><div class="photo-preview-grid" id="preview_' + photoId + '"></div></div>';
   }
-
   itemEl.innerHTML = html;
-
-  // Restore previous answers
   const existing = answers[item.id];
   if (existing) {
     itemEl.querySelectorAll('.yn-btn').forEach(btn => {
@@ -543,7 +455,47 @@ function buildItem(item, num) {
   return itemEl;
 }
 
-// ── Answers ──────────────────────────────────────────────────────────────────
+// Apply resubmit answers and flagging after checklist renders
+function applyResubmitAnswers() {
+  const stage = STAGES[selectedStage];
+  if (!stage) return;
+  stage.items.forEach(item => {
+    const prev    = PREVIOUS_ANSWERS[item.id];
+    const flagged = FLAGGED_ITEMS[item.id];
+    const itemEl  = document.getElementById('item_' + item.id);
+    if (!itemEl) return;
+    if (prev && prev.value) {
+      const val = prev.value;
+      itemEl.querySelectorAll('.yn-btn').forEach(btn => {
+        if (btn.classList.contains(val === 'n/a' ? 'na' : val)) btn.classList.add('active');
+      });
+      itemEl.className = 'checklist-item answered-' + val.replace('/','');
+      answers[item.id] = { value: val, text: prev.text || '' };
+      const textInput = document.getElementById('textval_' + item.id);
+      if (textInput && prev.text) textInput.value = prev.text;
+    }
+    if (flagged) {
+      itemEl.style.borderLeftColor = '#dc2626';
+      itemEl.style.background = '#fff5f5';
+      const note = document.createElement('div');
+      note.style.cssText = 'background:#fee2e2;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#991b1b;font-weight:600';
+      note.textContent = 'Flagged: ' + (flagged.comment || 'Please review and update this item');
+      itemEl.insertBefore(note, itemEl.firstChild);
+    } else if (prev && prev.value) {
+      itemEl.querySelectorAll('.yn-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed'; });
+      const ti = document.getElementById('textval_' + item.id);
+      if (ti) { ti.disabled = true; ti.style.opacity = '0.6'; }
+      const tick = document.createElement('div');
+      tick.style.cssText = 'background:#dcfce7;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12px;color:#166534;font-weight:600';
+      tick.textContent = 'Previously accepted — no change needed';
+      itemEl.appendChild(tick);
+      const pz = itemEl.querySelector('.photo-zone');
+      if (pz) { pz.style.opacity = '0.5'; pz.style.pointerEvents = 'none'; }
+    }
+  });
+}
+
+// Answers
 function setAnswer(itemId, value, btnEl) {
   if (!answers[itemId]) answers[itemId] = {};
   answers[itemId].value = value;
@@ -557,17 +509,13 @@ function setTextAnswer(itemId, text) {
   answers[itemId].text = text;
 }
 
-// ── Photo capture with geotag + timestamp ────────────────────────────────────
+// Photo capture
 function triggerPhoto(photoId, itemId) {
   let input = document.getElementById('fileinput_' + photoId);
   if (!input) {
     input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment';
-    input.multiple = false;
-    input.id = 'fileinput_' + photoId;
-    input.style.display = 'none';
+    input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+    input.multiple = false; input.id = 'fileinput_' + photoId; input.style.display = 'none';
     document.getElementById('fileInputPool').appendChild(input);
     input.addEventListener('change', () => handlePhotoSelected(input, photoId, itemId));
   }
@@ -578,49 +526,29 @@ function handlePhotoSelected(input, photoId, itemId) {
   if (!photoFiles[itemId]) photoFiles[itemId] = [];
   const file = input.files[0];
   if (!file) return;
-
   const ts = new Date();
   const tsStr = ts.toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
   captureTime[itemId] = tsStr;
-
   const geo = geoLocation ? geoLocation.lat.toFixed(5) + ',' + geoLocation.lng.toFixed(5) : 'Location unavailable';
-
   compressAndStampImage(file, tsStr, geo, 1280, 0.85, async (blob, dataUrl) => {
     const photoFile = new File([blob], file.name, {type: 'image/jpeg'});
     photoFiles[itemId].push(photoFile);
-
-    // Show preview immediately
     const previewGrid = document.getElementById('preview_' + photoId);
     const wrap = document.createElement('div');
-    wrap.className = 'photo-preview-item';
-    wrap.id = 'photowrap_' + itemId;
-    const img = document.createElement('img');
-    img.src = dataUrl;
-    const stamp = document.createElement('div');
-    stamp.className = 'photo-stamp';
-    stamp.textContent = tsStr;
-    const rem = document.createElement('button');
-    rem.className = 'photo-remove';
-    rem.textContent = '×';
+    wrap.className = 'photo-preview-item'; wrap.id = 'photowrap_' + itemId;
+    const img = document.createElement('img'); img.src = dataUrl;
+    const stamp = document.createElement('div'); stamp.className = 'photo-stamp'; stamp.textContent = tsStr;
+    const rem = document.createElement('button'); rem.className = 'photo-remove'; rem.textContent = '×';
     rem.onclick = () => { photoFiles[itemId] = []; delete photoUrls[itemId]; wrap.remove(); _scheduleDraft(); };
-    wrap.appendChild(img);
-    wrap.appendChild(stamp);
-    wrap.appendChild(rem);
-    previewGrid.innerHTML = '';
-    previewGrid.appendChild(wrap);
-
-    // Upload to draft storage immediately so it can be restored later
+    wrap.appendChild(img); wrap.appendChild(stamp); wrap.appendChild(rem);
+    previewGrid.innerHTML = ''; previewGrid.appendChild(wrap);
     try {
       const fd = new FormData();
       fd.append('photo', photoFile, photoFile.name);
-      fd.append('item_id', itemId);
-      fd.append('stage_number', selectedStage);
+      fd.append('item_id', itemId); fd.append('stage_number', selectedStage);
       const res  = await fetch('/pd/' + PLOT_TOKEN + '/draft/photo', { method: 'POST', body: fd });
       const json = await res.json();
-      if (json.ok) {
-        photoUrls[itemId] = json.url;
-        _scheduleDraft();
-      }
+      if (json.ok) { photoUrls[itemId] = json.url; _scheduleDraft(); }
     } catch(e) { console.warn('Draft photo upload failed:', e); }
   });
   input.value = '';
@@ -640,16 +568,12 @@ function compressAndStampImage(file, tsStr, geo, maxDim, quality, callback) {
       canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
-
-      // Stamp overlay
       const barH = Math.max(28, Math.round(h * 0.04));
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(0, h - barH, w, barH);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, h - barH, w, barH);
       ctx.fillStyle = '#ffffff';
       const fontSize = Math.max(10, Math.round(barH * 0.55));
-      ctx.font = `bold ${fontSize}px Arial`;
+      ctx.font = 'bold ' + fontSize + 'px Arial';
       ctx.fillText(tsStr + '  ' + geo, 6, h - Math.round(barH * 0.25));
-
       canvas.toBlob(blob => callback(blob, canvas.toDataURL('image/jpeg', quality)), 'image/jpeg', quality);
     };
     img.src = e.target.result;
@@ -657,14 +581,14 @@ function compressAndStampImage(file, tsStr, geo, maxDim, quality, callback) {
   reader.readAsDataURL(file);
 }
 
-// ── Summary ──────────────────────────────────────────────────────────────────
+// Summary
 function buildSummary() {
   const stage = STAGES[selectedStage];
   const table = document.getElementById('summaryTable');
   table.innerHTML = '';
   const addRow = (label, value) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${label}</td><td>${value}</td>`;
+    tr.innerHTML = '<td>' + label + '</td><td>' + value + '</td>';
     table.appendChild(tr);
   };
   addRow('Name', document.getElementById('inputName').value);
@@ -673,7 +597,6 @@ function buildSummary() {
   addRow('Site', '{{ site.name }}');
   addRow('Plot', '{{ plot.plot_number }}');
   addRow('Stage', stage.name);
-
   let yes = 0, no = 0, na = 0, unanswered = 0, photosMissing = 0, photoRequired = 0;
   stage.items.forEach(item => {
     const a = answers[item.id];
@@ -686,78 +609,57 @@ function buildSummary() {
       if (!photoFiles[item.id] || !photoFiles[item.id].length) photosMissing++;
     }
   });
-
-  addRow('Answers', `<span class="ans-badge ans-yes">✓ ${yes}</span> <span class="ans-badge ans-no" style="margin:0 4px">✗ ${no}</span> <span class="ans-badge ans-na">— ${na}</span>`);
+  addRow('Answers', '<span class="ans-badge ans-yes">✓ ' + yes + '</span> <span class="ans-badge ans-no" style="margin:0 4px">✗ ' + no + '</span> <span class="ans-badge ans-na">— ' + na + '</span>');
   addRow('Photos', (photoRequired - photosMissing) + ' of ' + photoRequired + ' captured');
-  addRow('Location', geoLocation ? `${geoLocation.lat.toFixed(5)}, ${geoLocation.lng.toFixed(5)}` : '⚠ Not captured');
-
+  addRow('Location', geoLocation ? geoLocation.lat.toFixed(5) + ', ' + geoLocation.lng.toFixed(5) : '⚠ Not captured');
   const warnEl = document.getElementById('incompletWarning');
-  const msgEl = document.getElementById('incompleteMsg');
+  const msgEl  = document.getElementById('incompleteMsg');
   const issues = [];
   if (unanswered > 0) issues.push(unanswered + ' item(s) not answered');
   if (photosMissing > 0) issues.push(photosMissing + ' photo(s) missing');
-  if (issues.length) {
-    warnEl.style.display = 'block';
-    msgEl.textContent = issues.join(' · ') + '. You can still submit but the site manager will see what is incomplete.';
-  } else {
-    warnEl.style.display = 'none';
-  }
+  if (issues.length) { warnEl.style.display = 'block'; msgEl.textContent = issues.join(' · ') + '. You can still submit but the site manager will see what is incomplete.'; }
+  else { warnEl.style.display = 'none'; }
 }
 
-// ── Submit ───────────────────────────────────────────────────────────────────
-// ── Signature pad ────────────────────────────────────────────────────────────
+// Signature pad
 let sigCanvas, sigCtx, sigDrawing = false, sigHasData = false;
-
 function initSig() {
   sigCanvas = document.getElementById('sigCanvas');
   if (!sigCanvas) return;
   sigCtx = sigCanvas.getContext('2d');
-
-  // Set actual canvas resolution to match display size
   const rect = sigCanvas.getBoundingClientRect();
   sigCanvas.width  = rect.width  * window.devicePixelRatio;
   sigCanvas.height = rect.height * window.devicePixelRatio;
   sigCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
-  sigCtx.strokeStyle = '#1a1a2e';
-  sigCtx.lineWidth   = 2.5;
-  sigCtx.lineCap     = 'round';
-  sigCtx.lineJoin    = 'round';
-
+  sigCtx.strokeStyle = '#1a1a2e'; sigCtx.lineWidth = 2.5; sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round';
   const getPos = e => {
     const r = sigCanvas.getBoundingClientRect();
     const src = e.touches ? e.touches[0] : e;
     return { x: src.clientX - r.left, y: src.clientY - r.top };
   };
-
   sigCanvas.addEventListener('mousedown',  e => { sigDrawing = true; const p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
   sigCanvas.addEventListener('mousemove',  e => { if (!sigDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); markSig(); });
   sigCanvas.addEventListener('mouseup',    () => sigDrawing = false);
   sigCanvas.addEventListener('mouseleave', () => sigDrawing = false);
-
   sigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDrawing = true; const p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
   sigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDrawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); markSig(); }, { passive: false });
   sigCanvas.addEventListener('touchend',   () => sigDrawing = false);
 }
-
 function markSig() {
   if (!sigHasData) {
-    sigHasData = true;
-    sigCanvas.classList.add('has-sig');
+    sigHasData = true; sigCanvas.classList.add('has-sig');
     const ph = document.getElementById('sigPlaceholder');
     if (ph) ph.style.display = 'none';
   }
 }
-
 function clearSig() {
   if (!sigCtx) return;
   const rect = sigCanvas.getBoundingClientRect();
   sigCtx.clearRect(0, 0, rect.width, rect.height);
-  sigHasData = false;
-  sigCanvas.classList.remove('has-sig');
+  sigHasData = false; sigCanvas.classList.remove('has-sig');
   const ph = document.getElementById('sigPlaceholder');
   if (ph) ph.style.display = 'block';
 }
-
 function getSigDataUrl() {
   if (!sigCanvas || !sigHasData) return null;
   return sigCanvas.toDataURL('image/png');
@@ -770,51 +672,36 @@ function showExample(photoUrl, guidance, title) {
   document.getElementById('exampleImg').style.display = photoUrl ? 'block' : 'none';
   document.getElementById('examplePopup').classList.add('show');
 }
-function closeExample() {
-  document.getElementById('examplePopup').classList.remove('show');
-}
+function closeExample() { document.getElementById('examplePopup').classList.remove('show'); }
 
-// ── Draft autosave ────────────────────────────────────────────────────────
+// Draft autosave
 let _autosaveTimer = null;
-
 function _showDraftToast(msg) {
   const el = document.getElementById('draftStatus');
   if (!el) return;
-  el.textContent = msg;
-  el.style.display = 'block';
+  el.textContent = msg; el.style.display = 'block';
   clearTimeout(el._t);
   el._t = setTimeout(() => { el.style.display = 'none'; }, 2500);
 }
-
 async function saveDraft(silent) {
   if (!selectedStage) return;
   const name    = document.getElementById('inputName')?.value.trim() || '';
   const company = document.getElementById('inputCompany')?.value.trim() || '';
   const email   = document.getElementById('inputEmail')?.value.trim() || '';
   if (!name && !company && !email && !Object.keys(answers).length) return;
-
   const payload = {
-    stage_number:          selectedStage,
-    device_id:             DEVICE_ID,
-    submitted_by_name:     name,
-    submitted_by_company:  company,
-    submitted_by_email:    email,
-    answers:               answers,
-    photo_urls:            photoUrls,
-    additional_notes:      document.getElementById('additionalNotes')?.value.trim() || '',
+    stage_number: selectedStage, device_id: DEVICE_ID,
+    submitted_by_name: name, submitted_by_company: company, submitted_by_email: email,
+    answers: answers, photo_urls: photoUrls,
+    additional_notes: document.getElementById('additionalNotes')?.value.trim() || '',
   };
-  const fd = new FormData();
-  fd.append('data', JSON.stringify(payload));
+  const fd = new FormData(); fd.append('data', JSON.stringify(payload));
   try {
     await fetch('/pd/' + PLOT_TOKEN + '/draft', { method: 'POST', body: fd });
     if (!silent) _showDraftToast('✓ Draft saved');
   } catch(e) { console.warn('Draft save failed:', e); }
 }
-
-function _scheduleDraft() {
-  clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(() => saveDraft(true), 5000);
-}
+function _scheduleDraft() { clearTimeout(_autosaveTimer); _autosaveTimer = setTimeout(() => saveDraft(true), 5000); }
 
 function _showDraftBanner(draft) {
   document.getElementById('draftBanner')?.remove();
@@ -845,97 +732,51 @@ function _showDraftBanner(draft) {
 
 function _restoreDraft(draft) {
   if (!draft) return;
-
-  // Restore contact fields
   if (draft.submitted_by_name)    { const el = document.getElementById('inputName');    if (el) el.value = draft.submitted_by_name; }
   if (draft.submitted_by_company) { const el = document.getElementById('inputCompany'); if (el) el.value = draft.submitted_by_company; }
   if (draft.submitted_by_email)   { const el = document.getElementById('inputEmail');   if (el) el.value = draft.submitted_by_email; }
   if (draft.additional_notes)     { const el = document.getElementById('additionalNotes'); if (el) el.value = draft.additional_notes; }
-
-  // Load draft answers into answers object
   const draftAnswers = draft.answers || {};
-  Object.entries(draftAnswers).forEach(([itemId, val]) => {
-    answers[itemId] = typeof val === 'object' ? val : { value: val };
-  });
-
-  // Rebuild the checklist so buildItem re-renders with restored answers
+  Object.entries(draftAnswers).forEach(([itemId, val]) => { answers[itemId] = typeof val === 'object' ? val : { value: val }; });
   buildChecklist();
-
-  // Restore text inputs after rebuild
   Object.entries(draftAnswers).forEach(([itemId, val]) => {
-    if (val && val.text) {
-      const tv = document.getElementById('textval_' + itemId);
-      if (tv) tv.value = val.text;
-    }
+    if (val && val.text) { const tv = document.getElementById('textval_' + itemId); if (tv) tv.value = val.text; }
   });
-
-  // Restore additional notes
-  if (draft.additional_notes) {
-    const el = document.getElementById('additionalNotes');
-    if (el) el.value = draft.additional_notes;
-  }
-
-  // Restore photos from pre-uploaded URLs
+  if (draft.additional_notes) { const el = document.getElementById('additionalNotes'); if (el) el.value = draft.additional_notes; }
   const draftPhotoUrls = draft.photo_urls || {};
   Object.entries(draftPhotoUrls).forEach(([itemId, url]) => {
     if (!url) return;
     photoUrls[itemId] = url;
-
-    const photoId   = 'photo_' + itemId;
+    const photoId = 'photo_' + itemId;
     const previewGrid = document.getElementById('preview_' + photoId);
     if (!previewGrid) return;
-
-    const wrap = document.createElement('div');
-    wrap.className = 'photo-preview-item';
-    wrap.id = 'photowrap_' + itemId;
-
-    const img = document.createElement('img');
-    img.src = url;
-    img.style.cssText = 'width:100%;border-radius:8px';
-
-    const stamp = document.createElement('div');
-    stamp.className = 'photo-stamp';
-    stamp.textContent = 'Restored from draft';
-
-    const rem = document.createElement('button');
-    rem.className = 'photo-remove';
-    rem.textContent = '×';
+    const wrap = document.createElement('div'); wrap.className = 'photo-preview-item'; wrap.id = 'photowrap_' + itemId;
+    const img = document.createElement('img'); img.src = url; img.style.cssText = 'width:100%;border-radius:8px';
+    const stamp = document.createElement('div'); stamp.className = 'photo-stamp'; stamp.textContent = 'Restored from draft';
+    const rem = document.createElement('button'); rem.className = 'photo-remove'; rem.textContent = '×';
     rem.onclick = () => { delete photoUrls[itemId]; photoFiles[itemId] = []; wrap.remove(); _scheduleDraft(); };
-
-    wrap.appendChild(img);
-    wrap.appendChild(stamp);
-    wrap.appendChild(rem);
-    previewGrid.innerHTML = '';
-    previewGrid.appendChild(wrap);
+    wrap.appendChild(img); wrap.appendChild(stamp); wrap.appendChild(rem);
+    previewGrid.innerHTML = ''; previewGrid.appendChild(wrap);
   });
-
   _showDraftToast('Answers and photos restored');
 }
 
-// Auto-save on input
 document.addEventListener('change', () => { if (selectedStage) _scheduleDraft(); });
 document.addEventListener('input', e => {
   const ids = ['inputName','inputCompany','inputEmail','additionalNotes'];
   if (selectedStage && ids.includes(e.target.id)) _scheduleDraft();
 });
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && selectedStage) saveDraft(true);
-});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && selectedStage) saveDraft(true); });
 
-
-
-// ── Offline Queue (IndexedDB) ─────────────────────────────────────────────
+// Offline Queue (IndexedDB)
 function pdOpenDB() {
   return new Promise(function(res, rej) {
     var r = indexedDB.open('pd-submissions', 1);
-    r.onupgradeneeded = function(e) {
-      e.target.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
-    };
+    r.onupgradeneeded = function(e) { e.target.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
     r.onsuccess = function(e) { res(e.target.result); };
     r.onerror   = function(e) { rej(e.target.error); };
   });
 }
-
 function fileToBase64(file) {
   return new Promise(function(res, rej) {
     var reader = new FileReader();
@@ -944,139 +785,80 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
-
 async function pdQueueSubmission(payload, photoFilesMap, photoUrlsMap) {
-  // Convert all photo files to base64 so they survive IndexedDB storage
   var photos = {};
   for (var itemId in photoFilesMap) {
     var files = photoFilesMap[itemId];
-    if (files && files.length) {
-      photos[itemId] = { type: 'file', data: await fileToBase64(files[0]), name: files[0].name };
-    }
+    if (files && files.length) photos[itemId] = { type: 'file', data: await fileToBase64(files[0]), name: files[0].name };
   }
-  // Pre-uploaded photos (URLs) — store as-is
   for (var itemId2 in photoUrlsMap) {
-    if (!photos[itemId2]) {
-      photos[itemId2] = { type: 'url', data: photoUrlsMap[itemId2] };
-    }
+    if (!photos[itemId2]) photos[itemId2] = { type: 'url', data: photoUrlsMap[itemId2] };
   }
-
-  var entry = {
-    token:     PLOT_TOKEN,
-    payload:   payload,
-    photos:    photos,
-    ts:        Date.now(),
-  };
-
+  var entry = { token: PLOT_TOKEN, payload: payload, photos: photos, ts: Date.now() };
   var db = await pdOpenDB();
   await new Promise(function(res, rej) {
     var tx = db.transaction('queue', 'readwrite');
     tx.objectStore('queue').add(entry);
-    tx.oncomplete = res;
-    tx.onerror    = rej;
+    tx.oncomplete = res; tx.onerror = rej;
   });
 }
-
 async function pdFlushQueue() {
   var db;
   try { db = await pdOpenDB(); } catch(e) { return; }
-
   var items = await new Promise(function(res, rej) {
     var tx = db.transaction('queue', 'readonly');
     var r  = tx.objectStore('queue').getAll();
-    r.onsuccess = function(e) { res(e.target.result); };
-    r.onerror   = rej;
+    r.onsuccess = function(e) { res(e.target.result); }; r.onerror = rej;
   });
-
   if (!items.length) return;
-
   var synced = 0;
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     try {
       var fd = new FormData();
       fd.append('data', JSON.stringify(item.payload));
-
-      // Rebuild photo files from base64
       for (var itemId in item.photos) {
         var photo = item.photos[itemId];
-        if (photo.type === 'file') {
-          // Convert base64 back to blob
-          var res2 = await fetch(photo.data);
-          var blob = await res2.blob();
-          fd.append('photo_' + itemId, blob, photo.name || 'photo.jpg');
-        } else if (photo.type === 'url') {
-          // Pre-uploaded — send as draft_photo_urls
-        }
+        if (photo.type === 'file') { var res2 = await fetch(photo.data); var blob = await res2.blob(); fd.append('photo_' + itemId, blob, photo.name || 'photo.jpg'); }
       }
-
-      // Add pre-uploaded URLs
       var urlPhotos = {};
-      for (var itemId3 in item.photos) {
-        if (item.photos[itemId3].type === 'url') urlPhotos[itemId3] = item.photos[itemId3].data;
-      }
-      if (Object.keys(urlPhotos).length) {
-        fd.append('draft_photo_urls', JSON.stringify(urlPhotos));
-      }
-
+      for (var itemId3 in item.photos) { if (item.photos[itemId3].type === 'url') urlPhotos[itemId3] = item.photos[itemId3].data; }
+      if (Object.keys(urlPhotos).length) fd.append('draft_photo_urls', JSON.stringify(urlPhotos));
       var resp = await fetch('/pd/' + item.token + '/submit', { method: 'POST', body: fd });
       if (resp.ok) {
         var json = await resp.json();
         if (json.ok || json.submission_id) {
-          // Remove from queue
           var db2 = await pdOpenDB();
           await new Promise(function(res3, rej3) {
             var tx2 = db2.transaction('queue', 'readwrite');
             tx2.objectStore('queue').delete(item.id);
-            tx2.oncomplete = res3;
-            tx2.onerror    = rej3;
+            tx2.oncomplete = res3; tx2.onerror = rej3;
           });
           synced++;
         }
       }
-    } catch(e) {
-      console.log('[PD] Still offline, keeping in queue');
-      break;
-    }
+    } catch(e) { console.log('[PD] Still offline, keeping in queue'); break; }
   }
-
   if (synced > 0) {
     var b = document.getElementById('syncBanner');
-    if (b) {
-      b.textContent = synced + ' submission' + (synced > 1 ? 's' : '') + ' uploaded successfully';
-      b.style.display = 'block';
-      setTimeout(function(){ b.style.display = 'none'; }, 4000);
-    }
+    if (b) { b.textContent = synced + ' submission' + (synced > 1 ? 's' : '') + ' uploaded successfully'; b.style.display = 'block'; setTimeout(function(){ b.style.display = 'none'; }, 4000); }
   }
 }
-
 function pdShowOfflineSaved(queueLen) {
   var el = document.getElementById('loading');
   if (el) el.classList.remove('show');
   document.body.innerHTML = '<div style="font-family:-apple-system,sans-serif;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px"><div style="text-align:center;color:#fff;max-width:320px"><div style="font-size:60px;margin-bottom:20px">&#x1F4BE;</div><h1 style="color:#C5962A;font-size:22px;margin-bottom:12px">Saved Offline</h1><p style="color:#a0a0b0;font-size:15px;line-height:1.6;margin-bottom:20px">Your submission has been saved on this device. It will upload automatically when you reconnect.</p><div style="background:rgba(197,150,42,0.15);border:1px solid rgba(197,150,42,0.3);border-radius:10px;padding:12px;font-size:13px;color:#C5962A;margin-bottom:24px">' + queueLen + ' submission' + (queueLen !== 1 ? 's' : '') + ' waiting to upload</div><button onclick="window.history.back()" style="background:#C5962A;color:#1a1a2e;border:none;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">Back to form</button></div></div>';
-  // Start watching for reconnection
-  function tryFlush() {
-    if (navigator.onLine) {
-      pdFlushQueue();
-    } else {
-      setTimeout(tryFlush, 3000);
-    }
-  }
+  function tryFlush() { if (navigator.onLine) { pdFlushQueue(); } else { setTimeout(tryFlush, 3000); } }
   setTimeout(tryFlush, 3000);
 }
-
 async function pdSendSubmission(payload, photoFilesMap, photoUrlsMap) {
   var fd = new FormData();
   fd.append('data', JSON.stringify(payload));
   for (var itemId in photoFilesMap) {
     var files = photoFilesMap[itemId];
-    if (files && files.length) {
-      fd.append('photo_' + itemId, files[0], files[0].name);
-    }
+    if (files && files.length) fd.append('photo_' + itemId, files[0], files[0].name);
   }
-  if (Object.keys(photoUrlsMap).length) {
-    fd.append('draft_photo_urls', JSON.stringify(photoUrlsMap));
-  }
+  if (Object.keys(photoUrlsMap).length) fd.append('draft_photo_urls', JSON.stringify(photoUrlsMap));
   var resp = await fetch('/pd/' + PLOT_TOKEN + '/submit', { method: 'POST', body: fd });
   return resp.json();
 }
@@ -1084,90 +866,58 @@ async function pdSendSubmission(payload, photoFilesMap, photoUrlsMap) {
 async function submitForm() {
   const sigData = getSigDataUrl();
   if (!sigData) { alert('Please sign before submitting.'); return; }
-
   document.getElementById('loading').classList.add('show');
-
   const payload = {
-    stage_number:          selectedStage,
-    submitted_by_name:     document.getElementById('inputName').value.trim(),
-    submitted_by_company:  document.getElementById('inputCompany').value.trim(),
-    submitted_by_email:    document.getElementById('inputEmail').value.trim(),
-    answers:               answers,
-    geolocation:           geoLocation,
-    signature:             sigData,
-    additional_notes:      document.getElementById('additionalNotes').value.trim(),
+    stage_number:         selectedStage,
+    submitted_by_name:    document.getElementById('inputName').value.trim(),
+    submitted_by_company: document.getElementById('inputCompany').value.trim(),
+    submitted_by_email:   document.getElementById('inputEmail').value.trim(),
+    answers:              answers,
+    geolocation:          geoLocation,
+    signature:            sigData,
+    additional_notes:     document.getElementById('additionalNotes').value.trim(),
   };
-
+  if (PARENT_SUBMISSION_ID) payload.parent_submission_id = PARENT_SUBMISSION_ID;
   if (!navigator.onLine) {
-    // Save to local queue
     try {
       await pdQueueSubmission(payload, photoFiles, photoUrls);
-      // Also save draft so answers are preserved
       await saveDraft(true);
       var db = await pdOpenDB();
       var items = await new Promise(function(res, rej) {
         var tx = db.transaction('queue', 'readonly');
         var r  = tx.objectStore('queue').getAll();
-        r.onsuccess = function(e) { res(e.target.result); };
-        r.onerror   = rej;
+        r.onsuccess = function(e) { res(e.target.result); }; r.onerror = rej;
       });
       pdShowOfflineSaved(items.length);
-    } catch(e) {
-      document.getElementById('loading').classList.remove('show');
-      alert('Could not save offline. Please try again.');
-    }
+    } catch(e) { document.getElementById('loading').classList.remove('show'); alert('Could not save offline. Please try again.'); }
     return;
   }
-
-  // Online — send directly
   try {
     const json = await pdSendSubmission(payload, photoFiles, photoUrls);
     document.getElementById('loading').classList.remove('show');
-    if (json.ok) {
-      window._currentDraft = null;
-      window.location.href = '/pd/submitted/' + json.submission_id;
-    } else {
-      alert('Submission failed: ' + (json.error || 'Unknown error'));
-    }
+    if (json.ok) { window._currentDraft = null; window.location.href = '/pd/submitted/' + json.submission_id; }
+    else { alert('Submission failed: ' + (json.error || 'Unknown error')); }
   } catch(err) {
     document.getElementById('loading').classList.remove('show');
-    // Network error even though navigator.onLine — queue it
-    try {
-      await pdQueueSubmission(payload, photoFiles, photoUrls);
-      pdShowOfflineSaved(1);
-    } catch(e2) {
-      alert('Network error. Please check your connection and try again.');
-    }
+    try { await pdQueueSubmission(payload, photoFiles, photoUrls); pdShowOfflineSaved(1); }
+    catch(e2) { alert('Network error. Please check your connection and try again.'); }
   }
 }
 
-// ── PWA offline support ───────────────────────────────────────────────────
+// PWA offline support
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/pd/service-worker.js', { scope: '/pd/' })
     .then(function(reg) {
       console.log('[PD] SW ready');
-      // Force new SW to take over immediately without waiting for page reload
-      if (reg.waiting) {
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       reg.addEventListener('updatefound', function() {
         var newSW = reg.installing;
-        if (newSW) {
-          newSW.addEventListener('statechange', function() {
-            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-              newSW.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
-        }
+        if (newSW) newSW.addEventListener('statechange', function() {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) newSW.postMessage({ type: 'SKIP_WAITING' });
+        });
       });
       if (reg.sync) reg.sync.register('pd-sync').catch(function(){});
     }).catch(function(e) { console.warn('[PD] SW error:', e); });
-
-  var refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', function() {
-    if (!refreshing) { refreshing = true; } // don't auto-reload — just let it work
-  });
-
   navigator.serviceWorker.addEventListener('message', function(e) {
     if (!e.data) return;
     if (e.data.type === 'SYNCED') {
@@ -1176,23 +926,15 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
-
 function updateOfflineBanner() {
   var el = document.getElementById('offlineBanner');
   if (el) el.style.display = navigator.onLine ? 'none' : 'block';
-  if (navigator.onLine) {
-    // Flush any locally queued submissions
-    pdFlushQueue();
-  }
+  if (navigator.onLine) pdFlushQueue();
 }
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
 updateOfflineBanner();
-
-// Also try flushing on page load in case there are queued items
-window.addEventListener('load', function() {
-  if (navigator.onLine) pdFlushQueue();
-});
+window.addEventListener('load', function() { if (navigator.onLine) pdFlushQueue(); });
 </script>
 </body>
 </html>
