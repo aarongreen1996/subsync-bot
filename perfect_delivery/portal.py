@@ -1376,6 +1376,38 @@ def api_users_get(user):
     return jsonify(res.data or [])
 
 
+def _sync_qs_to_sites(qs_name: str, qs_email: str, site_ids: list):
+    """When a site_qs user is saved, push their name/email onto each assigned site."""
+    if not site_ids:
+        return
+    try:
+        for site_id in site_ids:
+            supabase.table("pd_sites").update({
+                "qs_name":  qs_name,
+                "qs_email": qs_email,
+            }).eq("id", site_id).execute()
+    except Exception as e:
+        print(f"QS site sync error: {e}")
+
+
+def _get_all_site_managers(site_id: str) -> list:
+    """Return all pd_users with site_manager or site_qs role assigned to this site."""
+    try:
+        res = supabase.table("pd_users").select("name, email, role, site_ids").in_(
+            "role", ["site_manager", "tenant_admin"]
+        ).execute()
+        managers = []
+        for u in (res.data or []):
+            raw = u.get("site_ids") or "[]"
+            ids = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            if site_id in ids or u.get("role") == "tenant_admin":
+                managers.append(u)
+        return managers
+    except Exception as e:
+        print(f"Get site managers error: {e}")
+        return []
+
+
 @portal_bp.route("/api/users", methods=["POST"])
 @_require_admin_role
 def api_users_create(user):
@@ -1406,6 +1438,10 @@ def api_users_create(user):
         }).execute()
 
         new_user = res.data[0]
+
+        # If QS role, auto-sync their name/email to each assigned site
+        if role == "site_qs" and site_ids:
+            _sync_qs_to_sites(name, email, site_ids)
 
         try:
             assigned_sites = []
@@ -1454,12 +1490,21 @@ def api_users_update(user, user_id):
             new_ids_raw = updates["site_ids"]
             new_ids = json.loads(new_ids_raw) if isinstance(new_ids_raw, str) else (new_ids_raw or [])
             added = [s for s in new_ids if s not in old_site_ids]
-            if added:
-                added_res  = supabase.table("pd_sites").select("id, name").in_("id", added).execute()
+            # Fetch the updated user for email sending / QS sync
+            u_res = supabase.table("pd_users").select("*").eq("id", user_id).single().execute()
+            updated_user = u_res.data or {}
+            # If QS role, sync name/email to ALL their assigned sites
+            if updated_user.get("role") == "site_qs" and new_ids:
+                _sync_qs_to_sites(
+                    updated_user.get("name", data.get("name", "")),
+                    updated_user.get("email", data.get("email", "")),
+                    new_ids
+                )
+            elif added:
+                added_res   = supabase.table("pd_sites").select("id, name").in_("id", added).execute()
                 added_sites = added_res.data or []
                 if added_sites:
-                    u_res = supabase.table("pd_users").select("*").eq("id", user_id).single().execute()
-                    send_site_manager_assignment_email(u_res.data or {}, _get_tenant(), added_sites)
+                    send_site_manager_assignment_email(updated_user, _get_tenant(), added_sites)
         except Exception as e:
             print(f"Site assignment email error: {e}")
 
