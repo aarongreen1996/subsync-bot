@@ -317,10 +317,11 @@
             <th class="sortable" onclick="sortSubs('stage')" id="sort-stage">Stage <span class="sort-icon">↕</span></th>
             <th class="sortable" onclick="sortSubs('name')" id="sort-name">Submitted by <span class="sort-icon">↕</span></th>
             <th class="sortable" onclick="sortSubs('date')" id="sort-date">Date <span class="sort-icon">↕</span></th>
-            <th class="sortable" onclick="sortSubs('status')" id="sort-status">Status <span class="sort-icon">↕</span></th>
+            <th class="sortable" onclick="sortSubs('status')" id="sort-status">Manager <span class="sort-icon">↕</span></th>
+            <th>QS</th>
             <th></th>
           </tr></thead>
-          <tbody id="submissionsTable"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+          <tbody id="submissionsTable"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -707,7 +708,7 @@ async function loadOverview() {
       <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
       <td style="font-size:13px">${s.stage_name}</td>
       <td style="font-size:13px">${s.submitted_by_name}</td>
-      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span>${s.qs_status && s.qs_status !== 'not_required' ? ' ' + qsBadge(s) : ''}</td>
       <td><a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review →</a></td>
     </tr>`).join('');
 }
@@ -1046,7 +1047,7 @@ function renderSubmissions() {
     return sortDir === 'asc' ? cmp : -cmp;
   });
   const tbody = document.getElementById('submissionsTable');
-  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>'; return; }
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">📋</div>No submissions found</div></td></tr>'; return; }
   tbody.innerHTML = sorted.map(s => `
     <tr>
       <td><strong>${s.pd_plots?.pd_sites?.name||'—'}</strong><br><span style="font-size:12px;color:#8e8e93">Plot ${s.pd_plots?.plot_number||'—'}</span></td>
@@ -1054,15 +1055,29 @@ function renderSubmissions() {
       <td style="font-size:13px">${s.submitted_by_name}<br><span style="font-size:11px;color:#8e8e93">${s.submitted_by_company}</span></td>
       <td style="font-size:12px;color:#8e8e93">${(s.submitted_at||'').slice(0,10)}</td>
       <td><span class="badge ${statusBadge(s.status)}">${statusLabel(s.status)}</span></td>
+      <td>${qsBadge(s)}</td>
       <td style="display:flex;gap:6px">
         <a href="/pd/review/${s.review_token}" target="_blank" class="btn btn-ghost btn-sm">Review</a>
         <a href="/pd/review/${s.review_token}/pdf" target="_blank" class="btn btn-ghost btn-sm">PDF</a>
+        ${s.qs_review_token ? `<a href="/pd/qs-review/${s.qs_review_token}" target="_blank" class="btn btn-sm" style="background:#e0f2fe;color:#075985">QS</a>` : ''}
       </td>
     </tr>`).join('');
 }
 
 function statusBadge(s) { return {approved:'badge-green',pending:'badge-amber',rejected:'badge-red'}[s]||'badge-grey'; }
 function statusLabel(s) { return {approved:'✓ Approved',pending:'⏳ Pending',rejected:'✗ Rejected'}[s]||s; }
+
+function qsBadge(s) {
+  const qs = s.qs_status;
+  if (!qs || qs === 'not_required') return '<span style="font-size:11px;color:#c7c7cc">—</span>';
+  const map = {
+    pending:  ['#e0f2fe','#075985','⏳ Pending'],
+    approved: ['#dcfce7','#166534','✓ Payment'],
+    rejected: ['#fee2e2','#991b1b','✗ Rejected'],
+  };
+  const [bg, col, label] = map[qs] || ['#f3f4f6','#6b7280', qs];
+  return `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:${bg};color:${col}">${label}</span>`;
+}
 
 function initPhotoFilters() {
   const siteSelect = document.getElementById('photoFilterSite');
