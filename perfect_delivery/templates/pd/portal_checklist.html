@@ -313,8 +313,8 @@ function renderEditor() {
       var isNew = customItems.findIndex(function(ci){return ci.id===item.id;}) !== -1;
       var isSavedCustom = !!item._saved_custom;
       var isCustomItem = isNew || isSavedCustom;
-      var enabled = ov.hasOwnProperty('enabled') ? ov.enabled : true;
-      var text = ov.text !== undefined ? ov.text : item.text;
+      var enabled = (ov.hasOwnProperty('enabled') && ov.enabled != null) ? ov.enabled : true;
+      var text = (ov.text != null && ov.text !== '') ? ov.text : item.text;
       var photoRequired = ov.hasOwnProperty('photo_required') ? ov.photo_required : (item.photo !== false);
       var itemHiddenFor = ov.hidden_for || [];
       var isModified = Object.keys(ov).length > 0 && !isCustomItem;
