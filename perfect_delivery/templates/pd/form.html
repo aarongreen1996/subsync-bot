@@ -185,13 +185,19 @@
     <div class="group-header">{{ group_name }}</div>
     <div class="stage-list">
       {% for s in stages %}
-      <button class="stage-btn" onclick="selectStage({{ s.number }})" id="stageBtnWrapper{{ s.number }}">
+      {% set is_hidden = s.number not in visible_stage_nums %}
+      <button class="stage-btn{% if is_hidden %} not-applicable{% endif %}"
+        onclick="selectStage({{ s.number }})"
+        id="stageBtnWrapper{{ s.number }}"
+        {% if is_hidden %}title="Not applicable for this plot type"{% endif %}>
         <div class="stage-num">{{ '%02d'|format(s.number) }}</div>
         <div class="stage-info">
           <div class="stage-name">{{ s.short_name }}</div>
           <div class="stage-trade">{{ s.applies_to }}</div>
         </div>
-        <div id="stageStatusBadge{{ s.number }}" style="flex-shrink:0"></div>
+        <div id="stageStatusBadge{{ s.number }}" style="flex-shrink:0">
+          {% if is_hidden %}<span class="na-tag">N/A</span>{% endif %}
+        </div>
         <span style="color:#ccc;font-size:18px">›</span>
       </button>
       {% endfor %}
@@ -318,23 +324,6 @@ function initGeo() {
 
 // Stage status badges + grey out stages not applicable to this dwelling type
 function renderStageBadges() {
-  // First pass: grey out any stage not in STAGES (hidden for this dwelling type)
-  document.querySelectorAll('.stage-btn').forEach(btn => {
-    const match = btn.id.match(/stageBtnWrapper(\d+)/);
-    if (!match) return;
-    const num = parseInt(match[1]);
-    if (!STAGES[num]) {
-      btn.classList.add('not-applicable');
-      btn.setAttribute('title', 'Not applicable for this plot type');
-      // Add N/A tag to the badge slot
-      const badgeEl = document.getElementById('stageStatusBadge' + num);
-      if (badgeEl && !badgeEl.innerHTML) {
-        badgeEl.innerHTML = '<span class="na-tag">N/A</span>';
-      }
-    }
-  });
-
-  // Second pass: submission status badges
   Object.entries(STAGE_STATUS).forEach(([num, info]) => {
     const el = document.getElementById('stageStatusBadge' + num);
     if (!el) return;
