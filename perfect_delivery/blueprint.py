@@ -421,6 +421,21 @@ def decide(review_token: str):
     if decision == "rejected":
         resubmit_token = uuid.uuid4().hex + uuid.uuid4().hex[:8]
 
+    # Save manager signature
+    manager_signature_url = None
+    sig_data = request.form.get("manager_signature")
+    if sig_data and sig_data.startswith("data:image/png;base64,"):
+        try:
+            import base64
+            sig_bytes = base64.b64decode(sig_data.split(",", 1)[1])
+            sig_path  = f"signatures/manager_{sub['id']}.png"
+            supabase.storage.from_(STORAGE_BUCKET).upload(
+                sig_path, sig_bytes, {"content-type": "image/png"}
+            )
+            manager_signature_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(sig_path)
+        except Exception as e:
+            print(f"Manager signature upload error: {e}")
+
     updates = {
         "status": decision,
         "manager_notes": manager_notes,
@@ -430,6 +445,8 @@ def decide(review_token: str):
     }
     if resubmit_token:
         updates["resubmit_token"] = resubmit_token
+    if manager_signature_url:
+        updates["manager_signature_url"] = manager_signature_url
 
     supabase.table("pd_submissions").update(updates).eq("id", sub["id"]).execute()
 
