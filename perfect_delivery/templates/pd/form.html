@@ -81,7 +81,7 @@
   .geo-pending { background: #fef3c7; color: #92400e; }
 
   .fab { position: fixed; bottom: 24px; left: 16px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .stage-btn.not-applicable { opacity: 0.38; cursor: not-allowed; background: #f5f5f5 !important; border-color: #e0e0e0 !important; }
+  .stage-btn.not-applicable { opacity: 0.38; cursor: not-allowed !important; background: #f5f5f5 !important; border-color: #e0e0e0 !important; pointer-events: none; }
   .stage-btn.not-applicable:active { transform: none; }
   .stage-btn.not-applicable .stage-num { background: #ccc !important; color: #999 !important; }
   .na-tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #e5e5ea; color: #8e8e93; flex-shrink: 0; }
@@ -189,7 +189,7 @@
       <button class="stage-btn{% if is_hidden %} not-applicable{% endif %}"
         onclick="selectStage({{ s.number }})"
         id="stageBtnWrapper{{ s.number }}"
-        {% if is_hidden %}title="Not applicable for this plot type"{% endif %}>
+        {% if is_hidden %}disabled aria-disabled="true" title="Not applicable for this plot type"{% endif %}>
         <div class="stage-num">{{ '%02d'|format(s.number) }}</div>
         <div class="stage-info">
           <div class="stage-name">{{ s.short_name }}</div>
