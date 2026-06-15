@@ -651,6 +651,9 @@ def resubmit_form(resubmit_token: str):
         resubmit_token=resubmit_token,
         is_resubmit=True,
         manager_notes=sub.get("manager_notes", ""),
+        resubmit_name=sub.get("submitted_by_name", ""),
+        resubmit_company=sub.get("submitted_by_company", ""),
+        resubmit_email=sub.get("submitted_by_email", ""),
     )
 
 
