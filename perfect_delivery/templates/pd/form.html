@@ -81,6 +81,10 @@
   .geo-pending { background: #fef3c7; color: #92400e; }
 
   .fab { position: fixed; bottom: 24px; left: 16px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .stage-btn.not-applicable { opacity: 0.38; cursor: not-allowed; background: #f5f5f5 !important; border-color: #e0e0e0 !important; }
+  .stage-btn.not-applicable:active { transform: none; }
+  .stage-btn.not-applicable .stage-num { background: #ccc !important; color: #999 !important; }
+  .na-tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #e5e5ea; color: #8e8e93; flex-shrink: 0; }
   .fab:disabled { background: #ccc; color: #888; box-shadow: none; cursor: not-allowed; }
   .fab-back { position: fixed; bottom: 24px; left: 16px; z-index: 200; background: var(--dark2); color: white; border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 600; cursor: pointer; }
   .fab-next { position: fixed; bottom: 24px; right: 16px; z-index: 200; background: var(--gold); color: var(--dark); border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(197,150,42,0.4); }
@@ -312,8 +316,25 @@ function initGeo() {
   );
 }
 
-// Stage status badges
+// Stage status badges + grey out stages not applicable to this dwelling type
 function renderStageBadges() {
+  // First pass: grey out any stage not in STAGES (hidden for this dwelling type)
+  document.querySelectorAll('.stage-btn').forEach(btn => {
+    const match = btn.id.match(/stageBtnWrapper(\d+)/);
+    if (!match) return;
+    const num = parseInt(match[1]);
+    if (!STAGES[num]) {
+      btn.classList.add('not-applicable');
+      btn.setAttribute('title', 'Not applicable for this plot type');
+      // Add N/A tag to the badge slot
+      const badgeEl = document.getElementById('stageStatusBadge' + num);
+      if (badgeEl && !badgeEl.innerHTML) {
+        badgeEl.innerHTML = '<span class="na-tag">N/A</span>';
+      }
+    }
+  });
+
+  // Second pass: submission status badges
   Object.entries(STAGE_STATUS).forEach(([num, info]) => {
     const el = document.getElementById('stageStatusBadge' + num);
     if (!el) return;
@@ -385,6 +406,7 @@ function validateStep1() {
 
 // Stage selection
 function selectStage(num) {
+  if (!STAGES[num]) return; // hidden for this dwelling type — ignore tap
   initGeo();
   const draftBtn = document.getElementById('fabDraft');
   if (draftBtn) draftBtn.style.display = 'block';
