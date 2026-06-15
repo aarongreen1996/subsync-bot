@@ -10,7 +10,7 @@ SUPABASE_URL  = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")h
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
