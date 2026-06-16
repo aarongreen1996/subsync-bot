@@ -696,6 +696,16 @@ def resubmit_form(resubmit_token: str):
     visible_stage_nums = list(stages_with_overrides.keys())
 
     stages_by_group = get_stages_by_group()
+    if custom_stages:
+        custom_group = [
+            {"number": snum, "short_name": sdata["name"], "applies_to": sdata.get("applies_to","Custom")}
+            for snum, sdata in sorted(custom_stages.items())
+        ]
+        try:
+            stages_by_group = dict(stages_by_group)
+        except Exception:
+            stages_by_group = {}
+        stages_by_group["Custom Stages"] = custom_group
 
     previous_answers = json.dumps(sub.get("answers") or {})
     flagged_items    = json.dumps(sub.get("flagged_items") or {})
