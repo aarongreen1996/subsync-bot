@@ -966,6 +966,7 @@ def _generate_plot_report_pdf(plot_id: str, send_response: bool = True):
     plot = res.data
     site = plot["pd_sites"]
     tenant = _get_tenant()
+    tenant_id = tenant.get("id","")
 
     subs_res = supabase.table("pd_submissions").select("*").eq("plot_id", plot_id).order("submitted_at", desc=True).execute()
     subs = subs_res.data or []
@@ -978,8 +979,25 @@ def _generate_plot_report_pdf(plot_id: str, send_response: bool = True):
         for n in nums:
             stage_to_group[n] = gn
 
+    # Load custom stages and merge into STAGES
+    all_stages = dict(STAGES)
+    try:
+        cvis = supabase.table("pd_stage_visibility").select("*").eq(
+            "tenant_id", tenant_id).gte("stage_number", 1000).eq("hidden_globally", False).execute()
+        for cv in (cvis.data or []):
+            snum = int(cv["stage_number"])
+            sname = cv.get("name_override") or f"Custom Stage {snum}"
+            all_stages[snum] = {
+                "name": sname,
+                "applies_to": cv.get("applies_to_override") or "Custom",
+                "items": [],
+            }
+            stage_to_group[snum] = "Custom Stages"
+    except Exception as e:
+        print(f"Custom stages PDF error: {e}")
+
     from .pdf_generator import generate_plot_report_pdf
-    pdf_bytes = generate_plot_report_pdf(plot, site, stage_map, STAGES, stage_to_group, tenant, supabase)
+    pdf_bytes = generate_plot_report_pdf(plot, site, stage_map, all_stages, stage_to_group, tenant, supabase)
 
     filename = f"PD_Report_{site.get('name','').replace(' ','_')}_Plot{plot.get('plot_number','')}.pdf"
     return send_file(
