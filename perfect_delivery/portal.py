@@ -343,14 +343,29 @@ def plot_progress(user, plot_id):
             abort(403)
 
     from .checklist_data import STAGES, STAGE_GROUPS
-    stages_json = json.dumps({
-        str(k): {"name": v["name"], "applies_to": v["applies_to"]}
-        for k, v in STAGES.items()
-    })
-    groups_json = json.dumps([
-        {"name": group_name, "stages": stage_nums}
-        for group_name, stage_nums in STAGE_GROUPS.items()
-    ])
+    tenant = _get_tenant()
+    tenant_id = tenant.get("id","")
+
+    stages_dict = {str(k): {"name": v["name"], "applies_to": v["applies_to"]} for k, v in STAGES.items()}
+    groups_list = [{"name": gn, "stages": list(sn)} for gn, sn in STAGE_GROUPS.items()]
+
+    # Add custom stages
+    try:
+        cvis = supabase.table("pd_stage_visibility").select("*").eq(
+            "tenant_id", tenant_id).gte("stage_number", 1000).eq("hidden_globally", False).execute()
+        custom_nums = []
+        for cv in (cvis.data or []):
+            snum = int(cv["stage_number"])
+            sname = cv.get("name_override") or f"Custom Stage {snum}"
+            stages_dict[str(snum)] = {"name": sname, "applies_to": cv.get("applies_to_override") or "Custom"}
+            custom_nums.append(snum)
+        if custom_nums:
+            groups_list.append({"name": "Custom Stages", "stages": sorted(custom_nums)})
+    except Exception as e:
+        print(f"Custom stages plot_progress error: {e}")
+
+    stages_json = json.dumps(stages_dict)
+    groups_json = json.dumps(groups_list)
 
     return render_template(
         "pd/plot_progress.html",
@@ -829,10 +844,29 @@ def plot_report(user, plot_id):
         for n in stage_nums:
             stage_to_group[n] = group_name
 
+    # Load custom stages
+    tenant_id = _get_tenant().get("id","")
+    custom_stage_data = {}
+    try:
+        cvis = supabase.table("pd_stage_visibility").select("*").eq(
+            "tenant_id", tenant_id).gte("stage_number", 1000).eq("hidden_globally", False).execute()
+        for cv in (cvis.data or []):
+            snum = int(cv["stage_number"])
+            custom_stage_data[snum] = {
+                "name": cv.get("name_override") or f"Custom Stage {snum}",
+                "applies_to": cv.get("applies_to_override") or "Custom",
+            }
+            stage_to_group[snum] = "Custom Stages"
+    except Exception as e:
+        print(f"Custom stages plot_report error: {e}")
+
+    # All stage numbers = standard 1-37 + any custom
+    all_stage_nums = list(range(1, 38)) + sorted(custom_stage_data.keys())
+
     approved_count = pending_count = rejected_count = 0
     stage_rows = []
-    for n in range(1, 38):
-        stage  = STAGES.get(n, {})
+    for n in all_stage_nums:
+        stage  = STAGES.get(n) or custom_stage_data.get(n, {})
         sub    = stage_map.get(n)
         status = sub["status"] if sub else "not_started"
         if status == "approved":   approved_count += 1
@@ -852,8 +886,9 @@ def plot_report(user, plot_id):
             "review_token": sub.get("review_token", "") if sub else "",
         })
 
-    not_started = 37 - approved_count - pending_count - rejected_count
-    pct = round((approved_count / 37) * 100)
+    total_stages = len(all_stage_nums)
+    not_started = total_stages - approved_count - pending_count - rejected_count
+    pct = round((approved_count / total_stages) * 100) if total_stages else 0
 
     part_l_rows = []
     for sub in stage_map.values():
