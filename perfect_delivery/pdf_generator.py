@@ -497,6 +497,30 @@ def generate_plot_report_pdf(
         leftMargin=15*mm, rightMargin=15*mm, topMargin=15*mm, bottomMargin=15*mm)
     W = A4[0] - 30*mm
 
+    # Make mutable copies so we can add custom stages without affecting caller
+    STAGES = dict(STAGES)
+    stage_to_group = dict(stage_to_group)
+
+    # Load custom stages (num >= 1000) directly from DB if supabase is available
+    if supabase:
+        try:
+            tenant_id = (tenant or {}).get("id", "")
+            if tenant_id:
+                cvis = supabase.table("pd_stage_visibility").select("*").eq(
+                    "tenant_id", tenant_id
+                ).gte("stage_number", 1000).eq("hidden_globally", False).execute()
+                for cv in (cvis.data or []):
+                    snum = int(cv["stage_number"])
+                    sname = cv.get("name_override") or f"Custom Stage {snum}"
+                    STAGES[snum] = {
+                        "name": sname,
+                        "applies_to": cv.get("applies_to_override") or "Custom",
+                        "items": [],
+                    }
+                    stage_to_group[snum] = "Custom Stages"
+        except Exception as e:
+            print(f"Custom stages PDF load error: {e}")
+
     def s(name, **kw):
         return ParagraphStyle(name, parent=getSampleStyleSheet()["Normal"], **kw)
 
