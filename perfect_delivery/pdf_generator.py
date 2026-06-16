@@ -556,12 +556,16 @@ def generate_plot_report_pdf(
     story.append(meta)
     story.append(Spacer(1,4*mm))
 
+    # Compute full stage list (standard + custom) once, used for stats and audit table
+    all_nums = sorted(set(list(range(1,38)) + [n for n in STAGES.keys() if n >= 1000] + [n for n in stage_map.keys() if n >= 1000]))
+
     # ── Summary stats ─────────────────────────────────────────────────────────
     approved = sum(1 for s in stage_map.values() if s.get("status")=="approved")
     pending  = sum(1 for s in stage_map.values() if s.get("status")=="pending")
     rejected = sum(1 for s in stage_map.values() if s.get("status")=="rejected")
-    not_started = 37 - approved - pending - rejected
-    pct = round((approved/37)*100)
+    total_stages = len(all_nums)
+    not_started = total_stages - approved - pending - rejected
+    pct = round((approved/total_stages)*100) if total_stages else 0
 
     stats = Table([[
         Paragraph(f"<b>{approved}</b><br/>Approved",  s("sa",fontSize=9,alignment=TA_CENTER,textColor=YES_GREEN)),
@@ -585,12 +589,15 @@ def generate_plot_report_pdf(
 
     col_w = [W*0.05, W*0.20, W*0.16, W*0.10, W*0.17, W*0.10, W*0.12, W*0.10]
     hdrs  = ["#","Stage","Trade","Status","Submitted by","Date","Manager","QS"]
-    hdr_row = [Paragraph(h, s("th",fontSize=7,fontName="Helvetica-Bold",textColor=GREY_TEXT)) for h in hdrs]
+    hdr_row = [Paragraph(h, s("th",fontSize=7,fontName="Helvetica-Bold",textColor=WHITE)) for h in hdrs]
 
     table_data = [hdr_row]
     current_group = ""
 
-    for n in range(1, 38):
+    # All stage numbers: standard 1-37 + any custom (>=1000) from STAGES or stage_map
+    all_nums = sorted(set(list(range(1,38)) + [n for n in STAGES.keys() if n >= 1000] + [n for n in stage_map.keys() if n >= 1000]))
+
+    for n in all_nums:
         stage_data = STAGES.get(n, {})
         sub        = stage_map.get(n)
         status     = sub["status"] if sub else "not_started"
@@ -639,13 +646,15 @@ def generate_plot_report_pdf(
         ("FONTSIZE",(0,0),(-1,-1),7),
     ]
     row_idx = 1
-    for n in range(1, 38):
+    prev_group = ""
+    for n in all_nums:
         group = stage_to_group.get(n, "")
-        if group != stage_to_group.get(n-1, "") or n == 1:
+        if group != prev_group:
+            prev_group = group
             audit_style.append(("BACKGROUND",(0,row_idx),(-1,row_idx),colors.Color(0.88,0.88,0.92)))
             audit_style.append(("SPAN",(0,row_idx),(-1,row_idx)))
             row_idx += 1
-        bg = LIGHT_GREY if n % 2 == 0 else WHITE
+        bg = LIGHT_GREY if row_idx % 2 == 0 else WHITE
         audit_style.append(("BACKGROUND",(0,row_idx),(-1,row_idx),bg))
         row_idx += 1
 
