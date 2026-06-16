@@ -180,7 +180,23 @@ async function loadAllVisibility() {
     var r = await fetch('/pd/portal/api/checklist/visibility/all');
     var d = await r.json();
     allVisibility = {};
-    (d || []).forEach(function(v){ allVisibility[v.stage_number] = v; });
+    customStages = {};
+    nextCustomStageNum = 1000;
+    (d || []).forEach(function(v) {
+      allVisibility[v.stage_number] = v;
+      // Rebuild custom stages from saved visibility rows
+      if (v.stage_number >= 1000 && !v.hidden_globally) {
+        var stageName = v.name_override || ('Custom Stage ' + v.stage_number);
+        customStages[v.stage_number] = {
+          name: stageName,
+          applies_to: v.applies_to_override || '',
+          items: []
+        };
+        if (v.stage_number >= nextCustomStageNum) {
+          nextCustomStageNum = v.stage_number + 1;
+        }
+      }
+    });
   } catch(e) { allVisibility = {}; }
 }
 
@@ -434,11 +450,19 @@ function removeCustomItem(itemId) {
   }
 }
 
-function addCustomStage() {
+async function addCustomStage() {
   var name = prompt('Name for the new build stage:');
   if (!name) return;
   var num = nextCustomStageNum++;
   customStages[num] = {name: name, applies_to: '', items: []};
+  // Immediately save to DB so the stage survives a page refresh
+  try {
+    await fetch('/pd/portal/api/checklist/' + num + '/visibility', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hidden_globally: false, hidden_for: [], name_override: name, applies_to_override: ''})
+    });
+    allVisibility[num] = {stage_number: num, hidden_globally: false, hidden_for: [], name_override: name, applies_to_override: ''};
+  } catch(e) { showToast('Could not save stage — check connection', true); }
   renderStageList();
   loadStage(num);
   markDirty();
@@ -505,16 +529,20 @@ async function saveChanges() {
   var nameVal = document.getElementById('stageNameInput').value.trim();
   var appliesVal = document.getElementById('stageAppliesInput').value.trim();
 
+  var isCustomStage = n >= 1000;
   await fetch('/pd/portal/api/checklist/' + n + '/visibility', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       hidden_globally: hideGlobally,
       hidden_for: hiddenFor,
-      name_override: nameVal !== stage.name ? nameVal : '',
-      applies_to_override: appliesVal !== (stage.applies_to||'') ? appliesVal : '',
+      name_override: isCustomStage ? nameVal : (nameVal !== stage.name ? nameVal : ''),
+      applies_to_override: isCustomStage ? appliesVal : (appliesVal !== (stage.applies_to||'') ? appliesVal : ''),
     })
   });
   allVisibility[n] = {hidden_globally: hideGlobally, hidden_for: hiddenFor, name_override: nameVal, applies_to_override: appliesVal};
+  if (isCustomStage) {
+    customStages[n] = {name: nameVal, applies_to: appliesVal, items: []};
+  }
 
   // 2. Save items (default + custom, all together)
   var items = (stage.items || []).slice();
