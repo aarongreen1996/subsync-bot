@@ -1,16 +1,12 @@
 """
 sitemanager/SMblueprint.py
-Site Manager Command Centre — Flask Blueprint
-Mounted at /smc/ prefix in the main app.py
-Auth uses a signed cookie — no Flask session required.
 """
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response, send_from_directory
 from functools import wraps
-import os, hmac, hashlib
+import os, hashlib
 
 smc_bp = Blueprint("smc", __name__, template_folder="templates")
 
-# ── Supabase ──────────────────────────────────────────────────────────────────
 from supabase import create_client
 _url = os.environ.get("SUPABASE_URL", "")
 _key = os.environ.get("SUPABASE_KEY", "")
@@ -18,44 +14,34 @@ supabase = create_client(_url, _key) if _url and _key else None
 
 SMC_PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 SMC_PASSWORD   = os.environ.get("SMC_PASSWORD", "sandle2026")
-COOKIE_NAME    = "smc_token"
+COOKIE_NAME    = "smc_auth"
 
 
-# ── Cookie-based auth (no Flask session needed) ───────────────────────────────
-def _make_token():
-    """Create a simple HMAC token from the password."""
-    return hmac.new(SMC_PASSWORD.encode(), b"smc_auth", hashlib.sha256).hexdigest()
+def _token():
+    return hashlib.sha256(SMC_PASSWORD.encode()).hexdigest()
 
 
-def _valid_cookie():
-    token = request.cookies.get(COOKIE_NAME, "")
-    expected = _make_token()
-    return hmac.compare_digest(token, expected)
+def _authed():
+    return request.cookies.get(COOKIE_NAME) == _token()
 
 
-def _auth(f):
+def _require_auth(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
-        if not _valid_cookie():
+    def wrap(*a, **kw):
+        if not _authed():
             return redirect(url_for("smc.login"))
-        return f(*args, **kwargs)
-    return decorated
+        return f(*a, **kw)
+    return wrap
 
 
-# ── Auth routes ───────────────────────────────────────────────────────────────
+# ── Auth ──────────────────────────────────────────────────────────────────────
 @smc_bp.route("/login", methods=["GET", "POST"])
 def login():
     error = None
     if request.method == "POST":
         if request.form.get("password", "") == SMC_PASSWORD:
             resp = make_response(redirect(url_for("smc.index")))
-            resp.set_cookie(
-                COOKIE_NAME,
-                _make_token(),
-                max_age=60 * 60 * 12,   # 12 hours
-                httponly=True,
-                samesite="Lax",
-            )
+            resp.set_cookie(COOKIE_NAME, _token(), max_age=43200, httponly=True, samesite="Lax")
             return resp
         error = "Incorrect password"
     return render_template("smc/SMlogin.html", error=error)
@@ -68,24 +54,24 @@ def logout():
     return resp
 
 
-# ── App shell ─────────────────────────────────────────────────────────────────
+# ── App shell — served as a raw static file, bypassing Jinja2 entirely ───────
 @smc_bp.route("/")
-@_auth
+@_require_auth
 def index():
-    return render_template("smc/SMapp.html")
+    # send_from_directory serves the file byte-for-byte — no Jinja processing.
+    # This means React's {{ }} syntax is never touched by Jinja2.
+    static_dir = os.path.join(os.path.dirname(__file__), "templates", "smc")
+    return send_from_directory(static_dir, "SMapp.html")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def ok():
-    return jsonify({"ok": True})
-
-def err(e):
-    return jsonify({"ok": False, "error": str(e)}), 500
+def ok():    return jsonify({"ok": True})
+def err(e):  return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Project ───────────────────────────────────────────────────────────────────
 @smc_bp.route("/api/project")
-@_auth
+@_require_auth
 def api_project():
     try:
         r = supabase.table("smc_projects").select("*").eq("id", SMC_PROJECT_ID).single().execute()
@@ -96,7 +82,7 @@ def api_project():
 
 # ── Plots ─────────────────────────────────────────────────────────────────────
 @smc_bp.route("/api/plots")
-@_auth
+@_require_auth
 def api_plots():
     try:
         r = supabase.table("smc_plots").select("*").eq("project_id", SMC_PROJECT_ID).order("plot_number").execute()
@@ -106,7 +92,7 @@ def api_plots():
 
 
 @smc_bp.route("/api/plots/<plot_id>", methods=["PATCH"])
-@_auth
+@_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
     updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y"}}
@@ -119,9 +105,9 @@ def api_plot_update(plot_id):
         return err(e)
 
 
-# ── Stage definitions ─────────────────────────────────────────────────────────
+# ── Stage defs ────────────────────────────────────────────────────────────────
 @smc_bp.route("/api/stage-defs")
-@_auth
+@_require_auth
 def api_stage_defs():
     try:
         r = supabase.table("smc_stage_defs").select("*").eq("project_id", SMC_PROJECT_ID).order("stage_order").execute()
@@ -132,7 +118,7 @@ def api_stage_defs():
 
 # ── Plot stages ───────────────────────────────────────────────────────────────
 @smc_bp.route("/api/plot-stages")
-@_auth
+@_require_auth
 def api_plot_stages():
     try:
         r = supabase.table("smc_plot_stages").select("*").execute()
@@ -142,14 +128,14 @@ def api_plot_stages():
 
 
 @smc_bp.route("/api/plot-stages", methods=["POST"])
-@_auth
+@_require_auth
 def api_plot_stages_upsert():
     stages = (request.get_json() or {}).get("stages", [])
     if not stages:
         return jsonify({"ok": False, "error": "No stages"}), 400
     try:
         for s in stages:
-            existing = supabase.table("smc_plot_stages").select("id") \
+            ex = supabase.table("smc_plot_stages").select("id") \
                 .eq("plot_id", s["plot_id"]).eq("stage_def_id", s["stage_def_id"]).execute()
             row = {
                 "plot_id":        s["plot_id"],
@@ -159,8 +145,8 @@ def api_plot_stages_upsert():
                 "baseline_start": s.get("baseline_start", s["start_day"]),
                 "status":         s.get("status", "pending"),
             }
-            if existing.data:
-                supabase.table("smc_plot_stages").update(row).eq("id", existing.data[0]["id"]).execute()
+            if ex.data:
+                supabase.table("smc_plot_stages").update(row).eq("id", ex.data[0]["id"]).execute()
             else:
                 supabase.table("smc_plot_stages").insert(row).execute()
         return ok()
@@ -169,7 +155,7 @@ def api_plot_stages_upsert():
 
 
 @smc_bp.route("/api/plot-stages/<stage_id>", methods=["PATCH"])
-@_auth
+@_require_auth
 def api_plot_stage_patch(stage_id):
     data = request.get_json() or {}
     updates = {k: v for k, v in data.items() if k in {"start_day", "duration", "status", "notes"}}
@@ -186,7 +172,7 @@ def api_plot_stage_patch(stage_id):
 
 # ── H&S inspections ───────────────────────────────────────────────────────────
 @smc_bp.route("/api/hs-inspections")
-@_auth
+@_require_auth
 def api_hs_inspections():
     try:
         r = supabase.table("smc_hs_inspections").select("*") \
@@ -197,7 +183,7 @@ def api_hs_inspections():
 
 
 @smc_bp.route("/api/hs-inspections/<insp_id>", methods=["PATCH"])
-@_auth
+@_require_auth
 def api_hs_inspection_update(insp_id):
     data = request.get_json() or {}
     updates = {k: v for k, v in data.items() if k in {"last_date", "next_date", "responsible_person"}}
@@ -210,7 +196,7 @@ def api_hs_inspection_update(insp_id):
 
 # ── H&S log ───────────────────────────────────────────────────────────────────
 @smc_bp.route("/api/hs-log")
-@_auth
+@_require_auth
 def api_hs_log():
     try:
         r = supabase.table("smc_hs_log").select("*") \
@@ -221,7 +207,7 @@ def api_hs_log():
 
 
 @smc_bp.route("/api/hs-log", methods=["POST"])
-@_auth
+@_require_auth
 def api_hs_log_create():
     data = request.get_json() or {}
     data["project_id"] = SMC_PROJECT_ID
@@ -236,7 +222,7 @@ def api_hs_log_create():
 
 # ── Map image ─────────────────────────────────────────────────────────────────
 @smc_bp.route("/api/map-image", methods=["GET"])
-@_auth
+@_require_auth
 def api_map_image_get():
     try:
         r = supabase.table("smc_map_image").select("*") \
@@ -247,13 +233,12 @@ def api_map_image_get():
 
 
 @smc_bp.route("/api/map-image", methods=["POST"])
-@_auth
+@_require_auth
 def api_map_image_set():
     image_url = (request.get_json() or {}).get("image_url", "")
     try:
-        existing = supabase.table("smc_map_image").select("id") \
-            .eq("project_id", SMC_PROJECT_ID).execute()
-        if existing.data:
+        ex = supabase.table("smc_map_image").select("id").eq("project_id", SMC_PROJECT_ID).execute()
+        if ex.data:
             supabase.table("smc_map_image").update({"image_url": image_url}) \
                 .eq("project_id", SMC_PROJECT_ID).execute()
         else:
