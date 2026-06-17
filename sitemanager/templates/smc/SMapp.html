@@ -1,796 +1,250 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Site Command Centre — SS17</title>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: system-ui, -apple-system, sans-serif; background: #0a0e1a; color: #f1f5f9; height: 100vh; overflow: hidden; }
-#root { height: 100vh; }
-#error-box { display:none; background:#450a0a; color:#f87171; padding:20px; margin:20px; border-radius:8px; font-family:monospace; white-space:pre-wrap; }
-</style>
-</head>
-<body>
-<div id="root"></div>
-<div id="error-box"></div>
+"""
+sitemanager/SMblueprint.py
+"""
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response, send_from_directory
+from functools import wraps
+import os, hashlib
 
-{% raw %}
-<script type="text/babel">
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+smc_bp = Blueprint("smc", __name__, template_folder="templates")
 
-// ── API helper ─────────────────────────────────────────────────────────────
-const api = (path, opts) =>
-  fetch('/smc/api' + path, { headers: {'Content-Type':'application/json'}, ...opts });
+from supabase import create_client
+_url = os.environ.get("SUPABASE_URL", "")
+_key = os.environ.get("SUPABASE_KEY", "")
+supabase = create_client(_url, _key) if _url and _key else None
 
-const TODAY = '2026-06-15';
+SMC_PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+SMC_PASSWORD   = os.environ.get("SMC_PASSWORD", "sandle2026")
+COOKIE_NAME    = "smc_auth"
 
-// ── UK working day helpers ─────────────────────────────────────────────────
-const UK_HOL = new Set([
-  '2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25',
-  '2026-08-31','2026-12-25','2026-12-28',
-  '2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31',
-  '2027-08-30','2027-12-27','2027-12-28',
-]);
 
-function isWD(d) {
-  const w = d.getDay();
-  const key = d.toISOString().slice(0, 10);
-  return w !== 0 && w !== 6 && !UK_HOL.has(key);
-}
+def _token():
+    return hashlib.sha256(SMC_PASSWORD.encode()).hexdigest()
 
-function genWDs(startStr, n) {
-  const out = [];
-  const d = new Date(startStr);
-  while (out.length < n) {
-    if (isWD(d)) out.push(new Date(d));
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
-}
 
-// ── TENURE colours ─────────────────────────────────────────────────────────
-const TEN_COL = {
-  'Private':    '#f59e0b',
-  '1st Homes':  '#06b6d4',
-  'Aff Shared': '#8b5cf6',
-  'Aff Rent':   '#3b82f6',
-  'Social Rent':'#10b981',
-};
+def _authed():
+    return request.cookies.get(COOKIE_NAME) == _token()
 
-// ── Error Boundary ─────────────────────────────────────────────────────────
-class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(e) { return { error: e }; }
-  render() {
-    if (this.state.error) {
-      return React.createElement('div', {
-        style: { padding: 24, background: '#450a0a', color: '#f87171',
-                 fontFamily: 'monospace', whiteSpace: 'pre-wrap', margin: 16,
-                 borderRadius: 8, fontSize: 13 }
-      }, 'Render error: ' + (this.state.error.message || String(this.state.error)));
-    }
-    return this.props.children;
-  }
-}
 
-// ══════════════════════════════════════════════════════════════════════════
-// GANTT TAB
-// ══════════════════════════════════════════════════════════════════════════
-function GanttTab({ plots, stageDefs, plotStages }) {
-  const CELL_W_DEFAULT = 22;
-  const ROW_H = 32;
-  const LEFT_W = 165;
-  const HDR_H = 50;
-  const TOTAL_WD = 300;
+def _require_auth(f):
+    @wraps(f)
+    def wrap(*a, **kw):
+        if not _authed():
+            return redirect(url_for("smc.login"))
+        return f(*a, **kw)
+    return wrap
 
-  const [cellW, setCellW] = useState(CELL_W_DEFAULT);
-  const [filter, setFilter] = useState('All');
-  const scrollRef = useRef(null);
 
-  const workingDays = useMemo(() => genWDs('2026-01-02', TOTAL_WD), []);
+# ── Auth ──────────────────────────────────────────────────────────────────────
+@smc_bp.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if request.form.get("password", "") == SMC_PASSWORD:
+            resp = make_response(redirect(url_for("smc.index")))
+            resp.set_cookie(COOKIE_NAME, _token(), max_age=43200, httponly=True, samesite="Lax")
+            return resp
+        error = "Incorrect password"
+    return render_template("smc/SMlogin.html", error=error)
 
-  const todayIdx = useMemo(() => {
-    const t = new Date(TODAY);
-    const idx = workingDays.findIndex(d => d >= t);
-    return idx < 0 ? 0 : idx;
-  }, [workingDays]);
 
-  // Build schedule: for each plot, map stageDefId -> {start, dur, basStart, dbId}
-  const [schedules, setSchedules] = useState({});
+@smc_bp.route("/logout")
+def logout():
+    resp = make_response(redirect(url_for("smc.login")))
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
 
-  useEffect(() => {
-    if (!plots.length || !stageDefs.length) return;
-    const s = {};
-    plots.forEach(plot => {
-      s[plot.id] = {};
-      const dbRows = (plotStages || []).filter(ps => ps.plot_id === plot.id);
-      let cumDur = plot.programme_start_day || 0;
-      stageDefs.forEach(def => {
-        const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        if (db) {
-          s[plot.id][def.id] = {
-            start: db.start_day, dur: db.duration,
-            basStart: db.baseline_start != null ? db.baseline_start : db.start_day,
-            dbId: db.id
-          };
-          cumDur = db.start_day + db.duration;
-        } else {
-          s[plot.id][def.id] = { start: cumDur, dur: def.default_duration, basStart: cumDur, dbId: null };
-          cumDur += def.default_duration;
-        }
-      });
-    });
-    setSchedules(s);
-  }, [plots, stageDefs, plotStages]);
 
-  // Scroll to today
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollLeft = Math.max(0, todayIdx * cellW - 300);
-    }
-  }, [todayIdx]);
+# ── App shell — served as a raw static file, bypassing Jinja2 entirely ───────
+@smc_bp.route("/")
+@_require_auth
+def index():
+    # send_from_directory serves the file byte-for-byte — no Jinja processing.
+    # This means React's {{ }} syntax is never touched by Jinja2.
+    static_dir = os.path.join(os.path.dirname(__file__), "templates", "smc")
+    return send_from_directory(static_dir, "SMapp.html")
 
-  const dragRef = useRef(null);
 
-  const onDragStart = useCallback((e, plotId, defId) => {
-    e.preventDefault();
-    const sc = schedules[plotId];
-    if (!sc || !sc[defId]) return;
-    const origStart = sc[defId].start;
-    dragRef.current = { plotId, defId, startX: e.clientX, origStart };
-    const onMove = me => {
-      if (!dragRef.current) return;
-      const delta = Math.round((me.clientX - dragRef.current.startX) / cellW);
-      const ns = Math.max(0, dragRef.current.origStart + delta);
-      setSchedules(prev => ({
-        ...prev,
-        [plotId]: { ...prev[plotId], [defId]: { ...prev[plotId][defId], start: ns } }
-      }));
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [cellW, schedules]);
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def ok():    return jsonify({"ok": True})
+def err(e):  return jsonify({"ok": False, "error": str(e)}), 500
 
-  const monthLabels = useMemo(() => {
-    const out = []; let pm = -1;
-    workingDays.forEach((d, i) => {
-      if (d.getMonth() !== pm) {
-        out.push({ idx: i, label: d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) });
-        pm = d.getMonth();
-      }
-    });
-    return out;
-  }, [workingDays]);
 
-  const defMap = useMemo(() => {
-    const m = {};
-    stageDefs.forEach(d => { m[d.id] = d; });
-    return m;
-  }, [stageDefs]);
+# ── Project ───────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/project")
+@_require_auth
+def api_project():
+    try:
+        r = supabase.table("smc_projects").select("*").eq("id", SMC_PROJECT_ID).single().execute()
+        return jsonify(r.data or {})
+    except Exception as e:
+        return err(e)
 
-  const visPlots = useMemo(() => {
-    if (filter === 'All') return plots;
-    if (filter === 'Behind') return plots.filter(p => {
-      const sc = schedules[p.id];
-      return sc && Object.values(sc).some(s => s.start > s.basStart);
-    });
-    return plots.filter(p => p.tenure === filter);
-  }, [filter, plots, schedules]);
 
-  const stats = useMemo(() => {
-    let behind = 0, done = 0, inProg = 0;
-    plots.forEach(p => {
-      const sc = schedules[p.id];
-      if (!sc) return;
-      const vals = Object.values(sc);
-      if (vals.every(s => s.start + s.dur <= todayIdx)) done++;
-      else if (vals.some(s => s.start <= todayIdx && s.start + s.dur > todayIdx)) inProg++;
-      if (vals.some(s => s.start > s.basStart)) behind++;
-    });
-    return { behind, done, inProg };
-  }, [plots, schedules, todayIdx]);
+# ── Plots ─────────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/plots")
+@_require_auth
+def api_plots():
+    try:
+        r = supabase.table("smc_plots").select("*").eq("project_id", SMC_PROJECT_ID).order("plot_number").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 
-  if (!stageDefs.length) {
-    return React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#334155' } },
-      'Loading programme data...');
-  }
 
-  return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-      {/* Controls bar */}
-      <div style={{ display:'flex', gap:8, padding:'6px 12px', alignItems:'center', flexWrap:'wrap',
-                    borderBottom:'1px solid #1e293b', background:'#050810', flexShrink:0 }}>
-        {[['✓', stats.done, '#4ade80'], ['▶', stats.inProg, '#60a5fa'], ['▲', stats.behind, '#f87171']].map(([sym, n, col]) => (
-          <span key={sym} style={{ fontSize:11, color:col, fontWeight:700 }}>{sym} {n}</span>
-        ))}
-        <div style={{ flex:1 }}/>
-        <select value={filter} onChange={e => setFilter(e.target.value)}
-          style={{ background:'#1e293b', border:'1px solid #334155', borderRadius:5, color:'#e2e8f0', fontSize:10, padding:'3px 8px' }}>
-          {['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f =>
-            <option key={f}>{f}</option>
-          )}
-        </select>
-        <button onClick={() => setCellW(w => Math.max(12, w-4))}
-          style={{ padding:'3px 8px', background:'#1e293b', border:'1px solid #334155', borderRadius:4, color:'#94a3b8', cursor:'pointer', fontSize:11 }}>−</button>
-        <button onClick={() => setCellW(w => Math.min(48, w+4))}
-          style={{ padding:'3px 8px', background:'#1e293b', border:'1px solid #334155', borderRadius:4, color:'#94a3b8', cursor:'pointer', fontSize:11 }}>+</button>
-      </div>
+@smc_bp.route("/api/plots/<plot_id>", methods=["PATCH"])
+@_require_auth
+def api_plot_update(plot_id):
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y"}}
+    if not updates:
+        return jsonify({"ok": False, "error": "No valid fields"}), 400
+    try:
+        supabase.table("smc_plots").update(updates).eq("id", plot_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
 
-      <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
-        {/* Left frozen column */}
-        <div style={{ width:LEFT_W, flexShrink:0, borderRight:'1px solid #334155', display:'flex', flexDirection:'column' }}>
-          <div style={{ height:HDR_H, background:'#050810', borderBottom:'1px solid #334155',
-                        display:'flex', alignItems:'center', padding:'0 8px', fontSize:10, fontWeight:700, color:'#f97316' }}>
-            {visPlots.length} plots
-          </div>
-          <div style={{ flex:1, overflowY:'auto' }} id="g-left">
-            {visPlots.map(p => {
-              const sc = schedules[p.id] || {};
-              const vals = Object.values(sc);
-              const isDone = vals.length > 0 && vals.every(s => s.start + s.dur <= todayIdx);
-              const isBehind = vals.some(s => s.start > s.basStart);
-              const pct = vals.length > 0 ? Math.round(vals.filter(s => s.start + s.dur <= todayIdx).length / vals.length * 100) : 0;
-              return (
-                <div key={p.id} style={{ height:ROW_H, display:'flex', alignItems:'center', padding:'0 8px',
-                                         gap:5, background:'#0a0e1a', borderBottom:'1px solid #1e293b' }}>
-                  <div style={{ width:6, height:6, borderRadius:'50%', background: TEN_COL[p.tenure] || '#94a3b8', flexShrink:0 }}/>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:'#e2e8f0', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                      {String(p.plot_number).padStart(2,'0')} {p.house_type}
-                    </div>
-                    <div style={{ fontSize:9, color:'#475569', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.address}</div>
-                  </div>
-                  {isDone ? <span style={{ fontSize:9, color:'#4ade80', fontWeight:700, flexShrink:0 }}>✓</span>
-                   : isBehind ? <span style={{ fontSize:9, color:'#f87171', fontWeight:700, flexShrink:0 }}>▲</span>
-                   : <span style={{ fontSize:9, color:'#475569', flexShrink:0 }}>{pct}%</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Scrollable chart */}
-        <div ref={scrollRef} style={{ flex:1, overflow:'auto' }}
-          onScroll={e => { const l = document.getElementById('g-left'); if(l) l.scrollTop = e.target.scrollTop; }}>
-          <div style={{ width: workingDays.length * cellW, position:'relative', minHeight:'100%' }}>
-            {/* Header */}
-            <div style={{ position:'sticky', top:0, zIndex:20, background:'#050810',
-                          height:HDR_H, borderBottom:'1px solid #334155' }}>
-              <div style={{ position:'relative', height:28, borderBottom:'1px solid #1e293b' }}>
-                {monthLabels.map(({ idx, label }) => (
-                  <div key={idx} style={{ position:'absolute', left: idx * cellW, top:0, height:28,
-                                          display:'flex', alignItems:'center', paddingLeft:5,
-                                          fontSize:10, fontWeight:700, color:'#94a3b8', whiteSpace:'nowrap', pointerEvents:'none' }}>
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <div style={{ position:'relative', height:22 }}>
-                {workingDays.map((d, i) => i % 5 === 0 && (
-                  <div key={i} style={{ position:'absolute', left: i*cellW, width: 5*cellW, height:22,
-                                        borderRight:'1px solid #1e293b', display:'flex', alignItems:'center', paddingLeft:3 }}>
-                    <span style={{ fontSize:7, color:'#334155' }}>
-                      {d.toLocaleDateString('en-GB', { day:'2-digit', month:'numeric' })}
-                    </span>
-                  </div>
-                ))}
-                <div style={{ position:'absolute', left: todayIdx*cellW, top:0, width:2, height:22, background:'#f97316' }}/>
-              </div>
-            </div>
+# ── Stage defs ────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/stage-defs")
+@_require_auth
+def api_stage_defs():
+    try:
+        r = supabase.table("smc_stage_defs").select("*").eq("project_id", SMC_PROJECT_ID).order("stage_order").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 
-            {/* Rows */}
-            <div style={{ position:'relative' }}>
-              {/* Today line */}
-              <div style={{ position:'absolute', left: todayIdx*cellW+1, top:0, bottom:0,
-                            width:1.5, background:'#f97316', opacity:0.5, pointerEvents:'none', zIndex:3 }}/>
-              {visPlots.map(p => {
-                const sc = schedules[p.id] || {};
-                return (
-                  <div key={p.id} style={{ height:ROW_H, position:'relative', borderBottom:'1px solid #1e293b' }}>
-                    {Object.entries(sc).map(([defId, s]) => {
-                      const def = defMap[defId];
-                      if (!def) return null;
-                      const isDone = s.start + s.dur <= todayIdx;
-                      const isActive = s.start <= todayIdx && s.start + s.dur > todayIdx;
-                      const behind = s.start > s.basStart;
-                      const w = Math.max(s.dur * cellW - 2, 6);
-                      return (
-                        <div key={defId}
-                          onMouseDown={e => { e.stopPropagation(); onDragStart(e, p.id, defId); }}
-                          title={def.name + ' · ' + s.dur + ' days' + (behind ? ' ▲ Behind' : '')}
-                          style={{
-                            position:'absolute', left: s.start*cellW+1, top:(ROW_H-20)/2,
-                            width:w, height:20, borderRadius:3, cursor:'grab',
-                            background: isDone ? '#334155' : (def.color || '#64748b'),
-                            opacity: isDone ? 0.5 : 1,
-                            border: `1px solid ${isActive ? '#fff' : (isDone ? '#475569' : (def.color || '#64748b'))}`,
-                            boxShadow: behind ? '0 0 0 1.5px #f87171' : (isActive ? '0 0 0 1.5px rgba(255,255,255,0.4)' : 'none'),
-                            display:'flex', alignItems:'center', overflow:'hidden', userSelect:'none', zIndex:2,
-                          }}>
-                          {w > 30 && (
-                            <span style={{ fontSize:8, fontWeight:700, color: isDone ? '#94a3b8' : '#fff',
-                                           padding:'0 4px', overflow:'hidden', whiteSpace:'nowrap' }}>
-                              {def.name}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Stage legend */}
-      <div style={{ background:'#050810', borderTop:'1px solid #1e293b', padding:'4px 12px',
-                    display:'flex', gap:10, flexShrink:0, overflowX:'auto' }}>
-        {stageDefs.map(d => (
-          <div key={d.id} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-            <div style={{ width:14, height:7, borderRadius:2, background: d.color || '#64748b' }}/>
-            <span style={{ fontSize:9, color:'#64748b', whiteSpace:'nowrap' }}>{d.name}</span>
-          </div>
-        ))}
-        <span style={{ marginLeft:'auto', fontSize:9, color:'#334155', flexShrink:0 }}>▲ Drag bars to reschedule</span>
-      </div>
-    </div>
-  );
-}
+# ── Plot stages ───────────────────────────────────────────────────────────────
+@smc_bp.route("/api/plot-stages")
+@_require_auth
+def api_plot_stages():
+    try:
+        r = supabase.table("smc_plot_stages").select("*").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 
-// ══════════════════════════════════════════════════════════════════════════
-// SITE MAP TAB
-// ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots }) {
-  const [bgImage, setBgImage] = useState(null);
-  const [dots, setDots] = useState({});
-  const [placeMode, setPlaceMode] = useState(false);
-  const [nextId, setNextId] = useState(null);
-  const [selected, setSelected] = useState(null);
-  const imgRef = useRef(null);
-  const fileRef = useRef(null);
-  const dragRef = useRef(null);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('smc_dots_v2');
-      if (saved) setDots(JSON.parse(saved));
-    } catch (e) {}
-  }, []);
+@smc_bp.route("/api/plot-stages", methods=["POST"])
+@_require_auth
+def api_plot_stages_upsert():
+    stages = (request.get_json() or {}).get("stages", [])
+    if not stages:
+        return jsonify({"ok": False, "error": "No stages"}), 400
+    try:
+        for s in stages:
+            ex = supabase.table("smc_plot_stages").select("id") \
+                .eq("plot_id", s["plot_id"]).eq("stage_def_id", s["stage_def_id"]).execute()
+            row = {
+                "plot_id":        s["plot_id"],
+                "stage_def_id":   s["stage_def_id"],
+                "start_day":      s["start_day"],
+                "duration":       s["duration"],
+                "baseline_start": s.get("baseline_start", s["start_day"]),
+                "status":         s.get("status", "pending"),
+            }
+            if ex.data:
+                supabase.table("smc_plot_stages").update(row).eq("id", ex.data[0]["id"]).execute()
+            else:
+                supabase.table("smc_plot_stages").insert(row).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
 
-  const saveDots = d => {
-    setDots(d);
-    try { localStorage.setItem('smc_dots_v2', JSON.stringify(d)); } catch (e) {}
-  };
 
-  const handleUpload = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setBgImage(ev.target.result);
-    reader.readAsDataURL(file);
-  };
+@smc_bp.route("/api/plot-stages/<stage_id>", methods=["PATCH"])
+@_require_auth
+def api_plot_stage_patch(stage_id):
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in {"start_day", "duration", "status", "notes"}}
+    if not updates:
+        return jsonify({"ok": False, "error": "No valid fields"}), 400
+    try:
+        from datetime import datetime, timezone
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        supabase.table("smc_plot_stages").update(updates).eq("id", stage_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
 
-  const handleImgClick = e => {
-    if (!placeMode || !nextId || dragRef.current) return;
-    const rect = imgRef.current.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * 100;
-    const py = ((e.clientY - rect.top) / rect.height) * 100;
-    const nd = { ...dots, [nextId]: { px, py } };
-    saveDots(nd);
-    const remaining = plots.filter(p => !nd[p.id]);
-    setNextId(remaining[0] ? remaining[0].id : null);
-    if (!remaining.length) setPlaceMode(false);
-  };
 
-  const handleDotMouseDown = (e, id) => {
-    e.stopPropagation();
-    if (placeMode) return;
-    setSelected(id);
-    const rect = imgRef.current.getBoundingClientRect();
-    const orig = { ...dots[id] };
-    dragRef.current = { id, startX: e.clientX, startY: e.clientY, orig, rw: rect.width, rh: rect.height };
-    const onMove = me => {
-      if (!dragRef.current) return;
-      const dx = ((me.clientX - dragRef.current.startX) / dragRef.current.rw) * 100;
-      const dy = ((me.clientY - dragRef.current.startY) / dragRef.current.rh) * 100;
-      setDots(prev => ({
-        ...prev,
-        [id]: { px: Math.max(0, Math.min(100, orig.px + dx)), py: Math.max(0, Math.min(100, orig.py + dy)) }
-      }));
-    };
-    const onUp = () => {
-      if (dragRef.current) {
-        const cur = { ...dots, [id]: dots[id] };
-        try { localStorage.setItem('smc_dots_v2', JSON.stringify(cur)); } catch (e) {}
-      }
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+# ── H&S inspections ───────────────────────────────────────────────────────────
+@smc_bp.route("/api/hs-inspections")
+@_require_auth
+def api_hs_inspections():
+    try:
+        r = supabase.table("smc_hs_inspections").select("*") \
+            .eq("project_id", SMC_PROJECT_ID).order("next_date").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 
-  const unplaced = plots.filter(p => !dots[p.id]);
-  const placed = plots.filter(p => dots[p.id]);
-  const selPlot = selected ? plots.find(p => p.id === selected) : null;
 
-  return (
-    <div style={{ display:'flex', height:'100%' }}>
-      {/* Sidebar */}
-      <div style={{ width:195, flexShrink:0, background:'#0a0e1a', borderRight:'1px solid #1e293b',
-                    padding:10, display:'flex', flexDirection:'column', gap:8, overflowY:'auto' }}>
-        <div style={{ fontSize:10, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.08em' }}>Site Plan</div>
-        <button onClick={() => fileRef.current.click()}
-          style={{ padding:'7px', background:'#1e293b', border:'1px solid #334155', borderRadius:6, color:'#94a3b8', fontSize:11, cursor:'pointer' }}>
-          📁 {bgImage ? 'Replace Image' : 'Upload P101/P102 PNG'}
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleUpload}/>
-        {bgImage && <div style={{ fontSize:10, color:'#4ade80' }}>✓ Plan loaded</div>}
+@smc_bp.route("/api/hs-inspections/<insp_id>", methods=["PATCH"])
+@_require_auth
+def api_hs_inspection_update(insp_id):
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in {"last_date", "next_date", "responsible_person"}}
+    try:
+        supabase.table("smc_hs_inspections").update(updates).eq("id", insp_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
 
-        <div style={{ borderTop:'1px solid #1e293b', paddingTop:8, fontSize:10, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.08em' }}>
-          Plot Dots
-        </div>
-        <div style={{ fontSize:10, color:'#64748b' }}>{placed.length}/{plots.length} placed</div>
-        <div style={{ height:4, background:'#1e293b', borderRadius:2, overflow:'hidden' }}>
-          <div style={{ height:'100%', background:'#f97316', width: plots.length ? (placed.length/plots.length*100)+'%' : '0%' }}/>
-        </div>
 
-        <button onClick={() => { setPlaceMode(p => !p); if (!placeMode && unplaced.length) setNextId(unplaced[0].id); }}
-          style={{ padding:'7px', background: placeMode ? '#f97316' : '#1e293b',
-                   border:`1px solid ${placeMode ? '#f97316' : '#334155'}`, borderRadius:6,
-                   color: placeMode ? '#111' : '#94a3b8', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-          {placeMode ? '✋ Place Mode ON' : '🖱 Place Dots'}
-        </button>
+# ── H&S log ───────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/hs-log")
+@_require_auth
+def api_hs_log():
+    try:
+        r = supabase.table("smc_hs_log").select("*") \
+            .eq("project_id", SMC_PROJECT_ID).order("log_date", desc=True).execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 
-        {placeMode && unplaced.length > 0 && nextId && (
-          <div>
-            <div style={{ fontSize:10, color:'#94a3b8', marginBottom:4 }}>Next to place:</div>
-            <select value={nextId || ''} onChange={e => setNextId(e.target.value)}
-              style={{ width:'100%', background:'#1e293b', border:'1px solid #f97316', borderRadius:5, color:'#f1f5f9', fontSize:11, padding:'4px' }}>
-              {unplaced.map(p => <option key={p.id} value={p.id}>P{p.plot_number} — {p.house_type}</option>)}
-            </select>
-            <div style={{ fontSize:10, color:'#f59e0b', marginTop:4 }}>👆 Click plan to place</div>
-          </div>
-        )}
 
-        {selPlot && (
-          <div style={{ background:'#1e293b', borderRadius:6, padding:8, fontSize:11 }}>
-            <div style={{ fontWeight:700, color:'#e2e8f0', marginBottom:3 }}>Plot {selPlot.plot_number}</div>
-            <div style={{ color:'#64748b' }}>{selPlot.house_type}</div>
-            <div style={{ color:'#64748b', fontSize:10 }}>{selPlot.address}</div>
-            <div style={{ color: TEN_COL[selPlot.tenure] || '#94a3b8', marginTop:4, fontWeight:600, fontSize:10 }}>{selPlot.tenure}</div>
-            <button onClick={() => { const d = {...dots}; delete d[selPlot.id]; saveDots(d); setSelected(null); }}
-              style={{ marginTop:7, width:'100%', padding:'4px', background:'#450a0a', border:'1px solid #dc2626', borderRadius:4, color:'#f87171', fontSize:10, cursor:'pointer' }}>
-              Remove Dot
-            </button>
-          </div>
-        )}
+@smc_bp.route("/api/hs-log", methods=["POST"])
+@_require_auth
+def api_hs_log_create():
+    data = request.get_json() or {}
+    data["project_id"] = SMC_PROJECT_ID
+    row = {k: v for k, v in data.items() if k in
+           {"project_id", "log_date", "log_type", "person_name", "status", "detail", "severity"}}
+    try:
+        supabase.table("smc_hs_log").insert(row).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
 
-        <div style={{ borderTop:'1px solid #1e293b', paddingTop:8 }}>
-          <button onClick={() => { saveDots({}); setSelected(null); }}
-            style={{ width:'100%', padding:'5px', background:'#1e293b', border:'1px solid #334155', borderRadius:5, color:'#475569', fontSize:10, cursor:'pointer' }}>
-            Clear All Dots
-          </button>
-        </div>
-        <div style={{ fontSize:9, color:'#1e293b', lineHeight:1.5 }}>
-          Export P101/P102 as PNG. Open PDF in browser → right-click image → Save. Then upload above.
-        </div>
-      </div>
 
-      {/* Map area */}
-      <div style={{ flex:1, overflow:'auto', background:'#050810', cursor: placeMode ? 'crosshair' : 'default', position:'relative' }}>
-        {!bgImage ? (
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:14 }}>
-            <div style={{ fontSize:60, opacity:0.15 }}>🗺️</div>
-            <div style={{ textAlign:'center', maxWidth:320 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:'#334155', marginBottom:8 }}>Upload Site Plan Image</div>
-              <div style={{ fontSize:12, color:'#1e293b', lineHeight:1.7 }}>
-                Export <strong style={{ color:'#f97316' }}>P101 or P102</strong> as a PNG, then upload it here.
-                You can then click to place each of the 74 plot dots at the exact position on the drawing.
-              </div>
-              <button onClick={() => fileRef.current.click()}
-                style={{ marginTop:14, padding:'10px 22px', background:'#f97316', border:'none', borderRadius:8, color:'#111', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                Upload Image
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display:'inline-block', position:'relative', minWidth:'100%' }}>
-            <img ref={imgRef} src={bgImage} alt="Site Plan" draggable={false}
-              style={{ display:'block', maxWidth:'100%', userSelect:'none' }}
-              onClick={handleImgClick}/>
+# ── Map image ─────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/map-image", methods=["GET"])
+@_require_auth
+def api_map_image_get():
+    try:
+        r = supabase.table("smc_map_image").select("*") \
+            .eq("project_id", SMC_PROJECT_ID).limit(1).execute()
+        return jsonify(r.data[0] if r.data else {})
+    except Exception as e:
+        return err(e)
 
-            <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', overflow:'visible', pointerEvents:'none' }}>
-              {plots.map(plot => {
-                const dot = dots[plot.id];
-                if (!dot) return null;
-                const col = TEN_COL[plot.tenure] || '#f59e0b';
-                const sel = selected === plot.id;
-                const isBung = plot.plot_type === 'Bungalow';
-                const isFlat = plot.plot_type === 'Flat';
-                const r = 9;
-                const cx = dot.px + '%';
-                const cy = dot.py + '%';
-                return (
-                  <g key={plot.id} style={{ pointerEvents:'all', cursor: placeMode ? 'default' : 'pointer' }}
-                    onMouseDown={e => handleDotMouseDown(e, plot.id)}>
-                    {sel && <circle cx={cx} cy={cy} r={r + 5} fill="none" stroke="#fff" strokeWidth={2} opacity={0.7}/>}
-                    {isFlat ? (
-                      <rect x={'calc(' + dot.px + '% - ' + (r*0.85) + 'px)'}
-                            y={'calc(' + dot.py + '% - ' + (r*0.85) + 'px)'}
-                            width={r * 1.7} height={r * 1.7} rx={2}
-                            fill={col} stroke={sel ? '#fff' : 'rgba(0,0,0,0.4)'} strokeWidth={sel ? 2 : 1.2}/>
-                    ) : isBung ? (
-                      <polygon
-                        points={dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%'}
-                        fill={col} stroke={sel ? '#fff' : 'rgba(0,0,0,0.4)'} strokeWidth={sel ? 2 : 1.2}/>
-                    ) : (
-                      <circle cx={cx} cy={cy} r={r}
-                        fill={col} stroke={sel ? '#fff' : 'rgba(0,0,0,0.4)'} strokeWidth={sel ? 2 : 1.2}/>
-                    )}
-                    <text x={cx} y={cy} dominantBaseline="middle" textAnchor="middle"
-                      fontSize={6.5} fontWeight="700" fill="#fff" style={{ pointerEvents:'none', userSelect:'none' }}>
-                      {plot.plot_number}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
 
-            {placeMode && nextId && (
-              <div style={{ position:'fixed', bottom:60, left:'50%', transform:'translateX(-50%)',
-                            background:'rgba(249,115,22,0.95)', padding:'7px 18px', borderRadius:20,
-                            fontSize:12, fontWeight:700, color:'#111', pointerEvents:'none', zIndex:50 }}>
-                Click to place Plot {plots.find(p => p.id === nextId)?.plot_number}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// H&S TAB
-// ══════════════════════════════════════════════════════════════════════════
-function HSTab({ inspections, hsLog }) {
-  const todayD = new Date(TODAY);
-  const daysTo = d => Math.round((new Date(d) - todayD) / 86400000);
-
-  const badge = ins => {
-    const d = daysTo(ins.next_date);
-    if (d < 0)  return { label: Math.abs(d) + 'd OVERDUE', bg:'#450a0a', border:'#dc2626', col:'#f87171' };
-    if (d <= 2) return { label: d + 'd — DUE SOON',        bg:'#431407', border:'#f97316', col:'#fb923c' };
-    return         { label: d + ' days',                    bg:'#052e16', border:'#16a34a', col:'#4ade80' };
-  };
-
-  const sevC = {
-    red:   { bg:'#450a0a', border:'#dc2626', dot:'#ef4444' },
-    amber: { bg:'#2d1a00', border:'#d97706', dot:'#f59e0b' },
-    green: { bg:'#052e16', border:'#166534', dot:'#22c55e' },
-  };
-
-  return (
-    <div style={{ overflowY:'auto', height:'100%', padding:14 }}>
-      {/* KPI cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:14 }}>
-        {[
-          ['87%', 'Induction Rate', '68/78 operatives', '#4ade80', '#052e16', '#16a34a'],
-          ['3',   'Near-Misses',    '1 action overdue', '#fbbf24', '#2d1a00', '#d97706'],
-          ['5',   'Open Actions',   '2 due ≤7 days',    '#fbbf24', '#2d1a00', '#d97706'],
-          ['92%', 'RAMS Approval',  '22 of 24 subs',    '#4ade80', '#052e16', '#16a34a'],
-        ].map(([v, l, s, tc, bg, bc]) => (
-          <div key={l} style={{ background:bg, border:`1px solid ${bc}`, borderRadius:8, padding:12 }}>
-            <div style={{ fontSize:20, fontWeight:700, color:tc }}>{v}</div>
-            <div style={{ fontSize:11, fontWeight:600, color:'#94a3b8', marginTop:2 }}>{l}</div>
-            <div style={{ fontSize:10, color:'#475569', marginTop:1 }}>{s}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Inspection matrix */}
-      <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>
-        Statutory Inspection Matrix
-      </div>
-      {inspections.length === 0 ? (
-        <div style={{ color:'#334155', fontSize:12, marginBottom:14 }}>No inspection data loaded.</div>
-      ) : (
-        <div style={{ border:'1px solid #1e293b', borderRadius:8, overflow:'hidden', marginBottom:14 }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
-            <thead>
-              <tr style={{ background:'#1e293b' }}>
-                {['Inspection', 'Freq', 'Last', 'Next Due', 'Status', 'Responsible'].map(h => (
-                  <th key={h} style={{ textAlign:'left', padding:'7px 9px', color:'#475569', fontWeight:700, fontSize:9, textTransform:'uppercase', whiteSpace:'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {inspections.map((ins, i) => {
-                const s = badge(ins);
-                return (
-                  <tr key={ins.id} style={{ borderTop:'1px solid #1e293b', background: i % 2 === 0 ? '#0f172a' : '#111827' }}>
-                    <td style={{ padding:'7px 9px', color:'#cbd5e1', fontWeight:500 }}>{ins.item}</td>
-                    <td style={{ padding:'7px 9px', color:'#64748b', whiteSpace:'nowrap' }}>{ins.frequency}</td>
-                    <td style={{ padding:'7px 9px', color:'#475569', whiteSpace:'nowrap' }}>{ins.last_date}</td>
-                    <td style={{ padding:'7px 9px', color:'#94a3b8', whiteSpace:'nowrap' }}>{ins.next_date}</td>
-                    <td style={{ padding:'7px 9px' }}>
-                      <span style={{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700,
-                                     background:s.bg, color:s.col, border:`1px solid ${s.border}`, whiteSpace:'nowrap' }}>
-                        {s.label}
-                      </span>
-                    </td>
-                    <td style={{ padding:'7px 9px', color:'#475569', fontSize:10 }}>{ins.responsible_person}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* H&S log */}
-      <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>
-        H&S Reports & Visits Log
-      </div>
-      {hsLog.length === 0 ? (
-        <div style={{ color:'#334155', fontSize:12 }}>No log entries loaded.</div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-          {hsLog.map(log => {
-            const sc = sevC[log.severity] || sevC.green;
-            return (
-              <div key={log.id} style={{ display:'flex', gap:10, padding:11, background:sc.bg,
-                                         border:`1px solid ${sc.border}`, borderRadius:7 }}>
-                <div style={{ flexShrink:0, paddingTop:4 }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background:sc.dot }}/>
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 }}>
-                    <span style={{ fontSize:12, fontWeight:700, color:'#e2e8f0' }}>{log.log_type}</span>
-                    <span style={{ fontSize:10, color:'#475569' }}>{log.log_date}</span>
-                    <span style={{ marginLeft:'auto', fontSize:10, fontWeight:700,
-                                   color: ['Closed','Complete','Cleared'].includes(log.status) ? '#4ade80' : '#fbbf24' }}>
-                      {log.status}
-                    </span>
-                  </div>
-                  <div style={{ fontSize:10, color:'#64748b', marginBottom:2 }}>{log.person_name}</div>
-                  <div style={{ fontSize:11, color:'#475569' }}>{log.detail}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// ROOT APP
-// ══════════════════════════════════════════════════════════════════════════
-function App() {
-  const [tab, setTab] = useState('map');
-  const [plots, setPlots] = useState([]);
-  const [stageDefs, setStageDefs] = useState([]);
-  const [plotStages, setPlotStages] = useState([]);
-  const [inspections, setInspections] = useState([]);
-  const [hsLog, setHsLog] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    Promise.all([
-      api('/plots').then(r => r.json()).catch(() => []),
-      api('/stage-defs').then(r => r.json()).catch(() => []),
-      api('/plot-stages').then(r => r.json()).catch(() => []),
-      api('/hs-inspections').then(r => r.json()).catch(() => []),
-      api('/hs-log').then(r => r.json()).catch(() => []),
-    ]).then(([p, sd, ps, insp, log]) => {
-      setPlots(Array.isArray(p) ? p : []);
-      setStageDefs(Array.isArray(sd) ? sd : []);
-      setPlotStages(Array.isArray(ps) ? ps : []);
-      setInspections(Array.isArray(insp) ? insp : []);
-      setHsLog(Array.isArray(log) ? log : []);
-      setLoading(false);
-    }).catch(e => {
-      setLoadError(e.message || 'Failed to load data');
-      setLoading(false);
-    });
-  }, []);
-
-  const TABS = [
-    { id:'map',   label:'🗺️  Site Map' },
-    { id:'gantt', label:'📅  Programme' },
-    { id:'hs',    label:'⛑️  H&S' },
-  ];
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
-      {/* Header */}
-      <div style={{ background:'#050810', borderBottom:'1px solid #1e293b', padding:'7px 14px 0', flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:18 }}>🏗️</span>
-            <div>
-              <div style={{ fontSize:12, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.1em' }}>
-                Site Command Centre
-              </div>
-              <div style={{ fontSize:10, color:'#334155' }}>SS17 Phase 1C · Sandle Park, Fordingbridge · {plots.length} Plots loaded</div>
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:12, fontSize:10, alignItems:'center' }}>
-            <span style={{ color:'#334155' }}>📅 15 Jun 2026</span>
-            <a href="/smc/logout" style={{ color:'#475569', textDecoration:'none', fontSize:10 }}>Log out</a>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:2 }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ padding:'5px 14px', fontSize:11, fontWeight:600, border:'1px solid', borderBottom:'none',
-                       borderRadius:'6px 6px 0 0', cursor:'pointer',
-                       background: tab === t.id ? '#111827' : 'transparent',
-                       borderColor: tab === t.id ? '#1e293b' : 'transparent',
-                       color: tab === t.id ? '#f97316' : '#475569' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex:1, overflow:'hidden', background:'#0f172a' }}>
-        {loading ? (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#334155', fontSize:14 }}>
-            Loading data...
-          </div>
-        ) : loadError ? (
-          <div style={{ padding:20, color:'#f87171', fontSize:13 }}>Error: {loadError}</div>
-        ) : (
-          <ErrorBoundary>
-            {tab === 'map'   && <SiteMapTab plots={plots}/>}
-            {tab === 'gantt' && <GanttTab plots={plots} stageDefs={stageDefs} plotStages={plotStages}/>}
-            {tab === 'hs'    && <HSTab inspections={inspections} hsLog={hsLog}/>}
-          </ErrorBoundary>
-        )}
-      </div>
-
-      {/* Footer legend */}
-      <div style={{ background:'#050810', borderTop:'1px solid #1e293b', padding:'4px 14px',
-                    display:'flex', gap:12, alignItems:'center', flexShrink:0, flexWrap:'wrap' }}>
-        {Object.entries(TEN_COL).map(([k, col]) => (
-          <div key={k} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10 }}>
-            <div style={{ width:9, height:9, borderRadius:'50%', background:col }}/>
-            <span style={{ color:'#475569' }}>{k}</span>
-          </div>
-        ))}
-        <span style={{ marginLeft:'auto', fontSize:9, color:'#334155' }}>● House · ◆ Bungalow · ■ Flat</span>
-      </div>
-    </div>
-  );
-}
-
-try {
-  ReactDOM.createRoot(document.getElementById('root')).render(
-    React.createElement(ErrorBoundary, null, React.createElement(App))
-  );
-} catch(e) {
-  document.getElementById('error-box').style.display = 'block';
-  document.getElementById('error-box').textContent = 'Mount error: ' + e.message;
-}
-</script>
-{% endraw %}
-</body>
-</html>
+@smc_bp.route("/api/map-image", methods=["POST"])
+@_require_auth
+def api_map_image_set():
+    image_url = (request.get_json() or {}).get("image_url", "")
+    try:
+        ex = supabase.table("smc_map_image").select("id").eq("project_id", SMC_PROJECT_ID).execute()
+        if ex.data:
+            supabase.table("smc_map_image").update({"image_url": image_url}) \
+                .eq("project_id", SMC_PROJECT_ID).execute()
+        else:
+            supabase.table("smc_map_image").insert(
+                {"project_id": SMC_PROJECT_ID, "image_url": image_url}
+            ).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
