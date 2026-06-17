@@ -23,7 +23,6 @@ from account import account_bp
 from auth import auth_bp, create_magic_token
 from perfect_delivery import pd_bp, portal_bp, superadmin_bp
 from site_manager.blueprint import smc_bp
-app.register_blueprint(smc_bp, url_prefix='/smc')
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
@@ -34,6 +33,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(pd_bp)
 app.register_blueprint(portal_bp)
 app.register_blueprint(superadmin_bp)
+app.register_blueprint(smc_bp, url_prefix='/smc')
 start_scheduler()
 
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
