@@ -1,7 +1,7 @@
 """
 sitemanager/SMblueprint.py
 """
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response, send_from_directory
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response, Response
 from functools import wraps
 import os, hashlib
 
@@ -20,10 +20,8 @@ COOKIE_NAME    = "smc_auth"
 def _token():
     return hashlib.sha256(SMC_PASSWORD.encode()).hexdigest()
 
-
 def _authed():
     return request.cookies.get(COOKIE_NAME) == _token()
-
 
 def _require_auth(f):
     @wraps(f)
@@ -54,14 +52,15 @@ def logout():
     return resp
 
 
-# ── App shell — served as a raw static file, bypassing Jinja2 entirely ───────
+# ── App shell ─────────────────────────────────────────────────────────────────
+# Read and return the file directly as text/html — bypasses Jinja2 entirely
 @smc_bp.route("/")
 @_require_auth
 def index():
-    # send_from_directory serves the file byte-for-byte — no Jinja processing.
-    # This means React's {{ }} syntax is never touched by Jinja2.
-    static_dir = os.path.join(os.path.dirname(__file__), "templates", "smc")
-    return send_from_directory(static_dir, "SMapp.html")
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "smc", "SMapp.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return Response(content, mimetype="text/html")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
