@@ -22,7 +22,7 @@ from scheduler import start_scheduler
 from account import account_bp
 from auth import auth_bp, create_magic_token
 from perfect_delivery import pd_bp, portal_bp, superadmin_bp
-from sitemanager.blueprint import smc_bp
+from sitemanager.SMblueprint import smc_bp
 
 app = Flask(__name__)
 app.register_blueprint(dashboard_bp)
