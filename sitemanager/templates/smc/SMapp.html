@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Command Centre — SS17</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0a0e1a; color: #f1f5f9; overflow: hidden; height: 100vh; }
+#root { height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const API = (path, opts) => fetch('/smc/api' + path, { headers: {'Content-Type':'application/json'}, ...opts });
+const TODAY = '2026-06-15';
+
+// ── Working day helpers ────────────────────────────────────────────────────
+const UK_HOL = new Set(['2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28','2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31','2027-08-30','2027-12-27','2027-12-28']);
+const isWD = d => { const w=d.getDay(); return w!==0&&w!==6&&!UK_HOL.has(d.toISOString().slice(0,10)); };
+function genWDs(start, n) {
+  const out=[]; const d=new Date(start);
+  while(out.length<n){ if(isWD(d)) out.push(new Date(d)); d.setDate(d.getDate()+1); }
+  return out;
+}
+
+// ── Gantt component ────────────────────────────────────────────────────────
+function Gantt({ plots, stageDefs, plotStages, onStageSave }) {
+  const CELL_W = 22; const ROW_H = 32; const LEFT_W = 162; const HDR_H = 50;
+  const [cellW, setCellW] = useState(22);
+  const scrollRef = useRef(null);
+  const dragRef = useRef(null);
+  const TOTAL_WD = 320;
+  const workingDays = useMemo(() => genWDs('2026-01-02', TOTAL_WD), []);
+  const todayIdx = useMemo(() => { const t=new Date(TODAY); return workingDays.findIndex(d=>d>=t); }, [workingDays]);
+
+  // Build local schedule state from DB data + fallback generated schedule
+  const [schedules, setSchedules] = useState({});
+
+  useEffect(() => {
+    if (!plots.length || !stageDefs.length) return;
+    const s = {};
+    plots.forEach(plot => {
+      s[plot.id] = {};
+      const dbStages = plotStages.filter(ps => ps.plot_id === plot.id);
+      stageDefs.forEach((def, idx) => {
+        const db = dbStages.find(ps => ps.stage_def_id === def.id);
+        if (db) {
+          s[plot.id][def.id] = { start: db.start_day, dur: db.duration, basStart: db.baseline_start ?? db.start_day, dbId: db.id };
+        } else {
+          // Generate default schedule
+          const cumDur = stageDefs.slice(0, idx).reduce((a, d) => a + d.default_duration, 0);
+          const startDay = (plot.programme_start_day || 0) + cumDur;
+          s[plot.id][def.id] = { start: startDay, dur: def.default_duration, basStart: startDay, dbId: null };
+        }
+      });
+      // External works parallel with First Fix
+      const ffDef = stageDefs.find(d => d.name === 'First Fix');
+      const ewDef = stageDefs.find(d => d.name === 'External Works');
+      if (ffDef && ewDef && s[plot.id][ffDef.id] && s[plot.id][ewDef.id]) {
+        const ffStart = s[plot.id][ffDef.id].start;
+        if (!dbStages.find(ps => ps.stage_def_id === ewDef.id)) {
+          s[plot.id][ewDef.id] = { ...s[plot.id][ewDef.id], start: ffStart, basStart: ffStart };
+        }
+      }
+    });
+    setSchedules(s);
+  }, [plots, stageDefs, plotStages]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, todayIdx * cellW - 250);
+  }, [todayIdx, cellW]);
+
+  const handleDragStart = useCallback((e, plotId, stageDefId) => {
+    e.preventDefault();
+    const origStart = schedules[plotId]?.[stageDefId]?.start ?? 0;
+    dragRef.current = { plotId, stageDefId, startX: e.clientX, origStart };
+    const onMove = me => {
+      if (!dragRef.current) return;
+      const dx = me.clientX - dragRef.current.startX;
+      const delta = Math.round(dx / cellW);
+      const newStart = Math.max(0, dragRef.current.origStart + delta);
+      setSchedules(prev => ({ ...prev, [plotId]: { ...prev[plotId], [stageDefId]: { ...prev[plotId][stageDefId], start: newStart } } }));
+    };
+    const onUp = () => {
+      if (dragRef.current) {
+        const { plotId: pid, stageDefId: sid } = dragRef.current;
+        const s = schedules[pid]?.[sid];
+        if (s) onStageSave(pid, sid, s);
+      }
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [cellW, schedules, onStageSave]);
+
+  const monthLabels = useMemo(() => {
+    const out=[]; let pm=-1;
+    workingDays.forEach((d,i)=>{ if(d.getMonth()!==pm){ out.push({idx:i,label:d.toLocaleDateString('en-GB',{month:'short',year:'numeric'})}); pm=d.getMonth(); } });
+    return out;
+  }, [workingDays]);
+
+  const defMap = useMemo(() => Object.fromEntries(stageDefs.map(d=>[d.id,d])), [stageDefs]);
+
+  const [filter, setFilter] = useState('All');
+  const visPlots = useMemo(() => {
+    if (filter === 'All') return plots;
+    if (filter === 'Behind') return plots.filter(p => schedules[p.id] && Object.entries(schedules[p.id]).some(([,s])=>s.start>s.basStart));
+    return plots.filter(p => p.tenure === filter);
+  }, [filter, plots, schedules]);
+
+  const stats = useMemo(() => {
+    const behind = plots.filter(p => schedules[p.id] && Object.values(schedules[p.id]).some(s=>s.start>s.basStart)).length;
+    const done = plots.filter(p => schedules[p.id] && Object.values(schedules[p.id]).every(s=>s.start+s.dur<=todayIdx)).length;
+    return { behind, done, inProgress: plots.filter(p=>schedules[p.id]&&Object.values(schedules[p.id]).some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx)).length };
+  }, [plots, schedules, todayIdx]);
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      {/* Controls */}
+      <div style={{display:'flex',gap:8,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #1e293b',background:'#050810',flexShrink:0}}>
+        {[['✓',stats.done,'#4ade80'],['▶',stats.inProgress,'#60a5fa'],['▲',stats.behind,'#f87171']].map(([sym,n,col])=>(
+          <div key={sym} style={{fontSize:11,color:col,fontWeight:700}}>{sym} {n}</div>
+        ))}
+        <div style={{flex:1}}/>
+        <select value={filter} onChange={e=>setFilter(e.target.value)} style={{background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#e2e8f0',fontSize:10,padding:'3px 8px'}}>
+          {['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=><option key={f}>{f}</option>)}
+        </select>
+        <button onClick={()=>setCellW(w=>Math.max(12,w-4))} style={{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}}>−</button>
+        <button onClick={()=>setCellW(w=>Math.min(48,w+4))} style={{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}}>+</button>
+      </div>
+
+      {/* Gantt body */}
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Left col */}
+        <div style={{width:LEFT_W,flexShrink:0,borderRight:'1px solid #334155',display:'flex',flexDirection:'column'}}>
+          <div style={{height:HDR_H,background:'#050810',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}}>{visPlots.length} plots</div>
+          <div style={{flex:1,overflowY:'auto'}} id="gantt-left">
+            {visPlots.map(p => {
+              const sc = schedules[p.id];
+              const done = sc && Object.values(sc).every(s=>s.start+s.dur<=todayIdx);
+              const behind = sc && Object.values(sc).some(s=>s.start>s.basStart);
+              const pct = sc ? Math.round(Object.values(sc).filter(s=>s.start+s.dur<=todayIdx).length/Object.keys(sc).length*100) : 0;
+              return (
+                <div key={p.id} style={{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,borderBottom:'1px solid #1e293b',background:'#0a0e1a'}}>
+                  <span style={{fontSize:11,fontWeight:700,color:'#e2e8f0',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.plot_number.padStart(2,'0')} {p.house_type}</span>
+                  {done ? <span style={{fontSize:9,color:'#4ade80',fontWeight:700}}>✓</span>
+                    : behind ? <span style={{fontSize:9,color:'#f87171',fontWeight:700}}>▲</span>
+                    : <span style={{fontSize:9,color:'#475569'}}>{pct}%</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Chart */}
+        <div ref={scrollRef} style={{flex:1,overflow:'auto'}} onScroll={e=>{ const l=document.getElementById('gantt-left'); if(l) l.scrollTop=e.target.scrollTop; }}>
+          <div style={{width:workingDays.length*cellW,position:'relative',minHeight:'100%'}}>
+            {/* Header */}
+            <div style={{position:'sticky',top:0,zIndex:20,background:'#050810',height:HDR_H,borderBottom:'1px solid #334155'}}>
+              <div style={{position:'relative',height:28,borderBottom:'1px solid #1e293b'}}>
+                {monthLabels.map(({idx,label})=>(
+                  <div key={idx} style={{position:'absolute',left:idx*cellW,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#94a3b8',whiteSpace:'nowrap',pointerEvents:'none'}}>{label}</div>
+                ))}
+              </div>
+              <div style={{position:'relative',height:22}}>
+                {workingDays.map((d,i)=> i%5===0 && (
+                  <div key={i} style={{position:'absolute',left:i*cellW,width:5*cellW,height:22,borderRight:'1px solid #1e293b',display:'flex',alignItems:'center',paddingLeft:2}}>
+                    <span style={{fontSize:7,color:'#334155'}}>{d.toLocaleDateString('en-GB',{day:'2-digit',month:'numeric'})}</span>
+                  </div>
+                ))}
+                <div style={{position:'absolute',left:todayIdx*cellW,top:0,width:2,height:22,background:'#f97316'}}/>
+              </div>
+            </div>
+
+            {/* Rows */}
+            <div style={{position:'relative'}}>
+              <div style={{position:'absolute',left:todayIdx*cellW,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none'}}/>
+              {visPlots.map(p => {
+                const sc = schedules[p.id] || {};
+                return (
+                  <div key={p.id} style={{height:ROW_H,position:'relative',borderBottom:'1px solid #1e293b'}}>
+                    {Object.entries(sc).map(([sid,s]) => {
+                      const def = defMap[sid];
+                      if (!def) return null;
+                      const done = s.start+s.dur <= todayIdx;
+                      const active = s.start<=todayIdx && s.start+s.dur>todayIdx;
+                      const behind = s.start > s.basStart;
+                      const w = Math.max(s.dur*cellW-2,6);
+                      return (
+                        <div key={sid}
+                          onMouseDown={e=>{ e.stopPropagation(); handleDragStart(e,p.id,sid); }}
+                          title={`${def.name} (${def.trade}) · ${s.dur} days${behind?' ▲ Behind':''}`}
+                          style={{
+                            position:'absolute',left:s.start*cellW+1,top:(ROW_H-20)/2,width:w,height:20,
+                            borderRadius:3,background:done?'#334155':def.color,opacity:done?0.5:1,
+                            border:`1px solid ${active?'#fff':done?'#475569':def.color}`,
+                            boxShadow:behind?'0 0 0 1.5px #f87171':active?'0 0 0 1.5px #fff4':'none',
+                            cursor:'grab',display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:2,
+                          }}>
+                          {w>30 && <span style={{fontSize:8,fontWeight:700,color:done?'#94a3b8':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}}>{def.name}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{background:'#050810',borderTop:'1px solid #1e293b',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto'}}>
+        {stageDefs.map(d=>(
+          <div key={d.id} style={{display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
+            <div style={{width:14,height:7,borderRadius:2,background:d.color}}/>
+            <span style={{fontSize:9,color:'#64748b',whiteSpace:'nowrap'}}>{d.name}</span>
+          </div>
+        ))}
+        <span style={{marginLeft:'auto',fontSize:9,color:'#334155',flexShrink:0}}>▲ Drag bars to reschedule</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Site Map component ────────────────────────────────────────────────────
+function SiteMap({ plots }) {
+  const [bgImage, setBgImage] = useState(null);
+  const [dots, setDots] = useState({});
+  const [placeMode, setPlaceMode] = useState(false);
+  const [nextPlot, setNextPlot] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const imgRef = useRef(null);
+  const fileRef = useRef(null);
+  const dragRef = useRef(null);
+
+  const TENURE_COL = {'Private':'#f59e0b','1st Homes':'#06b6d4','Aff Shared':'#8b5cf6','Aff Rent':'#3b82f6','Social Rent':'#10b981'};
+
+  // Load saved map image and dot positions
+  useEffect(() => {
+    API('/map-image').then(r=>r.json()).then(d=>{ if(d.image_url) setBgImage(d.image_url); });
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('smc_map_dots');
+    if (saved) try { setDots(JSON.parse(saved)); } catch {}
+  }, []);
+
+  const saveDots = useCallback(d => {
+    setDots(d);
+    try { localStorage.setItem('smc_map_dots', JSON.stringify(d)); } catch {}
+  }, []);
+
+  const handleFileUpload = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setBgImage(ev.target.result);
+      // Save as data URL — not ideal for large files but works
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImgClick = useCallback(e => {
+    if (!placeMode || !nextPlot || dragRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * 100;
+    const py = ((e.clientY - rect.top) / rect.height) * 100;
+    const newDots = { ...dots, [nextPlot]: { px, py } };
+    saveDots(newDots);
+    const remaining = plots.filter(p => !newDots[p.id]);
+    setNextPlot(remaining[0]?.id ?? null);
+    if (!remaining.length) setPlaceMode(false);
+  }, [placeMode, nextPlot, dots, plots, saveDots]);
+
+  const handleDotMouseDown = (e, id) => {
+    e.stopPropagation();
+    if (placeMode) return;
+    setSelected(id);
+    const rect = imgRef.current.getBoundingClientRect();
+    dragRef.current = { id, startX: e.clientX, startY: e.clientY, origPx: dots[id].px, origPy: dots[id].py, rw: rect.width, rh: rect.height };
+    const onMove = me => {
+      if (!dragRef.current) return;
+      const dx = ((me.clientX - dragRef.current.startX) / dragRef.current.rw) * 100;
+      const dy = ((me.clientY - dragRef.current.startY) / dragRef.current.rh) * 100;
+      setDots(prev => ({ ...prev, [id]: { px: Math.max(0,Math.min(100,dragRef.current.origPx+dx)), py: Math.max(0,Math.min(100,dragRef.current.origPy+dy)) } }));
+    };
+    const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const unplaced = plots.filter(p=>!dots[p.id]);
+  const selPlot = selected ? plots.find(p=>p.id===selected) : null;
+
+  return (
+    <div style={{display:'flex',height:'100%'}}>
+      {/* Controls */}
+      <div style={{width:190,flexShrink:0,background:'#0a0e1a',borderRight:'1px solid #1e293b',padding:10,display:'flex',flexDirection:'column',gap:8,overflowY:'auto'}}>
+        <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}}>Site Plan</div>
+        <button onClick={()=>fileRef.current.click()} style={{padding:'7px',background:'#1e293b',border:'1px solid #334155',borderRadius:6,color:'#94a3b8',fontSize:11,cursor:'pointer'}}>
+          📁 {bgImage ? 'Replace Image' : 'Upload P101/P102'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileUpload}/>
+        {bgImage && <div style={{fontSize:10,color:'#4ade80'}}>✓ Plan loaded</div>}
+
+        <div style={{borderTop:'1px solid #1e293b',paddingTop:8,fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}}>Plot Dots</div>
+        <div style={{fontSize:10,color:'#64748b'}}>{Object.keys(dots).length}/{plots.length} placed</div>
+        <div style={{height:4,background:'#1e293b',borderRadius:2,overflow:'hidden'}}>
+          <div style={{height:'100%',background:'#f97316',width:`${Object.keys(dots).length/plots.length*100}%`}}/>
+        </div>
+
+        <button onClick={()=>{ setPlaceMode(p=>!p); if(!placeMode && unplaced.length) setNextPlot(unplaced[0].id); }}
+          style={{padding:'7px',background:placeMode?'#f97316':'#1e293b',border:`1px solid ${placeMode?'#f97316':'#334155'}`,borderRadius:6,color:placeMode?'#111':'#94a3b8',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+          {placeMode ? '✋ Placing Mode ON' : '🖱 Place Dots'}
+        </button>
+
+        {placeMode && unplaced.length > 0 && (
+          <div>
+            <div style={{fontSize:10,color:'#94a3b8',marginBottom:4}}>Next to place:</div>
+            <select value={nextPlot||''} onChange={e=>setNextPlot(e.target.value)}
+              style={{width:'100%',background:'#1e293b',border:'1px solid #f97316',borderRadius:5,color:'#f1f5f9',fontSize:11,padding:'4px'}}>
+              {unplaced.map(p=><option key={p.id} value={p.id}>P{p.plot_number} {p.house_type}</option>)}
+            </select>
+            <div style={{fontSize:10,color:'#f59e0b',marginTop:4}}>Click on plan to place</div>
+          </div>
+        )}
+
+        {selPlot && (
+          <div style={{background:'#1e293b',borderRadius:6,padding:8,fontSize:11}}>
+            <div style={{fontWeight:700,color:'#e2e8f0',marginBottom:4}}>Plot {selPlot.plot_number}</div>
+            <div style={{color:'#64748b'}}>{selPlot.house_type}</div>
+            <div style={{color:'#64748b'}}>{selPlot.address}</div>
+            <div style={{color:TENURE_COL[selPlot.tenure]||'#94a3b8',marginTop:4,fontWeight:600}}>{selPlot.tenure}</div>
+            <button onClick={()=>{ const d={...dots}; delete d[selPlot.id]; saveDots(d); setSelected(null); }}
+              style={{marginTop:8,width:'100%',padding:'4px',background:'#450a0a',border:'1px solid #dc2626',borderRadius:4,color:'#f87171',fontSize:10,cursor:'pointer'}}>
+              Remove Dot
+            </button>
+          </div>
+        )}
+
+        <div style={{borderTop:'1px solid #1e293b',paddingTop:8}}>
+          <button onClick={()=>{ saveDots({}); setSelected(null); }}
+            style={{width:'100%',padding:'5px',background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#475569',fontSize:10,cursor:'pointer'}}>
+            Clear All Dots
+          </button>
+        </div>
+
+        <div style={{borderTop:'1px solid #1e293b',paddingTop:8,fontSize:9,color:'#334155'}}>
+          Dots saved in browser. Export P101/P102 PDF as PNG and upload above.
+        </div>
+      </div>
+
+      {/* Map area */}
+      <div style={{flex:1,overflow:'auto',background:'#050810',cursor:placeMode?'crosshair':'default',position:'relative'}}
+        onMouseMove={()=>{}} onMouseUp={()=>{}}>
+        {!bgImage ? (
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14}}>
+            <div style={{fontSize:60,opacity:0.3}}>🗺️</div>
+            <div style={{textAlign:'center'}}>
+              <div style={{fontSize:15,fontWeight:700,color:'#334155',marginBottom:6}}>Upload Site Plan Image</div>
+              <div style={{fontSize:12,color:'#1e293b',maxWidth:300,lineHeight:1.6}}>
+                Export <strong style={{color:'#f97316'}}>P101 or P102</strong> as a PNG from the PDF, then upload it. You can then click to place each plot dot at the exact position on the architectural drawing.
+              </div>
+              <button onClick={()=>fileRef.current.click()}
+                style={{marginTop:14,padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#111',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                Upload Image
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{display:'inline-block',position:'relative',minWidth:'100%'}}>
+            <img ref={imgRef} src={bgImage} alt="Site Plan" draggable={false}
+              style={{display:'block',maxWidth:'100%',userSelect:'none'}}
+              onClick={handleImgClick}/>
+            <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',pointerEvents:'none'}}>
+              {plots.map(plot => {
+                const dot = dots[plot.id];
+                if (!dot) return null;
+                const col = TENURE_COL[plot.tenure] || '#f59e0b';
+                const sel = selected === plot.id;
+                const isBung = plot.plot_type === 'Bungalow';
+                const isFlat = plot.plot_type === 'Flat';
+                const r = 9;
+                return (
+                  <g key={plot.id} style={{pointerEvents:'all',cursor:placeMode?'default':'pointer'}}
+                    onMouseDown={e=>handleDotMouseDown(e,plot.id)}>
+                    {sel && <circle cx={`${dot.px}%`} cy={`${dot.py}%`} r={r+5} fill="none" stroke="#fff" strokeWidth={2} opacity={0.8}/>}
+                    {isFlat ? (
+                      <rect x={`calc(${dot.px}% - ${r*0.85}px)`} y={`calc(${dot.py}% - ${r*0.85}px)`} width={r*1.7} height={r*1.7} rx={2} fill={col} stroke={sel?'#fff':'rgba(0,0,0,0.4)'} strokeWidth={sel?2:1.2}/>
+                    ) : isBung ? (
+                      <polygon points={`${dot.px}%,calc(${dot.py}% - ${r}px) calc(${dot.px}% + ${r}px),${dot.py}% ${dot.px}%,calc(${dot.py}% + ${r}px) calc(${dot.px}% - ${r}px),${dot.py}%`}
+                        fill={col} stroke={sel?'#fff':'rgba(0,0,0,0.4)'} strokeWidth={sel?2:1.2}/>
+                    ) : (
+                      <circle cx={`${dot.px}%`} cy={`${dot.py}%`} r={r} fill={col} stroke={sel?'#fff':'rgba(0,0,0,0.4)'} strokeWidth={sel?2:1.2}/>
+                    )}
+                    <text x={`${dot.px}%`} y={`${dot.py}%`} dominantBaseline="middle" textAnchor="middle"
+                      fontSize={6.5} fontWeight="700" fill="#fff" style={{pointerEvents:'none',userSelect:'none'}}>
+                      {plot.plot_number}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+            {placeMode && nextPlot && (
+              <div style={{position:'fixed',bottom:60,left:'50%',transform:'translateX(-50%)',background:'rgba(249,115,22,0.95)',padding:'7px 18px',borderRadius:20,fontSize:12,fontWeight:700,color:'#111',pointerEvents:'none',zIndex:50}}>
+                Click to place Plot {plots.find(p=>p.id===nextPlot)?.plot_number} — {plots.find(p=>p.id===nextPlot)?.house_type}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── H&S Tab ────────────────────────────────────────────────────────────────
+function HSTab({ inspections, hsLog }) {
+  const TODAY_D = new Date(TODAY);
+  const daysUntil = d => Math.round((new Date(d) - TODAY_D) / 86400000);
+  const badge = insp => {
+    const d = daysUntil(insp.next_date);
+    if (d < 0)  return { label:`${Math.abs(d)}d OVERDUE`, bg:'#450a0a', border:'#dc2626', col:'#f87171' };
+    if (d <= 2) return { label:`${d}d — DUE SOON`,       bg:'#431407', border:'#f97316', col:'#fb923c' };
+    return       { label:`${d} days`,                     bg:'#052e16', border:'#16a34a', col:'#4ade80' };
+  };
+  const sevC = { red:{bg:'#450a0a',border:'#dc2626',dot:'#ef4444'}, amber:{bg:'#2d1a00',border:'#d97706',dot:'#f59e0b'}, green:{bg:'#052e16',border:'#166534',dot:'#22c55e'} };
+
+  return (
+    <div style={{overflowY:'auto',height:'100%',padding:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}}>
+        {[['87%','Induction Rate','68/78 operative','green'],['3','Near-Misses','1 action overdue','amber'],['5','Corrective Actions','2 due ≤7 days','amber'],['92%','RAMS Approval','22 of 24 subs','green']].map(([v,l,s,c])=>{
+          const cols = c==='green'?{bg:'#052e16',border:'#16a34a',t:'#4ade80'}:{bg:'#2d1a00',border:'#d97706',t:'#fbbf24'};
+          return (
+            <div key={l} style={{background:cols.bg,border:`1px solid ${cols.border}`,borderRadius:8,padding:12}}>
+              <div style={{fontSize:20,fontWeight:700,color:cols.t}}>{v}</div>
+              <div style={{fontSize:11,fontWeight:600,color:'#94a3b8',marginTop:2}}>{l}</div>
+              <div style={{fontSize:10,color:'#475569',marginTop:1}}>{s}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{fontSize:10,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Statutory Inspection Matrix</div>
+      <div style={{border:'1px solid #1e293b',borderRadius:8,overflow:'hidden',marginBottom:14}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+          <thead><tr style={{background:'#1e293b'}}>
+            {['Inspection','Freq','Last','Next','Status','Responsible'].map(h=>(
+              <th key={h} style={{textAlign:'left',padding:'7px 9px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {inspections.map((ins,i)=>{
+              const s=badge(ins);
+              return (
+                <tr key={ins.id} style={{borderTop:'1px solid #1e293b',background:i%2===0?'#0f172a':'#111827'}}>
+                  <td style={{padding:'7px 9px',color:'#cbd5e1',fontWeight:500}}>{ins.item}</td>
+                  <td style={{padding:'7px 9px',color:'#64748b',whiteSpace:'nowrap'}}>{ins.frequency}</td>
+                  <td style={{padding:'7px 9px',color:'#475569',whiteSpace:'nowrap'}}>{ins.last_date}</td>
+                  <td style={{padding:'7px 9px',color:'#94a3b8',whiteSpace:'nowrap'}}>{ins.next_date}</td>
+                  <td style={{padding:'7px 9px'}}><span style={{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:s.bg,color:s.col,border:`1px solid ${s.border}`,whiteSpace:'nowrap'}}>{s.label}</span></td>
+                  <td style={{padding:'7px 9px',color:'#475569',fontSize:10}}>{ins.responsible_person}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{fontSize:10,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>H&S Reports & Visits Log</div>
+      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+        {hsLog.map((log,i)=>{
+          const sc=sevC[log.severity]||sevC.green;
+          return (
+            <div key={log.id} style={{display:'flex',gap:10,padding:11,background:sc.bg,border:`1px solid ${sc.border}`,borderRadius:7}}>
+              <div style={{flexShrink:0,paddingTop:4}}><div style={{width:8,height:8,borderRadius:'50%',background:sc.dot}}/></div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}}>
+                  <span style={{fontSize:12,fontWeight:700,color:'#e2e8f0'}}>{log.log_type}</span>
+                  <span style={{fontSize:10,color:'#475569'}}>{log.log_date}</span>
+                  <span style={{marginLeft:'auto',fontSize:10,fontWeight:700,color:log.status==='Closed'||log.status==='Complete'||log.status==='Cleared'?'#4ade80':'#fbbf24'}}>{log.status}</span>
+                </div>
+                <div style={{fontSize:10,color:'#64748b',marginBottom:2}}>{log.person_name}</div>
+                <div style={{fontSize:11,color:'#475569'}}>{log.detail}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState('map');
+  const [plots, setPlots] = useState([]);
+  const [stageDefs, setStageDefs] = useState([]);
+  const [plotStages, setPlotStages] = useState([]);
+  const [inspections, setInspections] = useState([]);
+  const [hsLog, setHsLog] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      API('/plots').then(r=>r.json()),
+      API('/stage-defs').then(r=>r.json()),
+      API('/plot-stages').then(r=>r.json()),
+      API('/hs-inspections').then(r=>r.json()),
+      API('/hs-log').then(r=>r.json()),
+    ]).then(([p,sd,ps,insp,log]) => {
+      setPlots(Array.isArray(p)?p:[]);
+      setStageDefs(Array.isArray(sd)?sd:[]);
+      setPlotStages(Array.isArray(ps)?ps:[]);
+      setInspections(Array.isArray(insp)?insp:[]);
+      setHsLog(Array.isArray(log)?log:[]);
+      setLoading(false);
+    }).catch(e => { console.error(e); setLoading(false); });
+  }, []);
+
+  const handleStageSave = useCallback(async (plotId, stageDefId, stage) => {
+    try {
+      if (stage.dbId) {
+        await API(`/plot-stages/${stage.dbId}`, { method:'PATCH', body: JSON.stringify({ start_day: stage.start, duration: stage.dur }) });
+      } else {
+        await API('/plot-stages', { method:'POST', body: JSON.stringify({ stages: [{ plot_id: plotId, stage_def_id: stageDefId, start_day: stage.start, duration: stage.dur, baseline_start: stage.basStart }] }) });
+      }
+    } catch (e) { console.error('Save stage error:', e); }
+  }, []);
+
+  const TABS = [
+    { id:'map',   label:'🗺️  Site Map' },
+    { id:'gantt', label:'📅  Programme' },
+    { id:'hs',    label:'⛑️  H&S' },
+  ];
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',background:'#0a0e1a',color:'#f1f5f9',overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{background:'#050810',borderBottom:'1px solid #1e293b',padding:'7px 14px 0',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:18}}>🏗️</span>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.1em'}}>Site Command Centre</div>
+              <div style={{fontSize:10,color:'#334155'}}>SS17 Phase 1C · Sandle Park, Fordingbridge · 74 Plots</div>
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12,fontSize:10}}>
+            <span style={{color:'#334155'}}>📅 15 Jun 2026</span>
+            <a href="/smc/logout" style={{color:'#475569',fontSize:10,textDecoration:'none'}}>Log out</a>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:2}}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{padding:'5px 14px',fontSize:11,fontWeight:600,border:'1px solid',borderBottom:'none',borderRadius:'6px 6px 0 0',cursor:'pointer',background:tab===t.id?'#111827':'none',borderColor:tab===t.id?'#1e293b':'transparent',color:tab===t.id?'#f97316':'#475569'}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflow:'hidden',background:'#0f172a'}}>
+        {loading ? (
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#334155',fontSize:14}}>Loading...</div>
+        ) : (
+          <>
+            {tab==='map'   && <SiteMap plots={plots}/>}
+            {tab==='gantt' && <Gantt plots={plots} stageDefs={stageDefs} plotStages={plotStages} onStageSave={handleStageSave}/>}
+            {tab==='hs'    && <HSTab inspections={inspections} hsLog={hsLog}/>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
