@@ -25,6 +25,7 @@ from perfect_delivery import pd_bp, portal_bp, superadmin_bp
 from sitemanager.SMblueprint import smc_bp
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(onboarding_bp)
 app.register_blueprint(admin_bp)
