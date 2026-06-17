@@ -2,14 +2,15 @@
 sitemanager/SMblueprint.py
 Site Manager Command Centre — Flask Blueprint
 Mounted at /smc/ prefix in the main app.py
+Auth uses a signed cookie — no Flask session required.
 """
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response
 from functools import wraps
-import os
+import os, hmac, hashlib
 
 smc_bp = Blueprint("smc", __name__, template_folder="templates")
 
-# ── Supabase client ───────────────────────────────────────────────────────────
+# ── Supabase ──────────────────────────────────────────────────────────────────
 from supabase import create_client
 _url = os.environ.get("SUPABASE_URL", "")
 _key = os.environ.get("SUPABASE_KEY", "")
@@ -17,33 +18,54 @@ supabase = create_client(_url, _key) if _url and _key else None
 
 SMC_PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 SMC_PASSWORD   = os.environ.get("SMC_PASSWORD", "sandle2026")
+COOKIE_NAME    = "smc_token"
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Cookie-based auth (no Flask session needed) ───────────────────────────────
+def _make_token():
+    """Create a simple HMAC token from the password."""
+    return hmac.new(SMC_PASSWORD.encode(), b"smc_auth", hashlib.sha256).hexdigest()
+
+
+def _valid_cookie():
+    token = request.cookies.get(COOKIE_NAME, "")
+    expected = _make_token()
+    return hmac.compare_digest(token, expected)
+
+
 def _auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("smc_auth"):
+        if not _valid_cookie():
             return redirect(url_for("smc.login"))
         return f(*args, **kwargs)
     return decorated
 
 
+# ── Auth routes ───────────────────────────────────────────────────────────────
 @smc_bp.route("/login", methods=["GET", "POST"])
 def login():
     error = None
     if request.method == "POST":
         if request.form.get("password", "") == SMC_PASSWORD:
-            session["smc_auth"] = True
-            return redirect(url_for("smc.index"))
+            resp = make_response(redirect(url_for("smc.index")))
+            resp.set_cookie(
+                COOKIE_NAME,
+                _make_token(),
+                max_age=60 * 60 * 12,   # 12 hours
+                httponly=True,
+                samesite="Lax",
+            )
+            return resp
         error = "Incorrect password"
     return render_template("smc/SMlogin.html", error=error)
 
 
 @smc_bp.route("/logout")
 def logout():
-    session.pop("smc_auth", None)
-    return redirect(url_for("smc.login"))
+    resp = make_response(redirect(url_for("smc.login")))
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
 
 
 # ── App shell ─────────────────────────────────────────────────────────────────
