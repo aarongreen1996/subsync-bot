@@ -39,7 +39,7 @@ def login():
     if request.method == "POST":
         if request.form.get("password", "") == SMC_PASSWORD:
             resp = make_response(redirect(url_for("smc.index")))
-            resp.set_cookie(COOKIE_NAME, _token(), max_age=43200, httponly=True, samesite="Lax")
+            resp.set_cookie(COOKIE_NAME, _token(), max_age=43200, httponly=True, samesite="Lax", path="/")
             return resp
         error = "Incorrect password"
     return render_template("smc/SMlogin.html", error=error)
@@ -48,7 +48,7 @@ def login():
 @smc_bp.route("/logout")
 def logout():
     resp = make_response(redirect(url_for("smc.login")))
-    resp.delete_cookie(COOKIE_NAME)
+    resp.delete_cookie(COOKIE_NAME, path="/")
     return resp
 
 
