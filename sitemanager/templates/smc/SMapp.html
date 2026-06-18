@@ -15,11 +15,6 @@ select, button, input { font-family: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0f172a; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-.btn { padding: 5px 10px; background: #1e293b; border: 1px solid #334155; border-radius: 5px; color: #94a3b8; cursor: pointer; font-size: 11px; }
-.btn:hover { background: #334155; color: #e2e8f0; }
-.btn-primary { background: #f97316; border-color: #f97316; color: #111; font-weight: 700; }
-.btn-primary:hover { background: #fb923c; }
-.btn-active { background: #f97316; border-color: #f97316; color: #111; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -29,409 +24,281 @@ select, button, input { font-family: inherit; }
 const e = React.createElement;
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-// configure pdf.js worker
 if (window['pdfjs-dist/build/pdf']) {
   window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc =
     'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 }
 
-const api = (path, opts) => fetch('/smc/api' + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+const api = (path, opts) => fetch('/smc/api' + path, {
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'same-origin',
+  ...opts
+});
 
 const TODAY = '2026-06-15';
-const TEN_COL = { 'Private':'#f59e0b','1st Homes':'#06b6d4','Aff Shared':'#8b5cf6','Aff Rent':'#3b82f6','Social Rent':'#10b981' };
+const TEN_COL = {
+  'Private':     '#f59e0b',
+  '1st Homes':   '#06b6d4',
+  'Aff Shared':  '#8b5cf6',
+  'Aff Rent':    '#3b82f6',
+  'Social Rent': '#10b981',
+};
+
 const UK_HOL = new Set(['2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28','2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31','2027-08-30','2027-12-27','2027-12-28']);
 function isWD(d) { const w=d.getDay(); return w!==0&&w!==6&&!UK_HOL.has(d.toISOString().slice(0,10)); }
 function genWDs(s,n) { const out=[],d=new Date(s); while(out.length<n){if(isWD(d))out.push(new Date(d));d.setDate(d.getDate()+1);} return out; }
 
-// ── localStorage helpers ───────────────────────────────────────────────────
-const lsGet = (k,def) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):def; } catch(_){return def;} };
-const lsSet = (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch(_){} };
+const lsGet = (k,def) => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(_){return def;} };
+const lsSet = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch(_){} };
 
 // ══════════════════════════════════════════════════════════════════════════
-// SITE MAP TAB
+// PROGRAMME TAB — Overview dashboard + Gantt chart
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
-  const [placeMode, setPlaceMode]   = useState(false);
-  const [nextId,    setNextId]      = useState(null);
-  const [selected,  setSelected]    = useState(null);
-  const [zoom,      setZoom]        = useState(1);
-  const [pdfLoading,setPdfLoading]  = useState(false);
-  const imgRef   = useRef(null);
-  const fileRef  = useRef(null);
-  const dragRef  = useRef(null);
-  const dotsRef  = useRef(dots);
-  useEffect(() => { dotsRef.current = dots; }, [dots]);
+function ProgrammeTab({ plots, stageDefs, plotStages }) {
+  const TOTAL_WD=300, LEFT_W=170, ROW_H=34, HDR_H=54;
+  const [cellW, setCellW]   = useState(22);
+  const [filter, setFilter] = useState('All');
+  const [view, setView]     = useState('gantt'); // 'overview' or 'gantt'
+  const scrollRef = useRef(null);
+  const dragRef   = useRef(null);
 
-  // ── Image/PDF upload ─────────────────────────────────────────────────────
-  async function handleUpload(ev) {
-    const file = ev.target.files[0];
-    ev.target.value = '';
-    if (!file) return;
+  const workingDays = useMemo(() => genWDs('2026-01-02', TOTAL_WD), []);
+  const todayIdx = useMemo(() => {
+    const t = new Date(TODAY);
+    const i = workingDays.findIndex(d => d >= t);
+    return i < 0 ? 0 : i;
+  }, [workingDays]);
 
-    if (file.type === 'application/pdf') {
-      setPdfLoading(true);
-      try {
-        const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const page = await pdf.getPage(1);
-        const scale = 3;  // high-res render
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement('canvas');
-        canvas.width  = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        const dataUrl = canvas.toDataURL('image/png');
-        setBgImage(dataUrl);
-        lsSet('smc_bg_type','dataurl');
-      } catch(ex) {
-        alert('PDF render failed: ' + ex.message + '\n\nTry exporting your PDF as a PNG image instead.');
-      }
-      setPdfLoading(false);
-    } else {
-      const reader = new FileReader();
-      reader.onload = e2 => { setBgImage(e2.target.result); lsSet('smc_bg_type','dataurl'); };
-      reader.readAsDataURL(file);
-    }
-  }
+  const [schedules, setSchedules] = useState({});
 
-  // ── Dot saving ────────────────────────────────────────────────────────────
-  function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); }
-
-  // ── Map click — places dot or deselects ──────────────────────────────────
-  function handleMapClick(ev) {
-    // Only act if click is on the image itself (not a dot)
-    if (!imgRef.current) return;
-    if (ev.target !== imgRef.current) return;
-    if (!placeMode || !nextId) {
-      setSelected(null);
-      return;
-    }
-    if (dragRef.current) return; // was a drag, not a click
-    const rect = imgRef.current.getBoundingClientRect();
-    const px = ((ev.clientX - rect.left) / rect.width) * 100;
-    const py = ((ev.clientY - rect.top) / rect.height) * 100;
-    const nd = Object.assign({}, dotsRef.current, { [nextId]: { px, py } });
-    saveDots(nd);
-    const remaining = plots.filter(p => !nd[p.id]);
-    setNextId(remaining.length ? remaining[0].id : null);
-    if (!remaining.length) setPlaceMode(false);
-  }
-
-  // ── Dot interaction ───────────────────────────────────────────────────────
-  function handleDotClick(ev, id) {
-    ev.stopPropagation();
-    if (placeMode) return;
-    setSelected(id);
-  }
-
-  function handleDotMouseDown(ev, id) {
-    ev.stopPropagation();
-    if (placeMode) return;
-    if (!imgRef.current || !dotsRef.current[id]) return;
-    setSelected(id);
-    const rect = imgRef.current.getBoundingClientRect();
-    const orig = dotsRef.current[id];
-    let moved = false;
-    dragRef.current = { id, moved };
-
-    function onMove(me) {
-      moved = true; dragRef.current = { id, moved };
-      const dx = ((me.clientX - ev.clientX) / rect.width) * 100;
-      const dy = ((me.clientY - ev.clientY) / rect.height) * 100;
-      setDots(prev => {
-        const nd = Object.assign({}, prev, {
-          [id]: { px: Math.max(0,Math.min(100,orig.px+dx)), py: Math.max(0,Math.min(100,orig.py+dy)) }
-        });
-        dotsRef.current = nd;
-        return nd;
-      });
-    }
-    function onUp() {
-      if (dragRef.current && dragRef.current.moved) {
-        lsSet('smc_dots_v4', dotsRef.current);
-      }
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
-
-  const unplaced  = plots.filter(p => !dots[p.id]);
-  const placed    = plots.filter(p =>  dots[p.id]);
-  const selPlot   = selected ? plots.find(p => p.id === selected) : null;
-  const nextPlot  = nextId   ? plots.find(p => p.id === nextId)   : null;
-
-  const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
-
-  // ── Sidebar ────────────────────────────────────────────────────────────────
-  const sidebar = e('div', { style: { width:195, flexShrink:0, background:'#0a0e1a', borderRight:'1px solid #1e293b', padding:10, display:'flex', flexDirection:'column', gap:8, overflowY:'auto' } },
-
-    e('div', { style:{ fontSize:10, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.08em' } }, 'Site Plan'),
-    e('button', { className:'btn', onClick:()=>fileRef.current.click(), style:{ padding:7 } },
-      pdfLoading ? '⏳ Rendering PDF...' : bgImage ? '📁 Replace Image / PDF' : '📁 Upload P101/P102'),
-    e('input', { ref:fileRef, type:'file', accept:'image/*,.pdf,application/pdf', style:{display:'none'}, onChange:handleUpload }),
-    bgImage && e('div', { style:{ fontSize:10, color:'#4ade80' } }, '✓ Plan loaded'),
-    !bgImage && e('div', { style:{ fontSize:9, color:'#334155', lineHeight:1.5 } }, 'Accepts PNG, JPG, or PDF. PDF is rendered at high resolution for sharp zooming.'),
-
-    // Zoom controls
-    bgImage && e('div', null,
-      e('div', { style:{ fontSize:10, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 } }, 'Zoom'),
-      e('div', { style:{ display:'flex', gap:3, flexWrap:'wrap' } },
-        ...ZOOMS.map(z =>
-          e('button', {
-            key:z,
-            className: zoom===z ? 'btn btn-active' : 'btn',
-            onClick:()=>setZoom(z),
-            style:{ padding:'3px 6px', fontSize:10 }
-          }, z===1?'100%':(z*100|0)+'%')
-        )
-      )
-    ),
-
-    e('div', { style:{ borderTop:'1px solid #1e293b', paddingTop:8, fontSize:10, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.08em' } }, 'Plot Dots'),
-    e('div', { style:{ fontSize:10, color:'#64748b' } }, placed.length + '/' + plots.length + ' placed'),
-    e('div', { style:{ height:4, background:'#1e293b', borderRadius:2, overflow:'hidden' } },
-      e('div', { style:{ height:'100%', background:'#f97316', width:(plots.length?(placed.length/plots.length*100):0)+'%', transition:'width 0.3s' } })
-    ),
-
-    e('button', {
-      className: placeMode ? 'btn btn-active' : 'btn',
-      onClick:()=>{
-        if (!placeMode && unplaced.length) setNextId(unplaced[0].id);
-        else if (placeMode) setNextId(null);
-        setPlaceMode(m => !m);
-      },
-      style:{ padding:7 }
-    }, placeMode ? '✋ Place Mode ON — Click Map' : '🖱 Place Dots'),
-
-    placeMode && unplaced.length > 0 && nextId && e('div', null,
-      e('div', { style:{ fontSize:10, color:'#94a3b8', marginBottom:4 } }, 'Next to place:'),
-      e('select', {
-        value: nextId || '',
-        onChange: ev => setNextId(ev.target.value),
-        style:{ width:'100%', background:'#1e293b', border:'1px solid #f97316', borderRadius:5, color:'#f1f5f9', fontSize:11, padding:4 }
-      }, ...unplaced.map(p => e('option', { key:p.id, value:p.id }, 'P'+p.plot_number+' — '+p.house_type))),
-      e('div', { style:{ fontSize:10, color:'#f59e0b', marginTop:4 } }, '👆 Click on the plan to place this dot')
-    ),
-
-    placeMode && unplaced.length === 0 && e('div', { style:{ fontSize:10, color:'#4ade80' } }, '✓ All plots placed!'),
-
-    e('div', { style:{ borderTop:'1px solid #1e293b', paddingTop:8, display:'flex', gap:5, flexWrap:'wrap' } },
-      e('button', { className:'btn', onClick:()=>{setSelected(null);}, style:{ flex:1, fontSize:10 } }, 'Deselect'),
-      e('button', {
-        className:'btn',
-        onClick:()=>{ saveDots({}); setSelected(null); },
-        style:{ flex:1, fontSize:10, color:'#f87171', borderColor:'#7f1d1d' }
-      }, '🗑 Clear All')
-    )
-  );
-
-  // ── Plot inspector panel ──────────────────────────────────────────────────
-  const inspector = selPlot && e('div', {
-    style:{ width:220, flexShrink:0, background:'#111827', borderLeft:'1px solid #1e293b', display:'flex', flexDirection:'column', overflowY:'auto' }
-  },
-    e('div', { style:{ padding:'12px 14px', borderBottom:'1px solid #1e293b', background:(TEN_COL[selPlot.tenure]||'#475569')+'22', display:'flex', justifyContent:'space-between', alignItems:'flex-start' } },
-      e('div', null,
-        e('div', { style:{ fontSize:20, fontWeight:700, color:'#f1f5f9' } }, 'Plot '+selPlot.plot_number),
-        e('div', { style:{ fontSize:11, color:'#64748b', marginTop:2 } }, selPlot.address),
-        e('div', { style:{ marginTop:5, display:'inline-block', padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700, background:(TEN_COL[selPlot.tenure]||'#475569')+'30', color:TEN_COL[selPlot.tenure]||'#94a3b8', border:'1px solid '+(TEN_COL[selPlot.tenure]||'#475569')+'50' } }, selPlot.tenure)
-      ),
-      e('button', { onClick:()=>setSelected(null), style:{ background:'#1e293b', border:'none', borderRadius:'50%', width:24, height:24, cursor:'pointer', color:'#94a3b8', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' } }, '×')
-    ),
-    e('div', { style:{ padding:'12px 14px', flex:1 } },
-      ...[
-        ['House Type', selPlot.house_type],
-        ['Building Type', selPlot.plot_type],
-        ['Bedrooms', selPlot.beds],
-        ['Address', selPlot.address],
-        ['Postcode', selPlot.postcode],
-        ['Tenure', selPlot.tenure],
-      ].map(([label,val]) =>
-        e('div', { key:label, style:{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid #1e293b', fontSize:12 } },
-          e('span', { style:{ color:'#475569' } }, label),
-          e('span', { style:{ color:'#e2e8f0', fontWeight:500, textAlign:'right', maxWidth:120 } }, String(val||'—'))
-        )
-      )
-    ),
-    e('div', { style:{ padding:'10px 14px', borderTop:'1px solid #1e293b' } },
-      e('button', {
-        onClick:()=>{
-          const nd = Object.assign({}, dotsRef.current);
-          delete nd[selPlot.id];
-          saveDots(nd);
-          setSelected(null);
-        },
-        style:{ width:'100%', padding:7, background:'#450a0a', border:'1px solid #dc2626', borderRadius:6, color:'#f87171', fontSize:11, cursor:'pointer', fontWeight:600 }
-      }, '🗑 Remove Dot')
-    )
-  );
-
-  // ── Map area ──────────────────────────────────────────────────────────────
-  const mapArea = e('div', { style:{ flex:1, overflow:'auto', background:'#050810', position:'relative' } },
-    !bgImage
-      ? e('div', { style:{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:14 } },
-          e('div', { style:{ fontSize:60, opacity:0.12 } }, '🗺️'),
-          e('div', { style:{ textAlign:'center', maxWidth:340 } },
-            e('div', { style:{ fontSize:16, fontWeight:700, color:'#334155', marginBottom:8 } }, 'Upload Your Site Plan'),
-            e('div', { style:{ fontSize:12, color:'#1e293b', lineHeight:1.8 } },
-              'Supports PNG, JPG, or PDF.\n',
-              e('strong', { style:{ color:'#f97316' } }, 'PDF is recommended'),
-              ' — it renders at high resolution for crisp zooming. Export P101 or P102 directly from the architect\'s drawing set.'
-            ),
-            e('button', { className:'btn btn-primary', onClick:()=>fileRef.current.click(), style:{ marginTop:14, padding:'10px 22px', fontSize:13 } }, 'Upload Image or PDF')
-          )
-        )
-      : e('div', {
-          style:{ display:'inline-block', position:'relative', cursor: placeMode?'crosshair':'default', minWidth:'100%' },
-          onClick: handleMapClick
-        },
-          e('img', {
-            ref: imgRef,
-            src: bgImage,
-            alt: 'Site Plan',
-            draggable: false,
-            style:{ display:'block', width:(zoom*100)+'%', userSelect:'none', pointerEvents:'auto' }
-          }),
-          // SVG dot overlay — sits exactly over the image
-          e('svg', {
-            style:{ position:'absolute', inset:0, width:'100%', height:'100%', overflow:'visible' }
-          },
-            ...plots.map(plot => {
-              const dot = dots[plot.id];
-              if (!dot) return null;
-              const col = TEN_COL[plot.tenure] || '#f59e0b';
-              const sel = selected === plot.id;
-              const isBung = plot.plot_type === 'Bungalow';
-              const isFlat = plot.plot_type === 'Flat';
-              const r = Math.max(7, 9 / zoom);  // dots scale with zoom
-              const cx = dot.px + '%';
-              const cy = dot.py + '%';
-              return e('g', {
-                key: plot.id,
-                style:{ cursor: placeMode?'default':'pointer' },
-                onClick:  ev => handleDotClick(ev, plot.id),
-                onMouseDown: ev => handleDotMouseDown(ev, plot.id)
-              },
-                sel && e('circle', { key:'ring', cx, cy, r:r+4, fill:'none', stroke:'#fff', strokeWidth:2, opacity:0.8 }),
-                isFlat
-                  ? e('rect', { key:'dot', x:'calc('+dot.px+'% - '+(r*0.85)+'px)', y:'calc('+dot.py+'% - '+(r*0.85)+'px)', width:r*1.7, height:r*1.7, rx:2, fill:col, stroke:sel?'#fff':'rgba(0,0,0,0.5)', strokeWidth:sel?2:1.2 })
-                  : isBung
-                    ? e('polygon', { key:'dot', points:dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%', fill:col, stroke:sel?'#fff':'rgba(0,0,0,0.5)', strokeWidth:sel?2:1.2 })
-                    : e('circle', { key:'dot', cx, cy, r, fill:col, stroke:sel?'#fff':'rgba(0,0,0,0.5)', strokeWidth:sel?2:1.2 }),
-                e('text', { key:'label', x:cx, y:cy, dominantBaseline:'middle', textAnchor:'middle', fontSize:Math.max(5,7/zoom), fontWeight:700, fill:'#fff', style:{pointerEvents:'none',userSelect:'none'} }, plot.plot_number)
-              );
-            }).filter(Boolean)
-          ),
-          // Placement tooltip
-          placeMode && nextPlot && e('div', {
-            style:{ position:'fixed', bottom:56, left:'50%', transform:'translateX(-50%)', background:'rgba(249,115,22,0.97)', padding:'8px 20px', borderRadius:20, fontSize:12, fontWeight:700, color:'#111', pointerEvents:'none', zIndex:50, boxShadow:'0 4px 20px rgba(249,115,22,0.4)' }
-          }, 'Click plan to place Plot '+nextPlot.plot_number+' ('+nextPlot.house_type+')')
-        )
-  );
-
-  return e('div', { style:{ display:'flex', height:'100%' } }, sidebar, mapArea, inspector);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// GANTT TAB
-// ══════════════════════════════════════════════════════════════════════════
-function GanttTab({ plots, stageDefs, plotStages }) {
-  const TOTAL_WD=300, LEFT_W=165, ROW_H=32, HDR_H=50;
-  const [cellW,setCellW]=useState(22), [filter,setFilter]=useState('All');
-  const scrollRef=useRef(null), dragRef=useRef(null);
-  const workingDays=useMemo(()=>genWDs('2026-01-02',TOTAL_WD),[]);
-  const todayIdx=useMemo(()=>{ const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; },[workingDays]);
-  const [schedules,setSchedules]=useState({});
-
-  useEffect(()=>{
-    if(!plots.length||!stageDefs.length)return;
-    const s={};
-    plots.forEach(plot=>{
-      s[plot.id]={};
-      const dbRows=(plotStages||[]).filter(ps=>ps.plot_id===plot.id);
-      let cum=plot.programme_start_day||0;
-      stageDefs.forEach(def=>{
-        const db=dbRows.find(ps=>ps.stage_def_id===def.id);
-        if(db){
-          s[plot.id][def.id]={start:db.start_day,dur:db.duration,basStart:db.baseline_start!=null?db.baseline_start:db.start_day};
-          cum=db.start_day+db.duration;
+  useEffect(() => {
+    if (!plots.length || !stageDefs.length) return;
+    const s = {};
+    plots.forEach(plot => {
+      s[plot.id] = {};
+      const dbRows = (plotStages||[]).filter(ps => ps.plot_id === plot.id);
+      let cum = parseInt(plot.programme_start_day) || 0;
+      stageDefs.forEach(def => {
+        const db = dbRows.find(ps => ps.stage_def_id === def.id);
+        if (db) {
+          s[plot.id][def.id] = { start: db.start_day, dur: db.duration, basStart: db.baseline_start != null ? db.baseline_start : db.start_day };
+          cum = db.start_day + db.duration;
         } else {
-          s[plot.id][def.id]={start:cum,dur:def.default_duration,basStart:cum};
-          cum+=def.default_duration;
+          s[plot.id][def.id] = { start: cum, dur: def.default_duration, basStart: cum };
+          cum += def.default_duration;
         }
       });
     });
     setSchedules(s);
-  },[plots,stageDefs,plotStages]);
+  }, [plots, stageDefs, plotStages]);
 
-  useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollLeft=Math.max(0,todayIdx*cellW-300); },[todayIdx]);
+  useEffect(() => { if(scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300); }, [todayIdx]);
 
-  const defMap=useMemo(()=>{ const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; },[stageDefs]);
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
 
-  function onDragStart(ev,plotId,defId){
+  function onDragStart(ev, plotId, defId) {
     ev.preventDefault();
-    const sc=schedules[plotId]; if(!sc||!sc[defId])return;
-    const orig=sc[defId].start;
-    dragRef.current={plotId,defId,startX:ev.clientX,orig};
-    function onMove(me){
-      if(!dragRef.current)return;
-      const delta=Math.round((me.clientX-dragRef.current.startX)/cellW);
-      const ns=Math.max(0,orig+delta);
-      setSchedules(prev=>{
-        const c=Object.assign({},prev); c[plotId]=Object.assign({},c[plotId]);
-        c[plotId][defId]=Object.assign({},c[plotId][defId],{start:ns}); return c;
+    const sc = schedules[plotId]; if(!sc||!sc[defId]) return;
+    const orig = sc[defId].start;
+    dragRef.current = { plotId, defId, startX: ev.clientX, orig };
+    function onMove(me) {
+      if (!dragRef.current) return;
+      const delta = Math.round((me.clientX - dragRef.current.startX) / cellW);
+      const ns = Math.max(0, orig + delta);
+      setSchedules(prev => {
+        const c = Object.assign({}, prev);
+        c[plotId] = Object.assign({}, c[plotId]);
+        c[plotId][defId] = Object.assign({}, c[plotId][defId], { start: ns });
+        return c;
       });
     }
-    function onUp(){
-      dragRef.current=null;
-      window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp);
-    }
-    window.addEventListener('mousemove',onMove); window.addEventListener('mouseup',onUp);
+    function onUp() { dragRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }
 
-  const monthLabels=useMemo(()=>{ const out=[]; let pm=-1; workingDays.forEach((d,i)=>{ if(d.getMonth()!==pm){out.push({idx:i,label:d.toLocaleDateString('en-GB',{month:'short',year:'numeric'})});pm=d.getMonth();}}); return out; },[workingDays]);
+  const monthLabels = useMemo(() => {
+    const out=[]; let pm=-1;
+    workingDays.forEach((d,i) => { if(d.getMonth()!==pm){out.push({idx:i,label:d.toLocaleDateString('en-GB',{month:'short',year:'numeric'})});pm=d.getMonth();} });
+    return out;
+  }, [workingDays]);
 
-  const visPlots=useMemo(()=>{
-    if(filter==='All')return plots;
-    if(filter==='Behind')return plots.filter(p=>{const sc=schedules[p.id];return sc&&Object.values(sc).some(s=>s.start>s.basStart);});
-    return plots.filter(p=>p.tenure===filter);
-  },[filter,plots,schedules]);
+  const sortedPlots = useMemo(() => [...plots].sort((a,b) => parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
 
-  const stats=useMemo(()=>{
-    let behind=0,done=0,inProg=0;
-    plots.forEach(p=>{
+  const visPlots = useMemo(() => {
+    let p = sortedPlots;
+    if (filter === 'Behind') p = p.filter(pl => { const sc=schedules[pl.id]; return sc&&Object.values(sc).some(s=>s.start>s.basStart); });
+    else if (filter !== 'All') p = p.filter(pl => pl.tenure === filter);
+    return p;
+  }, [filter, sortedPlots, schedules]);
+
+  const stats = useMemo(() => {
+    let behind=0, done=0, inProg=0, notStarted=0;
+    sortedPlots.forEach(p => {
       const sc=schedules[p.id]; if(!sc)return;
       const vals=Object.values(sc);
-      if(vals.every(s=>s.start+s.dur<=todayIdx))done++;
-      else if(vals.some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx))inProg++;
-      if(vals.some(s=>s.start>s.basStart))behind++;
+      if (vals.every(s=>s.start+s.dur<=todayIdx)) done++;
+      else if (vals.some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx)) inProg++;
+      else notStarted++;
+      if (vals.some(s=>s.start>s.basStart)) behind++;
     });
-    return{behind,done,inProg};
-  },[plots,schedules,todayIdx]);
+    return { behind, done, inProg, notStarted };
+  }, [sortedPlots, schedules, todayIdx]);
 
-  if(!stageDefs.length)return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#334155'}},'Loading programme...');
+  // Tenure breakdown
+  const tenureStats = useMemo(() => {
+    const t={};
+    sortedPlots.forEach(p => { t[p.tenure]=(t[p.tenure]||0)+1; });
+    return Object.entries(t).sort((a,b)=>b[1]-a[1]);
+  }, [sortedPlots]);
+
+  // Type breakdown
+  const typeStats = useMemo(() => {
+    const t={};
+    sortedPlots.forEach(p => { t[p.plot_type]=(t[p.plot_type]||0)+1; });
+    return Object.entries(t).sort((a,b)=>b[1]-a[1]);
+  }, [sortedPlots]);
+
+  // Bed breakdown
+  const bedStats = useMemo(() => {
+    const t={};
+    sortedPlots.forEach(p => { t[p.beds+'bd']=(t[p.beds+'bd']||0)+1; });
+    return Object.entries(t).sort((a,b)=>a[0].localeCompare(b[0]));
+  }, [sortedPlots]);
+
+  if (!plots.length) return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#334155',fontSize:14}},'No plot data loaded — check API connection.');
+
+  const KPI = (val, label, col, sub) => e('div',{style:{background:col+'15',border:'1px solid '+col+'40',borderRadius:8,padding:'10px 12px',minWidth:90}},
+    e('div',{style:{fontSize:22,fontWeight:700,color:col}},val),
+    e('div',{style:{fontSize:10,fontWeight:600,color:'#94a3b8',marginTop:1}},label),
+    sub && e('div',{style:{fontSize:9,color:'#475569',marginTop:1}},sub)
+  );
 
   return e('div',{style:{display:'flex',flexDirection:'column',height:'100%'}},
-    e('div',{style:{display:'flex',gap:8,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #1e293b',background:'#050810',flexShrink:0}},
-      e('span',{style:{fontSize:11,color:'#4ade80',fontWeight:700}},'✓ '+stats.done),
-      e('span',{style:{fontSize:11,color:'#60a5fa',fontWeight:700}},'▶ '+stats.inProg),
-      e('span',{style:{fontSize:11,color:'#f87171',fontWeight:700}},'▲ '+stats.behind),
+
+    // Tab sub-nav + controls
+    e('div',{style:{display:'flex',gap:6,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #1e293b',background:'#050810',flexShrink:0}},
+      e('button',{
+        onClick:()=>setView('overview'),
+        style:{padding:'4px 12px',background:view==='overview'?'#f97316':'#1e293b',border:'1px solid '+(view==='overview'?'#f97316':'#334155'),borderRadius:5,color:view==='overview'?'#111':'#94a3b8',fontSize:10,fontWeight:600,cursor:'pointer'}
+      },'📊 Overview'),
+      e('button',{
+        onClick:()=>setView('gantt'),
+        style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#1e293b',border:'1px solid '+(view==='gantt'?'#f97316':'#334155'),borderRadius:5,color:view==='gantt'?'#111':'#94a3b8',fontSize:10,fontWeight:600,cursor:'pointer'}
+      },'📅 Gantt Chart'),
       e('div',{style:{flex:1}}),
-      e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#e2e8f0',fontSize:10,padding:'3px 8px'}},
+      view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#e2e8f0',fontSize:10,padding:'3px 8px'}},
         ['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
       ),
-      e('button',{className:'btn',onClick:()=>setCellW(w=>Math.max(12,w-4))},'− Day'),
-      e('button',{className:'btn',onClick:()=>setCellW(w=>Math.min(48,w+4))},'+ Day')
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}},'− Day'),
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}},'+ Day')
     ),
-    e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
+
+    // ── OVERVIEW VIEW ─────────────────────────────────────────────────────
+    view === 'overview' && e('div',{style:{flex:1,overflowY:'auto',padding:14}},
+
+      // Project header
+      e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:10,padding:'14px 18px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}},
+        e('div',null,
+          e('div',{style:{fontSize:18,fontWeight:700,color:'#f1f5f9'}},'SS17 Phase 1C — Sandle Park'),
+          e('div',{style:{fontSize:12,color:'#64748b',marginTop:3}},'Fordingbridge, Hampshire · Planning Approved · Pennyfarthing Homes')
+        ),
+        e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+          KPI(sortedPlots.length,'Total Plots','#94a3b8'),
+          KPI(stats.done,'Complete','#4ade80','handover ready'),
+          KPI(stats.inProg,'In Progress','#60a5fa','on site now'),
+          KPI(stats.behind,'Behind Prog.','#f87171','needs attention'),
+          KPI(stats.notStarted,'Not Started','#475569','upcoming')
+        )
+      ),
+
+      e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}},
+
+        // Tenure breakdown
+        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Tenure Mix'),
+          ...tenureStats.map(([tenure,count]) =>
+            e('div',{key:tenure,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{width:10,height:10,borderRadius:'50%',background:TEN_COL[tenure]||'#64748b',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},tenure),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count),
+              e('div',{style:{fontSize:9,color:'#475569'}},Math.round(count/sortedPlots.length*100)+'%')
+            )
+          )
+        ),
+
+        // Building types
+        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Building Types'),
+          ...typeStats.map(([type,count]) =>
+            e('div',{key:type,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{fontSize:12}},type==='Flat'?'■':type==='Bungalow'?'◆':'●'),
+              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},type),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count)
+            )
+          )
+        ),
+
+        // Bedroom breakdown
+        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Bedroom Mix'),
+          ...bedStats.map(([bd,count]) =>
+            e('div',{key:bd,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{width:10,height:10,borderRadius:2,background:'#334155',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},bd+' bedroom'),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count)
+            )
+          )
+        )
+      ),
+
+      // Plot schedule table
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots'),
+      e('div',{style:{border:'1px solid #1e293b',borderRadius:8,overflow:'hidden'}},
+        e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
+          e('thead',null,e('tr',{style:{background:'#1e293b'}},
+            ...['Plot','House Type','Type','Beds','Address','Postcode','Tenure','Status'].map(h=>
+              e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+            )
+          )),
+          e('tbody',null,
+            ...sortedPlots.map((p,i) => {
+              const sc = schedules[p.id]||{};
+              const vals = Object.values(sc);
+              const isDone = vals.length>0&&vals.every(s=>s.start+s.dur<=todayIdx);
+              const isActive = vals.some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx);
+              const isBehind = vals.some(s=>s.start>s.basStart);
+              const pct = vals.length>0?Math.round(vals.filter(s=>s.start+s.dur<=todayIdx).length/vals.length*100):0;
+              const statusLabel = isDone?'Complete':isBehind?'Behind':isActive?'In Progress':'Not Started';
+              const statusCol = isDone?'#4ade80':isBehind?'#f87171':isActive?'#60a5fa':'#475569';
+              return e('tr',{key:p.id,style:{borderTop:'1px solid #1e293b',background:i%2===0?'#0f172a':'#111827'}},
+                e('td',{style:{padding:'6px 10px',color:'#f97316',fontWeight:700}},p.plot_number),
+                e('td',{style:{padding:'6px 10px',color:'#e2e8f0',fontWeight:500}},p.house_type),
+                e('td',{style:{padding:'6px 10px',color:'#94a3b8'}},p.plot_type),
+                e('td',{style:{padding:'6px 10px',color:'#94a3b8'}},p.beds+'bd'),
+                e('td',{style:{padding:'6px 10px',color:'#64748b',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},p.address),
+                e('td',{style:{padding:'6px 10px',color:'#475569',whiteSpace:'nowrap'}},p.postcode),
+                e('td',{style:{padding:'6px 10px'}},
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#64748b')+'25',color:TEN_COL[p.tenure]||'#94a3b8',border:'1px solid '+(TEN_COL[p.tenure]||'#64748b')+'40',whiteSpace:'nowrap'}},p.tenure)
+                ),
+                e('td',{style:{padding:'6px 10px'}},
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,color:statusCol,whiteSpace:'nowrap'}},
+                    isDone?'✓ '+statusLabel:isActive?pct+'% '+statusLabel:statusLabel
+                  )
+                )
+              );
+            })
+          )
+        )
+      )
+    ),
+
+    // ── GANTT VIEW ────────────────────────────────────────────────────────
+    view === 'gantt' && e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
       e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #334155',display:'flex',flexDirection:'column'}},
-        e('div',{style:{height:HDR_H,background:'#050810',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' plots'),
+        e('div',{style:{height:HDR_H,background:'#050810',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
         e('div',{style:{flex:1,overflowY:'auto'},id:'g-left'},
-          ...visPlots.map(p=>{
+          ...visPlots.map(p => {
             const sc=schedules[p.id]||{}, vals=Object.values(sc);
             const isDone=vals.length>0&&vals.every(s=>s.start+s.dur<=todayIdx);
             const isBehind=vals.some(s=>s.start>s.basStart);
@@ -439,7 +306,9 @@ function GanttTab({ plots, stageDefs, plotStages }) {
             return e('div',{key:p.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#0a0e1a',borderBottom:'1px solid #1e293b'}},
               e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#94a3b8',flexShrink:0}}),
               e('div',{style:{flex:1,minWidth:0}},
-                e('div',{style:{fontSize:11,fontWeight:700,color:'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},String(p.plot_number).padStart(2,'0')+' '+p.house_type),
+                e('div',{style:{fontSize:11,fontWeight:700,color:'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
+                  String(p.plot_number).padStart(2,'0')+' · '+p.house_type
+                ),
                 e('div',{style:{fontSize:9,color:'#475569',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.address)
               ),
               isDone?e('span',{style:{fontSize:9,color:'#4ade80',fontWeight:700,flexShrink:0}},'✓')
@@ -455,33 +324,34 @@ function GanttTab({ plots, stageDefs, plotStages }) {
             e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #1e293b'}},
               ...monthLabels.map(({idx,label})=>e('div',{key:idx,style:{position:'absolute',left:idx*cellW,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#94a3b8',whiteSpace:'nowrap',pointerEvents:'none'}},label))
             ),
-            e('div',{style:{position:'relative',height:22}},
+            e('div',{style:{position:'relative',height:26}},
               ...workingDays.filter((_,i)=>i%5===0).map((d,i)=>
-                e('div',{key:i,style:{position:'absolute',left:i*5*cellW,width:5*cellW,height:22,borderRight:'1px solid #1e293b',display:'flex',alignItems:'center',paddingLeft:3}},
+                e('div',{key:i,style:{position:'absolute',left:i*5*cellW,width:5*cellW,height:26,borderRight:'1px solid #1e293b',display:'flex',alignItems:'center',paddingLeft:3}},
                   e('span',{style:{fontSize:7,color:'#334155'}},d.toLocaleDateString('en-GB',{day:'2-digit',month:'numeric'}))
                 )
               ),
-              e('div',{style:{position:'absolute',left:todayIdx*cellW,top:0,width:2,height:22,background:'#f97316'}})
+              e('div',{style:{position:'absolute',left:todayIdx*cellW,top:0,width:2,height:26,background:'#f97316'}}),
+              e('div',{style:{position:'absolute',left:todayIdx*cellW+4,top:4,fontSize:7,fontWeight:700,color:'#f97316',background:'rgba(249,115,22,0.15)',padding:'1px 3px',borderRadius:2,pointerEvents:'none',whiteSpace:'nowrap'}},'TODAY')
             )
           ),
           e('div',{style:{position:'relative'}},
             e('div',{style:{position:'absolute',left:todayIdx*cellW+1,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none',zIndex:3}}),
-            ...visPlots.map(p=>{
+            ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
               return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #1e293b'}},
                 ...Object.entries(sc).map(([defId,s])=>{
                   const def=defMap[defId]; if(!def)return null;
-                  const isDone=s.start+s.dur<=todayIdx, isActive=s.start<=todayIdx&&s.start+s.dur>todayIdx, behind=s.start>s.basStart;
+                  const isDone=s.start+s.dur<=todayIdx,isActive=s.start<=todayIdx&&s.start+s.dur>todayIdx,behind=s.start>s.basStart;
                   const w=Math.max(s.dur*cellW-2,6);
                   return e('div',{key:defId,
                     onMouseDown:ev=>{ev.stopPropagation();onDragStart(ev,p.id,defId);},
                     title:def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':''),
-                    style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-20)/2,width:w,height:20,borderRadius:3,cursor:'grab',
+                    style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'grab',
                       background:isDone?'#334155':(def.color||'#64748b'),opacity:isDone?0.5:1,
                       border:'1px solid '+(isActive?'#fff':isDone?'#475569':(def.color||'#64748b')),
-                      boxShadow:behind?'0 0 0 1.5px #f87171':isActive?'0 0 0 1.5px rgba(255,255,255,0.4)':'none',
+                      boxShadow:behind?'0 0 0 1.5px #f87171':isActive?'0 0 0 1.5px rgba(255,255,255,0.3)':'none',
                       display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:2}
-                  }, w>30?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#94a3b8':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
+                  }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#94a3b8':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
                 }).filter(Boolean)
               );
             })
@@ -489,14 +359,300 @@ function GanttTab({ plots, stageDefs, plotStages }) {
         )
       )
     ),
+
+    // Stage legend
     e('div',{style:{background:'#050810',borderTop:'1px solid #1e293b',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto'}},
       ...stageDefs.map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
         e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#64748b'}}),
         e('span',{style:{fontSize:9,color:'#64748b',whiteSpace:'nowrap'}},d.name)
       )),
-      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#334155',flexShrink:0}},'▲ Drag bars to reschedule')
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#334155',flexShrink:0}},'▲ Drag bars to reschedule · Click Overview to see all plot data')
     )
   );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SITE MAP TAB
+// ══════════════════════════════════════════════════════════════════════════
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
+  const [placeMode,  setPlaceMode]  = useState(false);
+  const [nextId,     setNextId]     = useState(null);
+  const [selected,   setSelected]   = useState(null);
+  const [zoom,       setZoom]       = useState(1);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [filter,     setFilter]     = useState('All');
+  const imgRef  = useRef(null);
+  const fileRef = useRef(null);
+  const dragRef = useRef(null);
+  const dotsRef = useRef(dots);
+  useEffect(()=>{ dotsRef.current = dots; }, [dots]);
+
+  async function handleUpload(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    if (file.type === 'application/pdf') {
+      setPdfLoading(true);
+      try {
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const ab = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+        const page = await pdf.getPage(1);
+        const scale = 3;
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        setBgImage(canvas.toDataURL('image/png'));
+      } catch(ex) { alert('PDF error: '+ex.message+'\nTry saving the PDF page as PNG instead.'); }
+      setPdfLoading(false);
+    } else {
+      const reader = new FileReader();
+      reader.onload = e2 => setBgImage(e2.target.result);
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); }
+
+  // Sort plots by plot number
+  const sortedPlots = useMemo(() => [...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
+
+  // Filter for the list
+  const listPlots = useMemo(() => {
+    if (filter === 'All') return sortedPlots;
+    return sortedPlots.filter(p => p.tenure === filter);
+  }, [filter, sortedPlots]);
+
+  const unplaced  = useMemo(() => sortedPlots.filter(p => !dots[p.id]), [sortedPlots, dots]);
+  const placed    = useMemo(() => sortedPlots.filter(p =>  dots[p.id]), [sortedPlots, dots]);
+  const selPlot   = selected ? sortedPlots.find(p => p.id === selected) : null;
+  const nextPlot  = nextId   ? sortedPlots.find(p => p.id === nextId)   : null;
+
+  function startPlace() {
+    setPlaceMode(true);
+    const first = unplaced[0];
+    if (first) setNextId(first.id);
+  }
+
+  function handleMapAreaClick(ev) {
+    if (!imgRef.current) return;
+    // Click must be on the img itself (not a dot)
+    if (ev.target !== imgRef.current) return;
+    if (dragRef.current && dragRef.current.moved) return;
+    if (!placeMode || !nextId) {
+      setSelected(null);
+      return;
+    }
+    const rect = imgRef.current.getBoundingClientRect();
+    const px = ((ev.clientX - rect.left) / rect.width)  * 100;
+    const py = ((ev.clientY - rect.top)  / rect.height) * 100;
+    const nd = Object.assign({}, dotsRef.current, { [nextId]: { px, py } });
+    saveDots(nd);
+    // Advance to next unplaced
+    const remaining = sortedPlots.filter(p => !nd[p.id]);
+    setNextId(remaining.length ? remaining[0].id : null);
+    if (!remaining.length) { setPlaceMode(false); }
+  }
+
+  function handleDotClick(ev, id) {
+    ev.stopPropagation();
+    if (placeMode) return;
+    setSelected(prev => prev === id ? null : id);
+  }
+
+  function handleDotMouseDown(ev, id) {
+    ev.stopPropagation();
+    if (placeMode) return;
+    if (!imgRef.current || !dotsRef.current[id]) return;
+    setSelected(id);
+    const rect = imgRef.current.getBoundingClientRect();
+    const orig = Object.assign({}, dotsRef.current[id]);
+    let moved = false;
+    dragRef.current = { id, moved: false };
+    function onMove(me) {
+      moved = true; dragRef.current = { id, moved: true };
+      const dx = ((me.clientX - ev.clientX) / rect.width)  * 100;
+      const dy = ((me.clientY - ev.clientY) / rect.height) * 100;
+      setDots(prev => {
+        const nd = Object.assign({}, prev, { [id]: { px: Math.max(0,Math.min(100,orig.px+dx)), py: Math.max(0,Math.min(100,orig.py+dy)) } });
+        dotsRef.current = nd;
+        return nd;
+      });
+    }
+    function onUp() {
+      if (moved) lsSet('smc_dots_v4', dotsRef.current);
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+  // ── Left sidebar ───────────────────────────────────────────────────────
+  const sidebar = e('div',{style:{width:200,flexShrink:0,background:'#0a0e1a',borderRight:'1px solid #1e293b',display:'flex',flexDirection:'column',overflow:'hidden'}},
+
+    // Upload section
+    e('div',{style:{padding:'10px 10px 6px',borderBottom:'1px solid #1e293b'}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Site Plan Drawing'),
+      e('button',{
+        onClick:()=>fileRef.current.click(),
+        style:{width:'100%',padding:'7px',background:'#1e293b',border:'1px solid #334155',borderRadius:6,color:'#94a3b8',fontSize:11,cursor:'pointer',marginBottom:4}
+      }, pdfLoading?'⏳ Rendering...' : bgImage?'📁 Replace Drawing':'📁 Upload P101/P102'),
+      e('input',{ref:fileRef,type:'file',accept:'image/*,.pdf,application/pdf',style:{display:'none'},onChange:handleUpload}),
+      bgImage
+        ? e('div',{style:{fontSize:9,color:'#4ade80'}},'✓ Drawing loaded')
+        : e('div',{style:{fontSize:9,color:'#334155',lineHeight:1.4}},'Accepts PNG, JPG, or PDF. PDF renders at 3× resolution for sharp zoom.')
+    ),
+
+    // Zoom
+    bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}},'Zoom'),
+      e('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
+        ...ZOOMS.map(z=>e('button',{key:z,onClick:()=>setZoom(z),style:{padding:'3px 6px',background:zoom===z?'#f97316':'#1e293b',border:'1px solid '+(zoom===z?'#f97316':'#334155'),borderRadius:4,color:zoom===z?'#111':'#94a3b8',fontSize:9,cursor:'pointer',fontWeight:zoom===z?700:400}},z===1?'100%':(z*100|0)+'%'))
+      )
+    ),
+
+    // Place dots controls
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+        e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}},'Plot Dots'),
+        e('div',{style:{fontSize:10,color:'#64748b'}},placed.length+'/'+sortedPlots.length)
+      ),
+      e('div',{style:{height:4,background:'#1e293b',borderRadius:2,overflow:'hidden',marginBottom:8}},
+        e('div',{style:{height:'100%',background:'#f97316',width:(sortedPlots.length?(placed.length/sortedPlots.length*100):0)+'%',transition:'width 0.3s'}})
+      ),
+      placeMode
+        ? e('div',null,
+            e('button',{onClick:()=>{setPlaceMode(false);setNextId(null);},style:{width:'100%',padding:'6px',background:'#f97316',border:'1px solid #f97316',borderRadius:5,color:'#111',fontSize:11,fontWeight:700,cursor:'pointer',marginBottom:6}},'✋ Stop Placing'),
+            nextPlot && e('div',{style:{background:'#1e293b',borderRadius:5,padding:'6px 8px'}},
+              e('div',{style:{fontSize:9,color:'#94a3b8',marginBottom:3}},'Now placing:'),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#f59e0b'}},'Plot '+nextPlot.plot_number),
+              e('div',{style:{fontSize:10,color:'#64748b'}},nextPlot.house_type),
+              e('div',{style:{fontSize:9,color:'#475569'}},nextPlot.address),
+              e('div',{style:{marginTop:4,fontSize:9,color:'#94a3b8'}},'Change plot to place:'),
+              e('select',{value:nextId||'',onChange:ev=>setNextId(ev.target.value),style:{width:'100%',background:'#0f172a',border:'1px solid #334155',borderRadius:4,color:'#f1f5f9',fontSize:10,padding:3,marginTop:2}},
+                ...unplaced.map(p=>e('option',{key:p.id,value:p.id},'P'+p.plot_number+' — '+p.house_type))
+              )
+            ),
+            !nextPlot && e('div',{style:{fontSize:10,color:'#4ade80'}},'✓ All plots placed!')
+          )
+        : e('button',{
+            onClick:startPlace,
+            disabled:!bgImage,
+            style:{width:'100%',padding:'6px',background:bgImage?'#1e293b':'#0f172a',border:'1px solid '+(bgImage?'#334155':'#1e293b'),borderRadius:5,color:bgImage?'#94a3b8':'#334155',fontSize:11,cursor:bgImage?'pointer':'default'}
+          },'🖱 Place Plot Dots'+(!bgImage?' (upload drawing first)':''))
+    ),
+
+    // Selected plot inspector
+    selPlot
+      ? e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b',background:(TEN_COL[selPlot.tenure]||'#475569')+'15'}},
+          e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+            e('div',{style:{fontSize:13,fontWeight:700,color:'#f1f5f9'}},'Plot '+selPlot.plot_number),
+            e('button',{onClick:()=>setSelected(null),style:{background:'none',border:'none',color:'#475569',cursor:'pointer',fontSize:16}},'×')
+          ),
+          e('div',{style:{fontSize:10,color:TEN_COL[selPlot.tenure]||'#94a3b8',fontWeight:700,marginBottom:4}},selPlot.tenure),
+          ...[['Type',selPlot.house_type],['Building',selPlot.plot_type],['Beds',selPlot.beds+'bd'],['Address',selPlot.address],['Postcode',selPlot.postcode]].map(([k,v])=>
+            e('div',{key:k,style:{display:'flex',justifyContent:'space-between',fontSize:10,marginBottom:2}},
+              e('span',{style:{color:'#475569'}},k+':'),
+              e('span',{style:{color:'#e2e8f0',textAlign:'right',maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},String(v||'—'))
+            )
+          ),
+          e('button',{
+            onClick:()=>{const d=Object.assign({},dotsRef.current);delete d[selPlot.id];saveDots(d);setSelected(null);},
+            style:{marginTop:6,width:'100%',padding:'4px',background:'#450a0a',border:'1px solid #dc2626',borderRadius:4,color:'#f87171',fontSize:10,cursor:'pointer'}
+          },'Remove Dot')
+        )
+      : e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b',flex:0}},
+          e('div',{style:{fontSize:9,color:'#334155'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to inspect it. Drag dots to reposition.')
+        ),
+
+    // Scrollable plot list
+    e('div',{style:{padding:'6px 10px 4px',borderBottom:'1px solid #0f172a'}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+        e('div',{style:{fontSize:9,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em'}},'All Plots'),
+        e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#0f172a',border:'none',color:'#475569',fontSize:9,padding:'1px'}},
+          ['All','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
+        )
+      )
+    ),
+    e('div',{style:{flex:1,overflowY:'auto'}},
+      ...listPlots.map(p => {
+        const isPlaced = !!dots[p.id];
+        const isSel = selected === p.id;
+        return e('div',{
+          key:p.id,
+          onClick:()=>{ if(placeMode){setNextId(p.id);}else{setSelected(prev=>prev===p.id?null:p.id);} },
+          style:{
+            padding:'5px 10px',cursor:'pointer',
+            background: isSel?'#1e293b':placeMode&&nextId===p.id?'rgba(249,115,22,0.1)':'transparent',
+            borderLeft: '3px solid '+(isSel?'#f97316':placeMode&&nextId===p.id?'#f97316':isPlaced?'#334155':'transparent'),
+            borderBottom:'1px solid #0f172a'
+          }
+        },
+          e('div',{style:{display:'flex',alignItems:'center',gap:5}},
+            e('div',{style:{width:7,height:7,borderRadius:'50%',background:TEN_COL[p.tenure]||'#64748b',flexShrink:0}}),
+            e('span',{style:{fontSize:10,fontWeight:700,color:isPlaced?'#e2e8f0':'#475569',flex:1}},'P'+p.plot_number+' '+p.house_type),
+            isPlaced && e('span',{style:{fontSize:8,color:'#4ade80'}},'✓'),
+            !isPlaced && placeMode && nextId===p.id && e('span',{style:{fontSize:8,color:'#f97316',fontWeight:700}},'◄')
+          ),
+          e('div',{style:{fontSize:9,color:'#334155',paddingLeft:12,marginTop:1}},p.address)
+        );
+      })
+    ),
+    // Bottom actions
+    e('div',{style:{padding:'8px 10px',borderTop:'1px solid #1e293b',display:'flex',gap:4}},
+      e('button',{onClick:()=>{saveDots({});setSelected(null);},style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Clear All'),
+      e('button',{onClick:()=>setSelected(null),style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Deselect')
+    )
+  );
+
+  // ── Map area ───────────────────────────────────────────────────────────
+  const mapArea = e('div',{
+    style:{flex:1,overflow:'auto',background:'#050810',position:'relative',cursor:placeMode?'crosshair':'default'}
+  },
+    !bgImage
+      ? e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14}},
+          e('div',{style:{fontSize:60,opacity:0.1}},'🗺️'),
+          e('div',{style:{textAlign:'center',maxWidth:380}},
+            e('div',{style:{fontSize:15,fontWeight:700,color:'#334155',marginBottom:8}},'Upload Your Site Drawing'),
+            e('div',{style:{fontSize:12,color:'#1e293b',lineHeight:1.8}},
+              'Accepts PNG, JPG, or PDF. ',
+              e('strong',{style:{color:'#f97316'}},'PDF is recommended'),
+              ' — rendered at 3× resolution so it stays sharp when zoomed in. Export P101 or P102 from the architect\'s drawing set.'
+            ),
+            e('button',{onClick:()=>fileRef.current.click(),style:{marginTop:14,padding:'10px 22px',background:'#f97316',border:'none',borderRadius:8,color:'#111',fontSize:13,fontWeight:700,cursor:'pointer'}},'Upload Drawing')
+          )
+        )
+      : e('div',{style:{display:'inline-block',position:'relative',minWidth:'100%'},onClick:handleMapAreaClick},
+          e('img',{ref:imgRef,src:bgImage,alt:'Site Drawing',draggable:false,style:{display:'block',width:(zoom*100)+'%',userSelect:'none',pointerEvents:'auto'}}),
+          e('svg',{style:{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible'}},
+            ...sortedPlots.map(plot=>{
+              const dot=dots[plot.id]; if(!dot)return null;
+              const col=TEN_COL[plot.tenure]||'#f59e0b';
+              const sel=selected===plot.id;
+              const r=Math.max(7,9/zoom);
+              const isBung=plot.plot_type==='Bungalow', isFlat=plot.plot_type==='Flat';
+              const cx=dot.px+'%', cy=dot.py+'%';
+              return e('g',{key:plot.id,style:{cursor:placeMode?'default':'pointer'},onClick:ev=>handleDotClick(ev,plot.id),onMouseDown:ev=>handleDotMouseDown(ev,plot.id)},
+                sel&&e('circle',{key:'r',cx,cy,r:r+4,fill:'none',stroke:'#fff',strokeWidth:2,opacity:0.8}),
+                isFlat
+                  ?e('rect',{key:'d',x:'calc('+dot.px+'% - '+(r*0.85)+'px)',y:'calc('+dot.py+'% - '+(r*0.85)+'px)',width:r*1.7,height:r*1.7,rx:2,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
+                  :isBung
+                    ?e('polygon',{key:'d',points:dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%',fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
+                    :e('circle',{key:'d',cx,cy,r,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2}),
+                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:Math.max(5,7/zoom),fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},plot.plot_number)
+              );
+            }).filter(Boolean)
+          ),
+          placeMode&&nextPlot&&e('div',{style:{position:'fixed',bottom:56,left:'50%',transform:'translateX(-50%)',background:'rgba(249,115,22,0.97)',padding:'8px 20px',borderRadius:20,fontSize:12,fontWeight:700,color:'#111',pointerEvents:'none',zIndex:50,boxShadow:'0 4px 20px rgba(249,115,22,0.4)'}},'Click drawing to place Plot '+nextPlot.plot_number+' ('+nextPlot.house_type+') — or select different plot in sidebar')
+        )
+  );
+
+  return e('div',{style:{display:'flex',height:'100%'}},sidebar,mapArea);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -528,7 +684,9 @@ function HSTab({ inspections, hsLog }) {
       :e('div',{style:{border:'1px solid #1e293b',borderRadius:8,overflow:'hidden',marginBottom:14}},
           e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
             e('thead',null,e('tr',{style:{background:'#1e293b'}},
-              ...['Inspection','Freq','Last','Next','Status','Responsible'].map(h=>e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h))
+              ...['Inspection','Frequency','Last Done','Next Due','Status','Responsible','Cert Ref'].map(h=>
+                e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+              )
             )),
             e('tbody',null,...inspections.map((ins,i)=>{
               const s=badge(ins);
@@ -538,7 +696,8 @@ function HSTab({ inspections, hsLog }) {
                 e('td',{style:{padding:'7px 9px',color:'#475569',whiteSpace:'nowrap'}},ins.last_date),
                 e('td',{style:{padding:'7px 9px',color:'#94a3b8',whiteSpace:'nowrap'}},ins.next_date),
                 e('td',{style:{padding:'7px 9px'}},e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:s.bg,color:s.col,border:'1px solid '+s.border,whiteSpace:'nowrap'}},s.label)),
-                e('td',{style:{padding:'7px 9px',color:'#475569',fontSize:10}},ins.responsible_person)
+                e('td',{style:{padding:'7px 9px',color:'#475569',fontSize:10}},ins.responsible_person),
+                e('td',{style:{padding:'7px 9px',color:'#334155',fontSize:10}},ins.cert_ref)
               );
             }))
           )
@@ -565,26 +724,31 @@ function HSTab({ inspections, hsLog }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// ROOT APP — bgImage & dots live HERE so they survive tab switches
+// ROOT APP
 // ══════════════════════════════════════════════════════════════════════════
 function App() {
-  const [tab,setTab]           = useState('map');
-  const [plots,setPlots]       = useState([]);
+  const [tab,setTab]               = useState('programme');
+  const [plots,setPlots]           = useState([]);
   const [stageDefs,setStageDefs]   = useState([]);
   const [plotStages,setPlotStages] = useState([]);
-  const [inspections,setInspections] = useState([]);
-  const [hsLog,setHsLog]       = useState([]);
-  const [loading,setLoading]   = useState(true);
-  const [loadErr,setLoadErr]   = useState(null);
+  const [inspections,setInspections]= useState([]);
+  const [hsLog,setHsLog]           = useState([]);
+  const [loading,setLoading]       = useState(true);
+  const [loadErr,setLoadErr]       = useState(null);
 
-  // ── Persistent map state (survives tab changes) ───────────────────────────
-  const [bgImage, setBgImageRaw] = useState(() => lsGet('smc_bgimage', null));
-  const [mapDots, setMapDotsRaw] = useState(() => lsGet('smc_dots_v4', {}));
+  // Persistent state — survives tab switches
+  const [bgImage,setBgImageRaw] = useState(() => lsGet('smc_bgimage_v2',null));
+  const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  function setBgImage(v) { setBgImageRaw(v); lsSet('smc_bgimage', v); }
-  function setMapDots(v) { setMapDotsRaw(v); lsSet('smc_dots_v4', typeof v === 'function' ? v(mapDots) : v); }
+  function setBgImage(v) { setBgImageRaw(v); lsSet('smc_bgimage_v2',v); }
+  function setMapDots(fn) {
+    setMapDotsRaw(prev => {
+      const next = typeof fn==='function' ? fn(prev) : fn;
+      lsSet('smc_dots_v4', next);
+      return next;
+    });
+  }
 
-  // ── Load API data ─────────────────────────────────────────────────────────
   useEffect(()=>{
     Promise.all([
       api('/plots').then(r=>r.json()).catch(()=>[]),
@@ -599,10 +763,17 @@ function App() {
       setInspections(Array.isArray(res[3])?res[3]:[]);
       setHsLog(Array.isArray(res[4])?res[4]:[]);
       setLoading(false);
-    }).catch(ex=>{ setLoadErr(ex.message||'Load failed'); setLoading(false); });
+    }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
 
-  const TABS=[{id:'map',label:'🗺️  Site Map'},{id:'gantt',label:'📅  Programme'},{id:'hs',label:'⛑️  H&S'}];
+  const TABS=[
+    {id:'programme', label:'📅  Programme'},
+    {id:'map',       label:'🗺️  Site Map'},
+    {id:'hs',        label:'⛑️  H&S'},
+  ];
+
+  const privateCt = plots.filter(p=>p.tenure==='Private').length;
+  const affordCt  = plots.length - privateCt;
 
   return e('div',{style:{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}},
     // Header
@@ -612,10 +783,12 @@ function App() {
           e('span',{style:{fontSize:18}},'🏗️'),
           e('div',null,
             e('div',{style:{fontSize:12,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.1em'}},'Site Command Centre'),
-            e('div',{style:{fontSize:10,color:'#334155'}},'SS17 Phase 1C · Sandle Park, Fordingbridge · '+plots.length+' Plots')
+            e('div',{style:{fontSize:10,color:'#334155'}},'SS17 Phase 1C · Sandle Park, Fordingbridge · '+plots.length+' Plots loaded')
           )
         ),
-        e('div',{style:{display:'flex',gap:12,fontSize:10,alignItems:'center'}},
+        e('div',{style:{display:'flex',gap:10,fontSize:10,alignItems:'center'}},
+          !loading && e('span',{style:{color:'#f59e0b',fontWeight:700}},privateCt+' Private'),
+          !loading && e('span',{style:{color:'#4ade80',fontWeight:700}},affordCt+' Affordable'),
           e('span',{style:{color:'#334155'}},'📅 15 Jun 2026'),
           e('a',{href:'/smc/logout',style:{color:'#475569',textDecoration:'none',fontSize:10}},'Log out')
         )
@@ -629,20 +802,23 @@ function App() {
     // Content
     e('div',{style:{flex:1,overflow:'hidden',background:'#0f172a'}},
       loading
-        ?e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#334155',fontSize:14}},'Loading...')
+        ?e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:10}},
+            e('div',{style:{fontSize:14,color:'#334155'}},'Loading SS17 site data...'),
+            e('div',{style:{fontSize:11,color:'#1e293b'}},'Fetching 74 plots, stage definitions and programme...')
+          )
         :loadErr
-          ?e('div',{style:{padding:20,color:'#f87171',fontSize:13}},'Error: '+loadErr)
-          :tab==='map'
-            ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots})
-            :tab==='gantt'
-              ?e(GanttTab,{plots,stageDefs,plotStages})
+          ?e('div',{style:{padding:20,color:'#f87171',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
+          :tab==='programme'
+            ?e(ProgrammeTab,{plots,stageDefs,plotStages})
+            :tab==='map'
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots})
               :e(HSTab,{inspections,hsLog})
     ),
-    // Footer legend
+    // Footer
     e('div',{style:{background:'#050810',borderTop:'1px solid #1e293b',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
       ...Object.entries(TEN_COL).map(([k,col])=>
         e('div',{key:k,style:{display:'flex',alignItems:'center',gap:4,fontSize:10}},
-          e('div',{style:{width:9,height:9,borderRadius:'50%',background:col}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:col}}),
           e('span',{style:{color:'#475569'}},k)
         )
       ),
