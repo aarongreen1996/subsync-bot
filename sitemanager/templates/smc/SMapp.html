@@ -177,18 +177,11 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   // ── Stage status now driven by the plot's actual current_stage_id when set,
   // falling back to date-estimate only if no stage has been confirmed yet.
   function stageStatus(plot, def) {
-    if (plot.current_stage_id) {
-      const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
-      const thisOrder = def.stage_order || 0;
-      if (thisOrder < curOrder) return 'done';
-      if (thisOrder === curOrder) return 'active';
-      return 'future';
-    }
-    // No confirmed stage — fall back to a date estimate
-    const s = schedules[plot.id] && schedules[plot.id][def.id];
-    if (!s) return 'future';
-    if (s.start + s.dur <= todayIdx) return 'done-estimated';
-    if (s.start <= todayIdx && s.start + s.dur > todayIdx) return 'active-estimated';
+    if (!plot.current_stage_id) return 'future'; // No confirmed stage = nothing done, no guessing from dates
+    const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+    const thisOrder = def.stage_order || 0;
+    if (thisOrder < curOrder) return 'done';
+    if (thisOrder === curOrder) return 'active';
     return 'future';
   }
 
@@ -196,26 +189,16 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     const sc = schedules[plot.id]; if (!sc) return { label:'Not Started', col:'#9ca3af', pct:0 };
     const vals = sortedDefs.map(d => ({ def:d, s: sc[d.id] })).filter(x=>x.s);
     const total = vals.length;
-    if (plot.current_stage_id) {
-      const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
-      const lastOrder = sortedDefs[sortedDefs.length-1] ? sortedDefs[sortedDefs.length-1].stage_order : 0;
-      const doneCount = vals.filter(x => (x.def.stage_order||0) < curOrder).length;
-      const pct = total ? Math.round(doneCount/total*100) : 0;
-      const isDone = curOrder >= lastOrder; // current stage is the final stage = complete
-      const behind = vals.some(x => x.s.start > x.s.basStart);
-      if (isDone) return { label:'Complete', col:'#16a34a', pct:100 };
-      if (behind) return { label:'Behind', col:'#dc2626', pct };
-      return { label:'In Progress', col:'#2563eb', pct };
-    }
-    // No confirmed stage — estimate from dates
-    const doneCount = vals.filter(x => x.s.start+x.s.dur<=todayIdx).length;
-    const activeCount = vals.filter(x => x.s.start<=todayIdx && x.s.start+x.s.dur>todayIdx).length;
-    const behind = vals.some(x => x.s.start > x.s.basStart);
+    if (!plot.current_stage_id) return { label:'Not Started', col:'#9ca3af', pct:0 };
+    const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+    const lastOrder = sortedDefs[sortedDefs.length-1] ? sortedDefs[sortedDefs.length-1].stage_order : 0;
+    const doneCount = vals.filter(x => (x.def.stage_order||0) < curOrder).length;
     const pct = total ? Math.round(doneCount/total*100) : 0;
-    if (doneCount === total) return { label:'Complete (est.)', col:'#16a34a', pct:100 };
-    if (behind) return { label:'Behind (est.)', col:'#dc2626', pct };
-    if (activeCount > 0) return { label:'In Progress (est.)', col:'#2563eb', pct };
-    return { label:'Not Started', col:'#9ca3af', pct:0 };
+    const isDone = curOrder >= lastOrder; // current stage is the final stage = complete
+    const behind = vals.some(x => x.s.start > x.s.basStart);
+    if (isDone) return { label:'Complete', col:'#16a34a', pct:100 };
+    if (behind) return { label:'Behind', col:'#dc2626', pct };
+    return { label:'In Progress', col:'#2563eb', pct };
   }
 
   const visPlots = useMemo(() => {
@@ -426,20 +409,18 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                 ...sortedDefs.map(def=>{
                   const s = sc[def.id]; if(!s) return null;
                   const status = stageStatus(p, def);
-                  const isDone = status==='done'||status==='done-estimated';
-                  const isActive = status==='active'||status==='active-estimated';
-                  const isEstimated = status.includes('estimated');
+                  const isDone = status==='done';
+                  const isActive = status==='active';
                   const behind = s.start > s.basStart;
                   const w = Math.max(s.dur*cellW-2,6);
                   return e('div',{key:def.id,
                     onMouseDown: ev => onBarMouseDown(ev, p, def.id),
-                    title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':'')+(isEstimated?' (estimated — click to confirm)':''),
+                    title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':''),
                     style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'pointer',
                       background:isDone?'#d1d5db':(def.color||'#6b7280'),
-                      opacity:isDone?0.5:(isEstimated?0.7:1),
-                      border:'1px solid '+(isActive?(isEstimated?'#9ca3af':'#111827'):isDone?'#9ca3af':(def.color||'#6b7280')),
-                      borderStyle: isEstimated ? 'dashed' : 'solid',
-                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive&&!isEstimated?'0 0 0 2px #111827':'none',
+                      opacity:isDone?0.5:1,
+                      border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':(def.color||'#6b7280')),
+                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 2px #111827':'none',
                       display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2}
                   }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
                 }).filter(Boolean)
@@ -453,7 +434,6 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     // Stage legend
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto',alignItems:'center'}},
       e('span',{style:{fontSize:9,color:'#111827',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'2px solid #111827',borderRadius:2}}), 'Current stage'),
-      e('span',{style:{fontSize:9,color:'#9ca3af',display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'1px dashed #9ca3af',borderRadius:2}}), 'Estimated (unconfirmed)'),
       ...stageDefs.slice(0,6).map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
         e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#6b7280'}}),
         e('span',{style:{fontSize:9,color:'#6b7280',whiteSpace:'nowrap'}},d.name)
