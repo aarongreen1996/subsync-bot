@@ -386,12 +386,73 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
 // ══════════════════════════════════════════════════════════════════════════
 // PLOT DETAIL MODAL — opens when a placed dot is clicked
 // ══════════════════════════════════════════════════════════════════════════
-function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }) {
+// Single material row inside the Plot Detail Modal — quick order/delivery actions
+function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSetOrder }) {
+  const [editing, setEditing] = useState(false);
+  const [dateVal, setDateVal] = useState(status==='ordered' ? (order?.delivery_date||'') : new Date().toISOString().slice(0,10));
+
+  return e('div', { style:{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:7, fontSize:12 } },
+    e('div', { style:{ flex:1, minWidth:0 } },
+      e('div', { style:{ fontWeight:700, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, material.material_name),
+      e('div', { style:{ fontSize:10, color:'#9ca3af' } }, 'Stage due '+dateStr+(material.supplier_name?' · '+material.supplier_name:''))
+    ),
+    e('span', { style:{ padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700, background:badge.bg, color:badge.col, whiteSpace:'nowrap' } }, badge.label),
+    !editing && status !== 'ordered' && e('button', {
+      onClick:()=>setEditing(true),
+      style:{ padding:'4px 10px', background:'#f97316', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
+    }, 'Mark Ordered'),
+    !editing && status === 'ordered' && e('button', {
+      onClick:()=>setEditing(true),
+      style:{ padding:'4px 10px', background:'#16a34a', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
+    }, 'Mark Delivered'),
+    editing && e('div', { style:{ display:'flex', gap:4, alignItems:'center' } },
+      e('input', { type:'date', value:dateVal, onChange:ev=>setDateVal(ev.target.value), style:{ fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', borderRadius:5 } }),
+      e('button', {
+        onClick: async () => {
+          if (status === 'ordered') await onSetOrder(material.id, plotId, { status:'delivered', delivery_date: dateVal });
+          else await onSetOrder(material.id, plotId, { status:'ordered', ordered_date: dateVal });
+          setEditing(false);
+        },
+        style:{ padding:'4px 8px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:10, fontWeight:700, cursor:'pointer' }
+      }, '✓'),
+      e('button', { onClick:()=>setEditing(false), style:{ padding:'4px 8px', background:'#e5e7eb', border:'none', borderRadius:5, color:'#6b7280', fontSize:10, cursor:'pointer' } }, '×')
+    )
+  );
+}
+
+function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onClose, onUpdatePlot, onRemoveDot }) {
   const [savingStage, setSavingStage] = useState(false);
   const [noteDraft, setNoteDraft] = useState(plot.notes || '');
   const [savedFlash, setSavedFlash] = useState(false);
   const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>a.stage_order-b.stage_order), [stageDefs]);
   const currentStage = stageDefs.find(s => s.id === plot.current_stage_id);
+  const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
+  const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
+
+  // Materials relevant to this plot — only show flagged (order now), already
+  // ordered/awaiting delivery, or due within the next 4 working weeks as a heads-up
+  const plotMaterials = useMemo(() => {
+    const rows = [];
+    (materials||[]).forEach(material => {
+      const stageSched = plotSchedule[material.linked_stage_id];
+      if (!stageSched) return;
+      const order = (materialOrders||[]).find(o => o.material_id === material.id && o.plot_id === plot.id);
+      const daysUntilStage = stageSched.start - todayIdx;
+      const leadDays = material.lead_time_weeks * 5;
+      const stageDate = workingDays[stageSched.start];
+      let status;
+      if (order && order.status === 'delivered') return; // delivered — don't clutter the plot card
+      else if (order && order.status === 'ordered') status = 'ordered';
+      else if (daysUntilStage <= leadDays) status = 'flagged';
+      else if (daysUntilStage <= 20) status = 'due_soon'; // within ~4 working weeks
+      else return; // not relevant yet — omit
+      rows.push({ material, status, stageDate, order });
+    });
+    // Flagged first, then due soon, then ordered
+    const order = { flagged:0, due_soon:1, ordered:2 };
+    rows.sort((a,b) => order[a.status]-order[b.status]);
+    return rows;
+  }, [materials, materialOrders, plotSchedule, todayIdx, workingDays, plot.id]);
 
   async function setStage(stageId) {
     setSavingStage(true);
@@ -477,11 +538,26 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
           )
         ),
 
+        // Materials for this plot
+        plotMaterials.length > 0 && e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '📦 Materials Needed'),
+          e('div', { style:{ display:'flex', flexDirection:'column', gap:6 } },
+            ...plotMaterials.map(({material,status,stageDate,order}) => {
+              const badge = {
+                flagged:  { label:'⚠ Order Now', bg:'#fee2e2', col:'#dc2626' },
+                due_soon: { label:'Due in 4wks', bg:'#fef3c7', col:'#d97706' },
+                ordered:  { label:'Ordered',     bg:'#fef3c7', col:'#d97706' },
+              }[status];
+              const dateStr = stageDate ? stageDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
+              return e(PlotMaterialRow, { key:material.id, material, status, badge, dateStr, order, plotId:plot.id, onSetOrder });
+            })
+          )
+        ),
+
         // Coming soon — actionable features roadmap
         e('div', { style:{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:8, padding:'10px 12px' } },
           e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
           e('div', { style:{ fontSize:11, color:'#9ca3af', lineHeight:1.8 } },
-            '📦 Material call-off & ordering' , e('br'),
             '⚠️ Raise H&S issue', e('br'),
             '📋 RFI log', e('br'),
             '📅 Asta programme vs live comparison'
@@ -505,7 +581,8 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUpdatePlot }) {
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder }) {
+  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
   const [nextId,     setNextId]     = useState(null);
   const [selected,   setSelected]   = useState(null);
@@ -835,6 +912,10 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUp
     selPlot && e(PlotDetailModal, {
       plot: selPlot,
       stageDefs: stageDefs,
+      plotSchedule: schedules[selPlot.id] || {},
+      materials: materials,
+      materialOrders: materialOrders,
+      onSetOrder: onSetOrder,
       onClose: () => setSelected(null),
       onUpdatePlot: onUpdatePlot,
       onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); }
@@ -1233,11 +1314,18 @@ function App() {
   const [loading,setLoading]       = useState(true);
   const [loadErr,setLoadErr]       = useState(null);
 
-  // Persistent state — survives tab switches
-  const [bgImage,setBgImageRaw] = useState(() => lsGet('smc_bgimage_v2',null));
+  // Persistent state — survives tab switches. The drawing image is stored in
+  // Supabase (smc_map_image) rather than localStorage, because a 3x-resolution
+  // PDF render can easily exceed the browser's localStorage quota (~5-10MB),
+  // which was failing silently and causing the "doesn't save" bug.
+  const [bgImage,setBgImageRaw] = useState(() => lsGet('smc_bgimage_v2',null)); // local cache shown instantly while server loads
   const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  function setBgImage(v) { setBgImageRaw(v); lsSet('smc_bgimage_v2',v); }
+  function setBgImage(v) {
+    setBgImageRaw(v);
+    try { localStorage.removeItem('smc_bgimage_v2'); } catch(_) {} // old quota-prone cache no longer used
+    api('/map-image', { method:'POST', body: JSON.stringify({ image_url: v }) }).catch(ex => console.error('Save drawing failed', ex));
+  }
   function setMapDots(fn) {
     setMapDotsRaw(prev => {
       const next = typeof fn==='function' ? fn(prev) : fn;
@@ -1255,6 +1343,7 @@ function App() {
       api('/hs-log').then(r=>r.json()).catch(()=>[]),
       api('/materials').then(r=>r.json()).catch(()=>[]),
       api('/material-orders').then(r=>r.json()).catch(()=>[]),
+      api('/map-image').then(r=>r.json()).catch(()=>({})),
     ]).then(function(res){
       setPlots(Array.isArray(res[0])?res[0]:[]);
       setStageDefs(Array.isArray(res[1])?res[1]:[]);
@@ -1263,6 +1352,7 @@ function App() {
       setHsLog(Array.isArray(res[4])?res[4]:[]);
       setMaterials(Array.isArray(res[5])?res[5]:[]);
       setMaterialOrders(Array.isArray(res[6])?res[6]:[]);
+      if (res[7] && res[7].image_url) setBgImageRaw(res[7].image_url); // server is the source of truth
       setLoading(false);
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
@@ -1351,7 +1441,7 @@ function App() {
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages})
             :tab==='map'
-              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,onUpdatePlot})
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder})
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onSetOrder})
                 :e(HSTab,{inspections,hsLog})
