@@ -9,12 +9,12 @@
 <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: system-ui, -apple-system, sans-serif; background: #0a0e1a; color: #f1f5f9; height: 100vh; overflow: hidden; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #111827; height: 100vh; overflow: hidden; }
 #root { height: 100vh; display: flex; flex-direction: column; }
 select, button, input { font-family: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0f172a; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-track { background: #f9fafb; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -166,99 +166,99 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     return Object.entries(t).sort((a,b)=>a[0].localeCompare(b[0]));
   }, [sortedPlots]);
 
-  if (!plots.length) return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#334155',fontSize:14}},'No plot data loaded — check API connection.');
+  if (!plots.length) return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:14}},'No plot data loaded — check API connection.');
 
   const KPI = (val, label, col, sub) => e('div',{style:{background:col+'15',border:'1px solid '+col+'40',borderRadius:8,padding:'10px 12px',minWidth:90}},
     e('div',{style:{fontSize:22,fontWeight:700,color:col}},val),
-    e('div',{style:{fontSize:10,fontWeight:600,color:'#94a3b8',marginTop:1}},label),
-    sub && e('div',{style:{fontSize:9,color:'#475569',marginTop:1}},sub)
+    e('div',{style:{fontSize:10,fontWeight:600,color:'#6b7280',marginTop:1}},label),
+    sub && e('div',{style:{fontSize:9,color:'#9ca3af',marginTop:1}},sub)
   );
 
   return e('div',{style:{display:'flex',flexDirection:'column',height:'100%'}},
 
     // Tab sub-nav + controls
-    e('div',{style:{display:'flex',gap:6,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #1e293b',background:'#050810',flexShrink:0}},
+    e('div',{style:{display:'flex',gap:6,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0}},
       e('button',{
         onClick:()=>setView('overview'),
-        style:{padding:'4px 12px',background:view==='overview'?'#f97316':'#1e293b',border:'1px solid '+(view==='overview'?'#f97316':'#334155'),borderRadius:5,color:view==='overview'?'#111':'#94a3b8',fontSize:10,fontWeight:600,cursor:'pointer'}
+        style:{padding:'4px 12px',background:view==='overview'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='overview'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='overview'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
       },'📊 Overview'),
       e('button',{
         onClick:()=>setView('gantt'),
-        style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#1e293b',border:'1px solid '+(view==='gantt'?'#f97316':'#334155'),borderRadius:5,color:view==='gantt'?'#111':'#94a3b8',fontSize:10,fontWeight:600,cursor:'pointer'}
+        style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='gantt'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='gantt'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
       },'📅 Gantt Chart'),
       e('div',{style:{flex:1}}),
-      view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#1e293b',border:'1px solid #334155',borderRadius:5,color:'#e2e8f0',fontSize:10,padding:'3px 8px'}},
+      view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
         ['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
       ),
-      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}},'− Day'),
-      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#94a3b8',cursor:'pointer',fontSize:10}},'+ Day')
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'− Day'),
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'+ Day')
     ),
 
     // ── OVERVIEW VIEW ─────────────────────────────────────────────────────
     view === 'overview' && e('div',{style:{flex:1,overflowY:'auto',padding:14}},
 
       // Project header
-      e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:10,padding:'14px 18px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}},
+      e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:10,padding:'14px 18px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}},
         e('div',null,
-          e('div',{style:{fontSize:18,fontWeight:700,color:'#f1f5f9'}},'SS17 Phase 1C — Sandle Park'),
-          e('div',{style:{fontSize:12,color:'#64748b',marginTop:3}},'Fordingbridge, Hampshire · Planning Approved · Pennyfarthing Homes')
+          e('div',{style:{fontSize:18,fontWeight:700,color:'#111827'}},'SS17 Phase 1C — Sandle Park'),
+          e('div',{style:{fontSize:12,color:'#6b7280',marginTop:3}},'Fordingbridge, Hampshire · Planning Approved · Pennyfarthing Homes')
         ),
         e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-          KPI(sortedPlots.length,'Total Plots','#94a3b8'),
-          KPI(stats.done,'Complete','#4ade80','handover ready'),
-          KPI(stats.inProg,'In Progress','#60a5fa','on site now'),
-          KPI(stats.behind,'Behind Prog.','#f87171','needs attention'),
-          KPI(stats.notStarted,'Not Started','#475569','upcoming')
+          KPI(sortedPlots.length,'Total Plots','#6b7280'),
+          KPI(stats.done,'Complete','#16a34a','handover ready'),
+          KPI(stats.inProg,'In Progress','#2563eb','on site now'),
+          KPI(stats.behind,'Behind Prog.','#dc2626','needs attention'),
+          KPI(stats.notStarted,'Not Started','#9ca3af','upcoming')
         )
       ),
 
       e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}},
 
         // Tenure breakdown
-        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Tenure Mix'),
           ...tenureStats.map(([tenure,count]) =>
             e('div',{key:tenure,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
-              e('div',{style:{width:10,height:10,borderRadius:'50%',background:TEN_COL[tenure]||'#64748b',flexShrink:0}}),
-              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},tenure),
-              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count),
-              e('div',{style:{fontSize:9,color:'#475569'}},Math.round(count/sortedPlots.length*100)+'%')
+              e('div',{style:{width:10,height:10,borderRadius:'50%',background:TEN_COL[tenure]||'#6b7280',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},tenure),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count),
+              e('div',{style:{fontSize:9,color:'#9ca3af'}},Math.round(count/sortedPlots.length*100)+'%')
             )
           )
         ),
 
         // Building types
-        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Building Types'),
           ...typeStats.map(([type,count]) =>
             e('div',{key:type,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
               e('div',{style:{fontSize:12}},type==='Flat'?'■':type==='Bungalow'?'◆':'●'),
-              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},type),
-              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count)
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},type),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count)
             )
           )
         ),
 
         // Bedroom breakdown
-        e('div',{style:{background:'#111827',border:'1px solid #1e293b',borderRadius:8,padding:12}},
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Bedroom Mix'),
           ...bedStats.map(([bd,count]) =>
             e('div',{key:bd,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
-              e('div',{style:{width:10,height:10,borderRadius:2,background:'#334155',flexShrink:0}}),
-              e('div',{style:{flex:1,fontSize:11,color:'#e2e8f0'}},bd+' bedroom'),
-              e('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},count)
+              e('div',{style:{width:10,height:10,borderRadius:2,background:'#d1d5db',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},bd+' bedroom'),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count)
             )
           )
         )
       ),
 
       // Plot schedule table
-      e('div',{style:{fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots'),
-      e('div',{style:{border:'1px solid #1e293b',borderRadius:8,overflow:'hidden'}},
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots'),
+      e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden'}},
         e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
-          e('thead',null,e('tr',{style:{background:'#1e293b'}},
+          e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
             ...['Plot','House Type','Type','Beds','Address','Postcode','Tenure','Status'].map(h=>
-              e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+              e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
             )
           )),
           e('tbody',null,
@@ -270,16 +270,16 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
               const isBehind = vals.some(s=>s.start>s.basStart);
               const pct = vals.length>0?Math.round(vals.filter(s=>s.start+s.dur<=todayIdx).length/vals.length*100):0;
               const statusLabel = isDone?'Complete':isBehind?'Behind':isActive?'In Progress':'Not Started';
-              const statusCol = isDone?'#4ade80':isBehind?'#f87171':isActive?'#60a5fa':'#475569';
-              return e('tr',{key:p.id,style:{borderTop:'1px solid #1e293b',background:i%2===0?'#0f172a':'#111827'}},
+              const statusCol = isDone?'#16a34a':isBehind?'#dc2626':isActive?'#2563eb':'#9ca3af';
+              return e('tr',{key:p.id,style:{borderTop:'1px solid #e5e7eb',background:i%2===0?'#f9fafb':'#ffffff'}},
                 e('td',{style:{padding:'6px 10px',color:'#f97316',fontWeight:700}},p.plot_number),
-                e('td',{style:{padding:'6px 10px',color:'#e2e8f0',fontWeight:500}},p.house_type),
-                e('td',{style:{padding:'6px 10px',color:'#94a3b8'}},p.plot_type),
-                e('td',{style:{padding:'6px 10px',color:'#94a3b8'}},p.beds+'bd'),
-                e('td',{style:{padding:'6px 10px',color:'#64748b',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},p.address),
-                e('td',{style:{padding:'6px 10px',color:'#475569',whiteSpace:'nowrap'}},p.postcode),
+                e('td',{style:{padding:'6px 10px',color:'#1f2937',fontWeight:500}},p.house_type),
+                e('td',{style:{padding:'6px 10px',color:'#6b7280'}},p.plot_type),
+                e('td',{style:{padding:'6px 10px',color:'#6b7280'}},p.beds+'bd'),
+                e('td',{style:{padding:'6px 10px',color:'#6b7280',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},p.address),
+                e('td',{style:{padding:'6px 10px',color:'#9ca3af',whiteSpace:'nowrap'}},p.postcode),
                 e('td',{style:{padding:'6px 10px'}},
-                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#64748b')+'25',color:TEN_COL[p.tenure]||'#94a3b8',border:'1px solid '+(TEN_COL[p.tenure]||'#64748b')+'40',whiteSpace:'nowrap'}},p.tenure)
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#6b7280')+'25',color:TEN_COL[p.tenure]||'#6b7280',border:'1px solid '+(TEN_COL[p.tenure]||'#6b7280')+'40',whiteSpace:'nowrap'}},p.tenure)
                 ),
                 e('td',{style:{padding:'6px 10px'}},
                   e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,color:statusCol,whiteSpace:'nowrap'}},
@@ -295,39 +295,39 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
 
     // ── GANTT VIEW ────────────────────────────────────────────────────────
     view === 'gantt' && e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
-      e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #334155',display:'flex',flexDirection:'column'}},
-        e('div',{style:{height:HDR_H,background:'#050810',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
+      e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #d1d5db',display:'flex',flexDirection:'column'}},
+        e('div',{style:{height:HDR_H,background:'#ffffff',borderBottom:'1px solid #d1d5db',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
         e('div',{style:{flex:1,overflowY:'auto'},id:'g-left'},
           ...visPlots.map(p => {
             const sc=schedules[p.id]||{}, vals=Object.values(sc);
             const isDone=vals.length>0&&vals.every(s=>s.start+s.dur<=todayIdx);
             const isBehind=vals.some(s=>s.start>s.basStart);
             const pct=vals.length>0?Math.round(vals.filter(s=>s.start+s.dur<=todayIdx).length/vals.length*100):0;
-            return e('div',{key:p.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#0a0e1a',borderBottom:'1px solid #1e293b'}},
-              e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#94a3b8',flexShrink:0}}),
+            return e('div',{key:p.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#f8fafc',borderBottom:'1px solid #e5e7eb'}},
+              e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
               e('div',{style:{flex:1,minWidth:0}},
-                e('div',{style:{fontSize:11,fontWeight:700,color:'#e2e8f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
+                e('div',{style:{fontSize:11,fontWeight:700,color:'#1f2937',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
                   String(p.plot_number).padStart(2,'0')+' · '+p.house_type
                 ),
-                e('div',{style:{fontSize:9,color:'#475569',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.address)
+                e('div',{style:{fontSize:9,color:'#9ca3af',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.address)
               ),
-              isDone?e('span',{style:{fontSize:9,color:'#4ade80',fontWeight:700,flexShrink:0}},'✓')
-                :isBehind?e('span',{style:{fontSize:9,color:'#f87171',fontWeight:700,flexShrink:0}},'▲')
-                :e('span',{style:{fontSize:9,color:'#475569',flexShrink:0}},pct+'%')
+              isDone?e('span',{style:{fontSize:9,color:'#16a34a',fontWeight:700,flexShrink:0}},'✓')
+                :isBehind?e('span',{style:{fontSize:9,color:'#dc2626',fontWeight:700,flexShrink:0}},'▲')
+                :e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},pct+'%')
             );
           })
         )
       ),
       e('div',{ref:scrollRef,style:{flex:1,overflow:'auto'},onScroll:ev=>{const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;}},
         e('div',{style:{width:workingDays.length*cellW,position:'relative',minHeight:'100%'}},
-          e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#050810',height:HDR_H,borderBottom:'1px solid #334155'}},
-            e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #1e293b'}},
-              ...monthLabels.map(({idx,label})=>e('div',{key:idx,style:{position:'absolute',left:idx*cellW,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#94a3b8',whiteSpace:'nowrap',pointerEvents:'none'}},label))
+          e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#ffffff',height:HDR_H,borderBottom:'1px solid #d1d5db'}},
+            e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #e5e7eb'}},
+              ...monthLabels.map(({idx,label})=>e('div',{key:idx,style:{position:'absolute',left:idx*cellW,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#6b7280',whiteSpace:'nowrap',pointerEvents:'none'}},label))
             ),
             e('div',{style:{position:'relative',height:26}},
               ...workingDays.filter((_,i)=>i%5===0).map((d,i)=>
-                e('div',{key:i,style:{position:'absolute',left:i*5*cellW,width:5*cellW,height:26,borderRight:'1px solid #1e293b',display:'flex',alignItems:'center',paddingLeft:3}},
-                  e('span',{style:{fontSize:7,color:'#334155'}},d.toLocaleDateString('en-GB',{day:'2-digit',month:'numeric'}))
+                e('div',{key:i,style:{position:'absolute',left:i*5*cellW,width:5*cellW,height:26,borderRight:'1px solid #e5e7eb',display:'flex',alignItems:'center',paddingLeft:3}},
+                  e('span',{style:{fontSize:7,color:'#9ca3af'}},d.toLocaleDateString('en-GB',{day:'2-digit',month:'numeric'}))
                 )
               ),
               e('div',{style:{position:'absolute',left:todayIdx*cellW,top:0,width:2,height:26,background:'#f97316'}}),
@@ -338,7 +338,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
             e('div',{style:{position:'absolute',left:todayIdx*cellW+1,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none',zIndex:3}}),
             ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
-              return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #1e293b'}},
+              return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #e5e7eb'}},
                 ...Object.entries(sc).map(([defId,s])=>{
                   const def=defMap[defId]; if(!def)return null;
                   const isDone=s.start+s.dur<=todayIdx,isActive=s.start<=todayIdx&&s.start+s.dur>todayIdx,behind=s.start>s.basStart;
@@ -347,11 +347,11 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
                     onMouseDown:ev=>{ev.stopPropagation();onDragStart(ev,p.id,defId);},
                     title:def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':''),
                     style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'grab',
-                      background:isDone?'#334155':(def.color||'#64748b'),opacity:isDone?0.5:1,
-                      border:'1px solid '+(isActive?'#fff':isDone?'#475569':(def.color||'#64748b')),
-                      boxShadow:behind?'0 0 0 1.5px #f87171':isActive?'0 0 0 1.5px rgba(255,255,255,0.3)':'none',
+                      background:isDone?'#d1d5db':(def.color||'#6b7280'),opacity:isDone?0.5:1,
+                      border:'1px solid '+(isActive?'#fff':isDone?'#9ca3af':(def.color||'#6b7280')),
+                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 1.5px rgba(255,255,255,0.3)':'none',
                       display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:2}
-                  }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#94a3b8':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
+                  }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
                 }).filter(Boolean)
               );
             })
@@ -361,12 +361,12 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     ),
 
     // Stage legend
-    e('div',{style:{background:'#050810',borderTop:'1px solid #1e293b',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto'}},
+    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto'}},
       ...stageDefs.map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
-        e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#64748b'}}),
-        e('span',{style:{fontSize:9,color:'#64748b',whiteSpace:'nowrap'}},d.name)
+        e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#6b7280'}}),
+        e('span',{style:{fontSize:9,color:'#6b7280',whiteSpace:'nowrap'}},d.name)
       )),
-      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#334155',flexShrink:0}},'▲ Drag bars to reschedule · Click Overview to see all plot data')
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af',flexShrink:0}},'▲ Drag bars to reschedule · Click Overview to see all plot data')
     )
   );
 }
@@ -396,24 +396,24 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
     setTimeout(()=>setSavedFlash(false), 1500);
   }
 
-  const col = TEN_COL[plot.tenure] || '#64748b';
+  const col = TEN_COL[plot.tenure] || '#6b7280';
 
   return e('div', {
     style: { position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 },
     onClick: onClose
   },
     e('div', {
-      style: { width:480, maxWidth:'100%', maxHeight:'88vh', overflowY:'auto', background:'#111827', border:'1px solid #1e293b', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' },
+      style: { width:480, maxWidth:'100%', maxHeight:'88vh', overflowY:'auto', background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' },
       onClick: ev => ev.stopPropagation()
     },
       // Header
-      e('div', { style:{ padding:'16px 18px', borderBottom:'1px solid #1e293b', background:col+'18', display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderRadius:'12px 12px 0 0' } },
+      e('div', { style:{ padding:'16px 18px', borderBottom:'1px solid #e5e7eb', background:col+'18', display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderRadius:'12px 12px 0 0' } },
         e('div', null,
-          e('div', { style:{ fontSize:24, fontWeight:700, color:'#f1f5f9' } }, 'Plot ' + plot.plot_number),
-          e('div', { style:{ fontSize:12, color:'#94a3b8', marginTop:2 } }, plot.address + ', ' + plot.postcode),
+          e('div', { style:{ fontSize:24, fontWeight:700, color:'#111827' } }, 'Plot ' + plot.plot_number),
+          e('div', { style:{ fontSize:12, color:'#6b7280', marginTop:2 } }, plot.address + ', ' + plot.postcode),
           e('div', { style:{ marginTop:8, display:'inline-block', padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:700, background:col+'30', color:col, border:'1px solid '+col+'50' } }, plot.tenure)
         ),
-        e('button', { onClick:onClose, style:{ background:'#1e293b', border:'none', borderRadius:'50%', width:28, height:28, cursor:'pointer', color:'#94a3b8', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 } }, '×')
+        e('button', { onClick:onClose, style:{ background:'#e5e7eb', border:'none', borderRadius:'50%', width:28, height:28, cursor:'pointer', color:'#6b7280', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 } }, '×')
       ),
 
       // Body
@@ -422,9 +422,9 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
         // House details
         e('div', { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:18 } },
           ...[['House Type',plot.house_type],['Building Type',plot.plot_type],['Bedrooms',plot.beds],['Plot No.',plot.plot_number]].map(([k,v]) =>
-            e('div', { key:k, style:{ background:'#0f172a', borderRadius:7, padding:'8px 10px' } },
-              e('div', { style:{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 } }, k),
-              e('div', { style:{ fontSize:13, color:'#e2e8f0', fontWeight:600 } }, String(v||'—'))
+            e('div', { key:k, style:{ background:'#f9fafb', borderRadius:7, padding:'8px 10px' } },
+              e('div', { style:{ fontSize:9, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 } }, k),
+              e('div', { style:{ fontSize:13, color:'#1f2937', fontWeight:600 } }, String(v||'—'))
             )
           )
         ),
@@ -437,7 +437,7 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
               value: plot.current_stage_id || '',
               onChange: ev => setStage(ev.target.value),
               disabled: savingStage,
-              style:{ flex:1, background:'#0f172a', border:'1px solid #334155', borderRadius:7, color:'#f1f5f9', fontSize:13, padding:'8px 10px', fontWeight:600 }
+              style:{ flex:1, background:'#f9fafb', border:'1px solid #d1d5db', borderRadius:7, color:'#111827', fontSize:13, padding:'8px 10px', fontWeight:600 }
             },
               e('option', { value:'' }, '— Not started —'),
               ...sortedStages.map(s => e('option', { key:s.id, value:s.id }, s.name + ' (' + s.trade + ')'))
@@ -448,7 +448,7 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
             style:{ marginTop:8, display:'flex', alignItems:'center', gap:6, padding:'6px 10px', background:currentStage.color+'18', border:'1px solid '+currentStage.color+'40', borderRadius:6 }
           },
             e('div', { style:{ width:10, height:10, borderRadius:3, background:currentStage.color, flexShrink:0 } }),
-            e('span', { style:{ fontSize:12, color:'#e2e8f0', fontWeight:600 } }, 'On site: ' + currentStage.name)
+            e('span', { style:{ fontSize:12, color:'#1f2937', fontWeight:600 } }, 'On site: ' + currentStage.name)
           )
         ),
 
@@ -460,18 +460,18 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
             onChange: ev => setNoteDraft(ev.target.value),
             placeholder: 'Add notes for this plot — defects, access issues, material needs...',
             rows: 3,
-            style:{ width:'100%', background:'#0f172a', border:'1px solid #334155', borderRadius:7, color:'#e2e8f0', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
+            style:{ width:'100%', background:'#f9fafb', border:'1px solid #d1d5db', borderRadius:7, color:'#1f2937', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
           }),
           e('div', { style:{ display:'flex', gap:8, marginTop:6, alignItems:'center' } },
-            e('button', { onClick:saveNotes, style:{ padding:'5px 14px', background:'#1e293b', border:'1px solid #334155', borderRadius:6, color:'#94a3b8', fontSize:11, cursor:'pointer', fontWeight:600 } }, 'Save Note'),
-            savedFlash && e('span', { style:{ fontSize:10, color:'#4ade80' } }, '✓ Saved')
+            e('button', { onClick:saveNotes, style:{ padding:'5px 14px', background:'#e5e7eb', border:'1px solid #d1d5db', borderRadius:6, color:'#6b7280', fontSize:11, cursor:'pointer', fontWeight:600 } }, 'Save Note'),
+            savedFlash && e('span', { style:{ fontSize:10, color:'#16a34a' } }, '✓ Saved')
           )
         ),
 
         // Coming soon — actionable features roadmap
-        e('div', { style:{ background:'#0f172a', border:'1px dashed #1e293b', borderRadius:8, padding:'10px 12px' } },
-          e('div', { style:{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
-          e('div', { style:{ fontSize:11, color:'#475569', lineHeight:1.8 } },
+        e('div', { style:{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:8, padding:'10px 12px' } },
+          e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
+          e('div', { style:{ fontSize:11, color:'#9ca3af', lineHeight:1.8 } },
             '📦 Material call-off & ordering' , e('br'),
             '⚠️ Raise H&S issue', e('br'),
             '📋 RFI log', e('br'),
@@ -481,10 +481,10 @@ function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }
       ),
 
       // Footer
-      e('div', { style:{ padding:'12px 18px', borderTop:'1px solid #1e293b', display:'flex', gap:8 } },
+      e('div', { style:{ padding:'12px 18px', borderTop:'1px solid #e5e7eb', display:'flex', gap:8 } },
         e('button', {
           onClick: () => { onRemoveDot(plot.id); onClose(); },
-          style:{ padding:'7px 14px', background:'#450a0a', border:'1px solid #dc2626', borderRadius:7, color:'#f87171', fontSize:12, cursor:'pointer', fontWeight:600 }
+          style:{ padding:'7px 14px', background:'#fee2e2', border:'1px solid #dc2626', borderRadius:7, color:'#dc2626', fontSize:12, cursor:'pointer', fontWeight:600 }
         }, '🗑 Remove Dot'),
         e('div', { style:{ flex:1 } }),
         e('button', { onClick:onClose, style:{ padding:'7px 16px', background:'#f97316', border:'none', borderRadius:7, color:'#111', fontSize:12, fontWeight:700, cursor:'pointer' } }, 'Close')
@@ -516,7 +516,21 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUp
   useEffect(()=>{ dotsRef.current = dots; }, [dots]);
 
   // Reset natural size when image changes so it's recalculated
-  useEffect(()=>{ setNatSize(null); }, [bgImage]);
+  useEffect(()=>{
+    setNatSize(null);
+    // Defensive fallback: if the image is already cached (e.g. restored from
+    // localStorage), the native 'load' event can fire before React attaches
+    // its onLoad listener, so onLoad never runs. Poll img.complete instead.
+    const checkComplete = () => {
+      if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth) {
+        setNatSize({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+      }
+    };
+    checkComplete();
+    const t1 = setTimeout(checkComplete, 50);
+    const t2 = setTimeout(checkComplete, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [bgImage]);
 
   async function handleUpload(ev) {
     const file = ev.target.files[0];
@@ -656,66 +670,66 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUp
   const renderH = natSize ? natSize.h * zoom : null;
 
   // ── Left sidebar ───────────────────────────────────────────────────────
-  const sidebar = e('div',{style:{width:200,flexShrink:0,background:'#0a0e1a',borderRight:'1px solid #1e293b',display:'flex',flexDirection:'column',overflow:'hidden'}},
+  const sidebar = e('div',{style:{width:200,flexShrink:0,background:'#f8fafc',borderRight:'1px solid #e5e7eb',display:'flex',flexDirection:'column',overflow:'hidden'}},
 
-    e('div',{style:{padding:'10px 10px 6px',borderBottom:'1px solid #1e293b'}},
+    e('div',{style:{padding:'10px 10px 6px',borderBottom:'1px solid #e5e7eb'}},
       e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Site Plan Drawing'),
       e('button',{
         onClick:()=>fileRef.current.click(),
-        style:{width:'100%',padding:'7px',background:'#1e293b',border:'1px solid #334155',borderRadius:6,color:'#94a3b8',fontSize:11,cursor:'pointer',marginBottom:4}
+        style:{width:'100%',padding:'7px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:6,color:'#6b7280',fontSize:11,cursor:'pointer',marginBottom:4}
       }, pdfLoading?'⏳ Rendering...' : bgImage?'📁 Replace Drawing':'📁 Upload P101/P102'),
       e('input',{ref:fileRef,type:'file',accept:'image/*,.pdf,application/pdf',style:{display:'none'},onChange:handleUpload}),
       bgImage
-        ? e('div',{style:{fontSize:9,color:'#4ade80'}},'✓ Drawing loaded')
-        : e('div',{style:{fontSize:9,color:'#334155',lineHeight:1.4}},'Accepts PNG, JPG, or PDF. PDF renders at 3× resolution for sharp zoom.')
+        ? e('div',{style:{fontSize:9,color:'#16a34a'}},'✓ Drawing loaded')
+        : e('div',{style:{fontSize:9,color:'#9ca3af',lineHeight:1.4}},'Accepts PNG, JPG, or PDF. PDF renders at 3× resolution for sharp zoom.')
     ),
 
-    bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
+    bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
       e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}},'Zoom'),
       e('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
-        ...ZOOMS.map(z=>e('button',{key:z,onClick:()=>setZoom(z),style:{padding:'3px 6px',background:zoom===z?'#f97316':'#1e293b',border:'1px solid '+(zoom===z?'#f97316':'#334155'),borderRadius:4,color:zoom===z?'#111':'#94a3b8',fontSize:9,cursor:'pointer',fontWeight:zoom===z?700:400}},z===1?'100%':(z*100|0)+'%'))
+        ...ZOOMS.map(z=>e('button',{key:z,onClick:()=>setZoom(z),style:{padding:'3px 6px',background:zoom===z?'#f97316':'#e5e7eb',border:'1px solid '+(zoom===z?'#f97316':'#d1d5db'),borderRadius:4,color:zoom===z?'#111':'#6b7280',fontSize:9,cursor:'pointer',fontWeight:zoom===z?700:400}},z===1?'100%':(z*100|0)+'%'))
       ),
-      e('div',{style:{fontSize:9,color:'#334155',marginTop:5}},'🖐 Click & drag the drawing to pan')
+      e('div',{style:{fontSize:9,color:'#9ca3af',marginTop:5}},'🖐 Click & drag the drawing to pan')
     ),
 
-    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
         e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}},'Plot Dots'),
-        e('div',{style:{fontSize:10,color:'#64748b'}},placed.length+'/'+sortedPlots.length)
+        e('div',{style:{fontSize:10,color:'#6b7280'}},placed.length+'/'+sortedPlots.length)
       ),
-      e('div',{style:{height:4,background:'#1e293b',borderRadius:2,overflow:'hidden',marginBottom:8}},
+      e('div',{style:{height:4,background:'#e5e7eb',borderRadius:2,overflow:'hidden',marginBottom:8}},
         e('div',{style:{height:'100%',background:'#f97316',width:(sortedPlots.length?(placed.length/sortedPlots.length*100):0)+'%',transition:'width 0.3s'}})
       ),
       placeMode
         ? e('div',null,
             e('button',{onClick:()=>{setPlaceMode(false);setNextId(null);},style:{width:'100%',padding:'6px',background:'#f97316',border:'1px solid #f97316',borderRadius:5,color:'#111',fontSize:11,fontWeight:700,cursor:'pointer',marginBottom:6}},'✋ Stop Placing'),
-            nextPlot && e('div',{style:{background:'#1e293b',borderRadius:5,padding:'6px 8px'}},
-              e('div',{style:{fontSize:9,color:'#94a3b8',marginBottom:3}},'Now placing:'),
+            nextPlot && e('div',{style:{background:'#e5e7eb',borderRadius:5,padding:'6px 8px'}},
+              e('div',{style:{fontSize:9,color:'#6b7280',marginBottom:3}},'Now placing:'),
               e('div',{style:{fontSize:11,fontWeight:700,color:'#f59e0b'}},'Plot '+nextPlot.plot_number),
-              e('div',{style:{fontSize:10,color:'#64748b'}},nextPlot.house_type),
-              e('div',{style:{fontSize:9,color:'#475569'}},nextPlot.address),
-              e('div',{style:{marginTop:4,fontSize:9,color:'#94a3b8'}},'Change plot to place:'),
-              e('select',{value:nextId||'',onChange:ev=>setNextId(ev.target.value),style:{width:'100%',background:'#0f172a',border:'1px solid #334155',borderRadius:4,color:'#f1f5f9',fontSize:10,padding:3,marginTop:2}},
+              e('div',{style:{fontSize:10,color:'#6b7280'}},nextPlot.house_type),
+              e('div',{style:{fontSize:9,color:'#9ca3af'}},nextPlot.address),
+              e('div',{style:{marginTop:4,fontSize:9,color:'#6b7280'}},'Change plot to place:'),
+              e('select',{value:nextId||'',onChange:ev=>setNextId(ev.target.value),style:{width:'100%',background:'#f9fafb',border:'1px solid #d1d5db',borderRadius:4,color:'#111827',fontSize:10,padding:3,marginTop:2}},
                 ...unplaced.map(p=>e('option',{key:p.id,value:p.id},'P'+p.plot_number+' — '+p.house_type))
               )
             ),
-            !nextPlot && e('div',{style:{fontSize:10,color:'#4ade80'}},'✓ All plots placed!')
+            !nextPlot && e('div',{style:{fontSize:10,color:'#16a34a'}},'✓ All plots placed!')
           )
         : e('button',{
             onClick:startPlace,
             disabled:!bgImage,
-            style:{width:'100%',padding:'6px',background:bgImage?'#1e293b':'#0f172a',border:'1px solid '+(bgImage?'#334155':'#1e293b'),borderRadius:5,color:bgImage?'#94a3b8':'#334155',fontSize:11,cursor:bgImage?'pointer':'default'}
+            style:{width:'100%',padding:'6px',background:bgImage?'#e5e7eb':'#f9fafb',border:'1px solid '+(bgImage?'#d1d5db':'#e5e7eb'),borderRadius:5,color:bgImage?'#6b7280':'#d1d5db',fontSize:11,cursor:bgImage?'pointer':'default'}
           },'🖱 Place Plot Dots'+(!bgImage?' (upload drawing first)':''))
     ),
 
-    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
-      e('div',{style:{fontSize:9,color:'#334155'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to open its details. Drag dots to reposition.')
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
+      e('div',{style:{fontSize:9,color:'#9ca3af'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to open its details. Drag dots to reposition.')
     ),
 
-    e('div',{style:{padding:'6px 10px 4px',borderBottom:'1px solid #0f172a'}},
+    e('div',{style:{padding:'6px 10px 4px',borderBottom:'1px solid #f9fafb'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
-        e('div',{style:{fontSize:9,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em'}},'All Plots'),
-        e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#0f172a',border:'none',color:'#475569',fontSize:9,padding:'1px'}},
+        e('div',{style:{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}},'All Plots'),
+        e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#f9fafb',border:'none',color:'#9ca3af',fontSize:9,padding:'1px'}},
           ['All','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
         )
       )
@@ -729,39 +743,39 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUp
           onClick:()=>{ if(placeMode){setNextId(p.id);}else if(isPlaced){setSelected(p.id);} },
           style:{
             padding:'5px 10px',cursor:'pointer',
-            background: isSel?'#1e293b':placeMode&&nextId===p.id?'rgba(249,115,22,0.1)':'transparent',
-            borderLeft: '3px solid '+(isSel?'#f97316':placeMode&&nextId===p.id?'#f97316':isPlaced?'#334155':'transparent'),
-            borderBottom:'1px solid #0f172a'
+            background: isSel?'#e5e7eb':placeMode&&nextId===p.id?'rgba(249,115,22,0.1)':'transparent',
+            borderLeft: '3px solid '+(isSel?'#f97316':placeMode&&nextId===p.id?'#f97316':isPlaced?'#d1d5db':'transparent'),
+            borderBottom:'1px solid #f9fafb'
           }
         },
           e('div',{style:{display:'flex',alignItems:'center',gap:5}},
-            e('div',{style:{width:7,height:7,borderRadius:'50%',background:TEN_COL[p.tenure]||'#64748b',flexShrink:0}}),
-            e('span',{style:{fontSize:10,fontWeight:700,color:isPlaced?'#e2e8f0':'#475569',flex:1}},'P'+p.plot_number+' '+p.house_type),
-            isPlaced && e('span',{style:{fontSize:8,color:'#4ade80'}},'✓'),
+            e('div',{style:{width:7,height:7,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
+            e('span',{style:{fontSize:10,fontWeight:700,color:isPlaced?'#1f2937':'#9ca3af',flex:1}},'P'+p.plot_number+' '+p.house_type),
+            isPlaced && e('span',{style:{fontSize:8,color:'#16a34a'}},'✓'),
             !isPlaced && placeMode && nextId===p.id && e('span',{style:{fontSize:8,color:'#f97316',fontWeight:700}},'◄')
           ),
-          e('div',{style:{fontSize:9,color:'#334155',paddingLeft:12,marginTop:1}},p.address)
+          e('div',{style:{fontSize:9,color:'#9ca3af',paddingLeft:12,marginTop:1}},p.address)
         );
       })
     ),
-    e('div',{style:{padding:'8px 10px',borderTop:'1px solid #1e293b',display:'flex',gap:4}},
-      e('button',{onClick:()=>{saveDots({});setSelected(null);},style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Clear All'),
-      e('button',{onClick:()=>setZoom(1),style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Reset Zoom')
+    e('div',{style:{padding:'8px 10px',borderTop:'1px solid #e5e7eb',display:'flex',gap:4}},
+      e('button',{onClick:()=>{saveDots({});setSelected(null);},style:{flex:1,padding:'4px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#9ca3af',fontSize:9,cursor:'pointer'}},'Clear All'),
+      e('button',{onClick:()=>setZoom(1),style:{flex:1,padding:'4px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#9ca3af',fontSize:9,cursor:'pointer'}},'Reset Zoom')
     )
   );
 
   // ── Map area (scrollable, pannable) ───────────────────────────────────────
   const mapArea = e('div',{
     ref: scrollRef,
-    style:{flex:1,overflow:'auto',background:'#050810',position:'relative'},
+    style:{flex:1,overflow:'auto',background:'#ffffff',position:'relative'},
     onClick: handleBackgroundClick
   },
     !bgImage
       ? e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14}},
           e('div',{style:{fontSize:60,opacity:0.1}},'🗺️'),
           e('div',{style:{textAlign:'center',maxWidth:380}},
-            e('div',{style:{fontSize:15,fontWeight:700,color:'#334155',marginBottom:8}},'Upload Your Site Drawing'),
-            e('div',{style:{fontSize:12,color:'#1e293b',lineHeight:1.8}},
+            e('div',{style:{fontSize:15,fontWeight:700,color:'#374151',marginBottom:8}},'Upload Your Site Drawing'),
+            e('div',{style:{fontSize:12,color:'#6b7280',lineHeight:1.8}},
               'Accepts PNG, JPG, or PDF. ',
               e('strong',{style:{color:'#f97316'}},'PDF is recommended'),
               ' — rendered at 3× resolution so it stays sharp when zoomed in.'
@@ -827,47 +841,47 @@ function HSTab({ inspections, hsLog }) {
   const todayD=new Date(TODAY);
   function badge(ins){
     const d=Math.round((new Date(ins.next_date)-todayD)/86400000);
-    if(d<0)  return{label:Math.abs(d)+'d OVERDUE',bg:'#450a0a',border:'#dc2626',col:'#f87171'};
-    if(d<=2) return{label:d+'d — DUE SOON',bg:'#431407',border:'#f97316',col:'#fb923c'};
-    return      {label:d+' days',bg:'#052e16',border:'#16a34a',col:'#4ade80'};
+    if(d<0)  return{label:Math.abs(d)+'d OVERDUE',bg:'#fee2e2',border:'#dc2626',col:'#dc2626'};
+    if(d<=2) return{label:d+'d — DUE SOON',bg:'#fef3c7',border:'#f97316',col:'#d97706'};
+    return      {label:d+' days',bg:'#dcfce7',border:'#16a34a',col:'#16a34a'};
   }
-  const sevC={red:{bg:'#450a0a',border:'#dc2626',dot:'#ef4444'},amber:{bg:'#2d1a00',border:'#d97706',dot:'#f59e0b'},green:{bg:'#052e16',border:'#166534',dot:'#22c55e'}};
+  const sevC={red:{bg:'#fee2e2',border:'#dc2626',dot:'#dc2626'},amber:{bg:'#fef3c7',border:'#d97706',dot:'#f59e0b'},green:{bg:'#dcfce7',border:'#86efac',dot:'#16a34a'}};
 
   return e('div',{style:{overflowY:'auto',height:'100%',padding:14}},
     e('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
-      ...[['87%','Induction Rate','68/78 operatives','#4ade80','#052e16','#16a34a'],['3','Near-Misses','1 action overdue','#fbbf24','#2d1a00','#d97706'],['5','Open Actions','2 due ≤7 days','#fbbf24','#2d1a00','#d97706'],['92%','RAMS Approval','22 of 24 subs','#4ade80','#052e16','#16a34a']].map(([v,l,s,tc,bg,bc])=>
+      ...[['87%','Induction Rate','68/78 operatives','#16a34a','#dcfce7','#16a34a'],['3','Near-Misses','1 action overdue','#d97706','#fef3c7','#d97706'],['5','Open Actions','2 due ≤7 days','#d97706','#fef3c7','#d97706'],['92%','RAMS Approval','22 of 24 subs','#16a34a','#dcfce7','#16a34a']].map(([v,l,s,tc,bg,bc])=>
         e('div',{key:l,style:{background:bg,border:'1px solid '+bc,borderRadius:8,padding:12}},
           e('div',{style:{fontSize:20,fontWeight:700,color:tc}},v),
-          e('div',{style:{fontSize:11,fontWeight:600,color:'#94a3b8',marginTop:2}},l),
-          e('div',{style:{fontSize:10,color:'#475569',marginTop:1}},s)
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#6b7280',marginTop:2}},l),
+          e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:1}},s)
         )
       )
     ),
-    e('div',{style:{fontSize:10,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Statutory Inspection Matrix'),
+    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Statutory Inspection Matrix'),
     inspections.length===0
-      ?e('div',{style:{color:'#334155',fontSize:12,marginBottom:14}},'No inspection data loaded.')
-      :e('div',{style:{border:'1px solid #1e293b',borderRadius:8,overflow:'hidden',marginBottom:14}},
+      ?e('div',{style:{color:'#9ca3af',fontSize:12,marginBottom:14}},'No inspection data loaded.')
+      :e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden',marginBottom:14}},
           e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
-            e('thead',null,e('tr',{style:{background:'#1e293b'}},
+            e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
               ...['Inspection','Frequency','Last Done','Next Due','Status','Responsible','Cert Ref'].map(h=>
-                e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#475569',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+                e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
               )
             )),
             e('tbody',null,...inspections.map((ins,i)=>{
               const s=badge(ins);
-              return e('tr',{key:ins.id,style:{borderTop:'1px solid #1e293b',background:i%2===0?'#0f172a':'#111827'}},
-                e('td',{style:{padding:'7px 9px',color:'#cbd5e1',fontWeight:500}},ins.item),
-                e('td',{style:{padding:'7px 9px',color:'#64748b',whiteSpace:'nowrap'}},ins.frequency),
-                e('td',{style:{padding:'7px 9px',color:'#475569',whiteSpace:'nowrap'}},ins.last_date),
-                e('td',{style:{padding:'7px 9px',color:'#94a3b8',whiteSpace:'nowrap'}},ins.next_date),
+              return e('tr',{key:ins.id,style:{borderTop:'1px solid #e5e7eb',background:i%2===0?'#f9fafb':'#ffffff'}},
+                e('td',{style:{padding:'7px 9px',color:'#1f2937',fontWeight:500}},ins.item),
+                e('td',{style:{padding:'7px 9px',color:'#6b7280',whiteSpace:'nowrap'}},ins.frequency),
+                e('td',{style:{padding:'7px 9px',color:'#9ca3af',whiteSpace:'nowrap'}},ins.last_date),
+                e('td',{style:{padding:'7px 9px',color:'#6b7280',whiteSpace:'nowrap'}},ins.next_date),
                 e('td',{style:{padding:'7px 9px'}},e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:s.bg,color:s.col,border:'1px solid '+s.border,whiteSpace:'nowrap'}},s.label)),
-                e('td',{style:{padding:'7px 9px',color:'#475569',fontSize:10}},ins.responsible_person),
-                e('td',{style:{padding:'7px 9px',color:'#334155',fontSize:10}},ins.cert_ref)
+                e('td',{style:{padding:'7px 9px',color:'#9ca3af',fontSize:10}},ins.responsible_person),
+                e('td',{style:{padding:'7px 9px',color:'#9ca3af',fontSize:10}},ins.cert_ref)
               );
             }))
           )
         ),
-    e('div',{style:{fontSize:10,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'H&S Reports & Visits Log'),
+    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'H&S Reports & Visits Log'),
     e('div',{style:{display:'flex',flexDirection:'column',gap:5}},
       ...hsLog.map(log=>{
         const sc=sevC[log.severity]||sevC.green;
@@ -875,12 +889,12 @@ function HSTab({ inspections, hsLog }) {
           e('div',{style:{flexShrink:0,paddingTop:4}},e('div',{style:{width:8,height:8,borderRadius:'50%',background:sc.dot}})),
           e('div',{style:{flex:1}},
             e('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}},
-              e('span',{style:{fontSize:12,fontWeight:700,color:'#e2e8f0'}},log.log_type),
-              e('span',{style:{fontSize:10,color:'#475569'}},log.log_date),
-              e('span',{style:{marginLeft:'auto',fontSize:10,fontWeight:700,color:['Closed','Complete','Cleared'].includes(log.status)?'#4ade80':'#fbbf24'}},log.status)
+              e('span',{style:{fontSize:12,fontWeight:700,color:'#1f2937'}},log.log_type),
+              e('span',{style:{fontSize:10,color:'#9ca3af'}},log.log_date),
+              e('span',{style:{marginLeft:'auto',fontSize:10,fontWeight:700,color:['Closed','Complete','Cleared'].includes(log.status)?'#16a34a':'#d97706'}},log.status)
             ),
-            e('div',{style:{fontSize:10,color:'#64748b',marginBottom:2}},log.person_name),
-            e('div',{style:{fontSize:11,color:'#475569'}},log.detail)
+            e('div',{style:{fontSize:10,color:'#6b7280',marginBottom:2}},log.person_name),
+            e('div',{style:{fontSize:11,color:'#9ca3af'}},log.detail)
           )
         );
       })
@@ -950,37 +964,37 @@ function App() {
 
   return e('div',{style:{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}},
     // Header
-    e('div',{style:{background:'#050810',borderBottom:'1px solid #1e293b',padding:'7px 14px 0',flexShrink:0}},
+    e('div',{style:{background:'#ffffff',borderBottom:'1px solid #e5e7eb',padding:'7px 14px 0',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}},
       e('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}},
         e('div',{style:{display:'flex',alignItems:'center',gap:10}},
           e('span',{style:{fontSize:18}},'🏗️'),
           e('div',null,
             e('div',{style:{fontSize:12,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.1em'}},'Site Command Centre'),
-            e('div',{style:{fontSize:10,color:'#334155'}},'SS17 Phase 1C · Sandle Park, Fordingbridge · '+plots.length+' Plots loaded')
+            e('div',{style:{fontSize:10,color:'#6b7280'}},'SS17 Phase 1C · Sandle Park, Fordingbridge · '+plots.length+' Plots loaded')
           )
         ),
         e('div',{style:{display:'flex',gap:10,fontSize:10,alignItems:'center'}},
           !loading && e('span',{style:{color:'#f59e0b',fontWeight:700}},privateCt+' Private'),
-          !loading && e('span',{style:{color:'#4ade80',fontWeight:700}},affordCt+' Affordable'),
-          e('span',{style:{color:'#334155'}},'📅 15 Jun 2026'),
-          e('a',{href:'/smc/logout',style:{color:'#475569',textDecoration:'none',fontSize:10}},'Log out')
+          !loading && e('span',{style:{color:'#16a34a',fontWeight:700}},affordCt+' Affordable'),
+          e('span',{style:{color:'#6b7280'}},'📅 15 Jun 2026'),
+          e('a',{href:'/smc/logout',style:{color:'#9ca3af',textDecoration:'none',fontSize:10}},'Log out')
         )
       ),
-      e('div',{style:{display:'flex',gap:2}},
+      e('div',{style:{display:'flex',gap:2,background:'#f9fafb',borderTop:'1px solid #e5e7eb',padding:'0 4px',marginTop:6}},
         ...TABS.map(t=>e('button',{key:t.id,onClick:()=>setTab(t.id),
-          style:{padding:'5px 14px',fontSize:11,fontWeight:600,border:'1px solid',borderBottom:'none',borderRadius:'6px 6px 0 0',cursor:'pointer',
-            background:tab===t.id?'#111827':'transparent',borderColor:tab===t.id?'#1e293b':'transparent',color:tab===t.id?'#f97316':'#475569'}},t.label))
+          style:{padding:'8px 16px',fontSize:11,fontWeight:600,border:'none',borderBottom:tab===t.id?'2px solid #f97316':'2px solid transparent',cursor:'pointer',marginBottom:'-1px',
+            background:tab===t.id?'#ffffff':'transparent',color:tab===t.id?'#f97316':'#6b7280'}},t.label))
       )
     ),
     // Content
-    e('div',{style:{flex:1,overflow:'hidden',background:'#0f172a'}},
+    e('div',{style:{flex:1,overflow:'hidden',background:'#f9fafb'}},
       loading
         ?e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:10}},
-            e('div',{style:{fontSize:14,color:'#334155'}},'Loading SS17 site data...'),
-            e('div',{style:{fontSize:11,color:'#1e293b'}},'Fetching 74 plots, stage definitions and programme...')
+            e('div',{style:{fontSize:14,color:'#6b7280'}},'Loading SS17 site data...'),
+            e('div',{style:{fontSize:11,color:'#9ca3af'}},'Fetching 74 plots, stage definitions and programme...')
           )
         :loadErr
-          ?e('div',{style:{padding:20,color:'#f87171',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
+          ?e('div',{style:{padding:20,color:'#dc2626',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages})
             :tab==='map'
@@ -988,14 +1002,14 @@ function App() {
               :e(HSTab,{inspections,hsLog})
     ),
     // Footer
-    e('div',{style:{background:'#050810',borderTop:'1px solid #1e293b',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
+    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
       ...Object.entries(TEN_COL).map(([k,col])=>
         e('div',{key:k,style:{display:'flex',alignItems:'center',gap:4,fontSize:10}},
           e('div',{style:{width:8,height:8,borderRadius:'50%',background:col}}),
-          e('span',{style:{color:'#475569'}},k)
+          e('span',{style:{color:'#9ca3af'}},k)
         )
       ),
-      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#334155'}},'● House · ◆ Bungalow · ■ Flat')
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af'}},'● House · ◆ Bungalow · ■ Flat')
     )
   );
 }
