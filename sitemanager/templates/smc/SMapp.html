@@ -15,6 +15,15 @@ select, button, input { font-family: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #f9fafb; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+@media print {
+  body * { visibility: hidden; }
+  #print-content, #print-content * { visibility: visible; }
+  #print-content { position: absolute; left: 0; top: 0; width: 100% !important; margin: 0 !important; box-shadow: none !important; }
+  .no-print { display: none !important; }
+  .print-modal-overlay { position: static !important; background: none !important; display: block !important; }
+  .print-preview-area { overflow: visible !important; background: none !important; padding: 0 !important; }
+  @page { size: landscape; margin: 10mm; }
+}
 </style>
 </head>
 <body>
@@ -84,7 +93,9 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   const TOTAL_WD=300, LEFT_W=170, ROW_H=34, HDR_H=54;
   const [cellW, setCellW]   = useState(22);
   const [filter, setFilter] = useState('All');
+  const [tradeFilter, setTradeFilter] = useState('All');
   const [view, setView]     = useState('gantt'); // 'overview' or 'gantt'
+  const [showPrint, setShowPrint] = useState(false);
   const scrollRef = useRef(null);
   const dragRef   = useRef(null);
 
@@ -105,6 +116,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
 
   const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
   const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
+  const crcDef = useMemo(() => stageDefs.find(d => d.name === 'CRC'), [stageDefs]);
 
   // ── Drag = reschedule. Click (no movement) = set as the plot's current stage. ──
   function onBarMouseDown(ev, plot, defId) {
@@ -186,27 +198,47 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   }
 
   function plotOverallStatus(plot) {
-    const sc = schedules[plot.id]; if (!sc) return { label:'Not Started', col:'#9ca3af', pct:0 };
+    const sc = schedules[plot.id]; if (!sc) return { label:'Not Started', col:'#9ca3af', pct:0, crcVariance:null };
+
+    // CRC deadline comparison — the primary on-schedule signal once a deadline is set
+    let crcVariance = null, crcScheduledDate = null;
+    if (crcDef && sc[crcDef.id] && plot.crc_deadline_date) {
+      crcScheduledDate = workingDays[sc[crcDef.id].start];
+      const deadline = new Date(plot.crc_deadline_date);
+      crcVariance = Math.round((crcScheduledDate - deadline) / 86400000); // +ve = late, -ve = early
+    }
+
     const vals = sortedDefs.map(d => ({ def:d, s: sc[d.id] })).filter(x=>x.s);
     const total = vals.length;
-    if (!plot.current_stage_id) return { label:'Not Started', col:'#9ca3af', pct:0 };
+    if (!plot.current_stage_id) {
+      if (crcVariance !== null && crcVariance > 0) return { label:'Behind CRC', col:'#dc2626', pct:0, crcVariance, crcScheduledDate };
+      return { label:'Not Started', col:'#9ca3af', pct:0, crcVariance, crcScheduledDate };
+    }
     const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
     const lastOrder = sortedDefs[sortedDefs.length-1] ? sortedDefs[sortedDefs.length-1].stage_order : 0;
     const doneCount = vals.filter(x => (x.def.stage_order||0) < curOrder).length;
     const pct = total ? Math.round(doneCount/total*100) : 0;
-    const isDone = curOrder >= lastOrder; // current stage is the final stage = complete
+    const isDone = curOrder >= lastOrder;
+    if (isDone) return { label:'Complete', col:'#16a34a', pct:100, crcVariance, crcScheduledDate };
+    if (crcVariance !== null) {
+      if (crcVariance > 0) return { label:'Behind CRC ('+crcVariance+'d)', col:'#dc2626', pct, crcVariance, crcScheduledDate };
+      if (crcVariance < 0) return { label:'Ahead ('+Math.abs(crcVariance)+'d)', col:'#16a34a', pct, crcVariance, crcScheduledDate };
+      return { label:'On Track', col:'#2563eb', pct, crcVariance, crcScheduledDate };
+    }
+    // No deadline set — fall back to baseline-drift as a lighter signal
     const behind = vals.some(x => x.s.start > x.s.basStart);
-    if (isDone) return { label:'Complete', col:'#16a34a', pct:100 };
-    if (behind) return { label:'Behind', col:'#dc2626', pct };
-    return { label:'In Progress', col:'#2563eb', pct };
+    if (behind) return { label:'Rescheduled', col:'#d97706', pct, crcVariance, crcScheduledDate };
+    return { label:'In Progress', col:'#2563eb', pct, crcVariance, crcScheduledDate };
   }
 
   const visPlots = useMemo(() => {
     let p = sortedPlots;
-    if (filter === 'Behind') p = p.filter(pl => { const sc=schedules[pl.id]; return sc&&Object.values(sc).some(s=>s.start>s.basStart); });
+    if (filter === 'Behind') p = p.filter(pl => plotOverallStatus(pl).label.startsWith('Behind'));
     else if (filter !== 'All') p = p.filter(pl => pl.tenure === filter);
     return p;
   }, [filter, sortedPlots, schedules]);
+
+  const uniqueTrades = useMemo(() => [...new Set(stageDefs.map(d=>d.trade).filter(Boolean))].sort(), [stageDefs]);
 
   const stats = useMemo(() => {
     let behind=0, done=0, inProg=0, notStarted=0;
@@ -252,13 +284,20 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
         style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='gantt'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='gantt'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
       },'📅 Gantt Chart'),
       e('div',{style:{flex:1}}),
-      view==='gantt' && e('span',{style:{fontSize:9,color:'#9ca3af'}},'Click a bar = set as current stage · Drag a bar = reschedule (pushes later stages)'),
+      view==='gantt' && e('span',{style:{fontSize:9,color:'#9ca3af'}},'Click a bar = set stage · Drag = reschedule'),
+      view==='gantt' && e('select',{value:tradeFilter,onChange:ev=>setTradeFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
+        e('option',{value:'All'},'All trades'),
+        ...uniqueTrades.map(t=>e('option',{key:t,value:t},t))
+      ),
       view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
         ['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
       ),
       view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'− Day'),
-      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'+ Day')
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'+ Day'),
+      e('button',{onClick:()=>setShowPrint(true),style:{padding:'4px 12px',background:'#111827',border:'none',borderRadius:5,color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}},'🖨 Print Programme')
     ),
+
+    showPrint && e(PrintProgrammeModal,{plots,stageDefs,schedules,workingDays,todayIdx,onClose:()=>setShowPrint(false)}),
 
     // ── OVERVIEW VIEW ─────────────────────────────────────────────────────
     view === 'overview' && e('div',{style:{flex:1,overflowY:'auto',padding:14}},
@@ -316,7 +355,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
       e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',maxWidth:'100%'}},
         e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:1100}},
           e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
-            ...['Plot','House Type','Tenure','Status','Current Stage','Next Stage','Next Due','CML Signed Off','CRC Signed Off'].map(h=>
+            ...['Plot','House Type','Tenure','Status','Current Stage','Next Stage','Next Due','CRC Deadline','Scheduled CRC','CML Signed Off','CRC Signed Off'].map(h=>
               e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
             )
           )),
@@ -348,6 +387,18 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                 ),
                 e('td',{style:{padding:'6px 10px',color:'#6b7280',whiteSpace:'nowrap'}}, nextDef ? nextDef.name : '—'),
                 e('td',{style:{padding:'6px 10px',color:'#9ca3af',whiteSpace:'nowrap'}}, nextDate ? nextDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—'),
+                e('td',{style:{padding:'4px 10px'}},
+                  e('input',{
+                    type:'date', value: p.crc_deadline_date || '',
+                    onChange: ev => onUpdatePlot(p.id, { crc_deadline_date: ev.target.value || null }),
+                    style:{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:5, color:'#374151', fontSize:10, padding:'3px 5px', width:120 }
+                  })
+                ),
+                e('td',{style:{padding:'6px 10px',whiteSpace:'nowrap'}},
+                  st.crcScheduledDate
+                    ? e('span',{style:{color: st.crcVariance>0?'#dc2626':st.crcVariance<0?'#16a34a':'#6b7280', fontWeight:600}}, st.crcScheduledDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}))
+                    : e('span',{style:{color:'#d1d5db'}},'—')
+                ),
                 e('td',{style:{padding:'6px 10px',textAlign:'center'}},
                   e('input',{type:'checkbox', checked:!!p.cml_signed_off, onChange:()=>toggleSignOff(p,'cml_signed_off','cml_signed_off_date'), style:{cursor:'pointer'}}),
                   p.cml_signed_off_date && e('span',{style:{fontSize:8,color:'#9ca3af',marginLeft:4}}, p.cml_signed_off_date)
@@ -406,7 +457,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
             ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
               return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #e5e7eb'}},
-                ...sortedDefs.map(def=>{
+                ...sortedDefs.filter(def => tradeFilter==='All' || def.trade===tradeFilter).map(def=>{
                   const s = sc[def.id]; if(!s) return null;
                   const status = stageStatus(p, def);
                   const isDone = status==='done';
@@ -444,6 +495,236 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   );
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// PRINT PROGRAMME MODAL — generates a clean printable view matching a
+// professional construction programme layout (working days, week shading,
+// stage bars, inspection dates, legend), with date-range and trade filters.
+// ══════════════════════════════════════════════════════════════════════════
+function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayIdx, onClose }) {
+  const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
+  const uniqueTrades = useMemo(() => {
+    const t = [...new Set(stageDefs.map(d=>d.trade).filter(Boolean))];
+    return t.sort();
+  }, [stageDefs]);
+
+  const [weeks, setWeeks] = useState(5);
+  const [startIdx, setStartIdx] = useState(todayIdx);
+  const [tradeFilter, setTradeFilter] = useState('All');
+  const [plotFilter, setPlotFilter] = useState('All');
+  const [showInspections, setShowInspections] = useState(true);
+  const [showLegend, setShowLegend] = useState(true);
+  const [showBehind, setShowBehind] = useState(true);
+
+  const sortedPlots = useMemo(() => [...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
+  const visPlots = useMemo(() => plotFilter==='All' ? sortedPlots : sortedPlots.filter(p=>p.tenure===plotFilter), [plotFilter, sortedPlots]);
+
+  const rangeDays = useMemo(() => workingDays.slice(startIdx, startIdx + weeks*5), [workingDays, startIdx, weeks]);
+  const rangeEndIdx = startIdx + weeks*5;
+
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
+  const crcDef = useMemo(() => stageDefs.find(d => d.name === 'CRC'), [stageDefs]);
+  const cmlDef = useMemo(() => stageDefs.find(d => d.name === 'CML'), [stageDefs]);
+
+  // Build the rows that actually have visible content in this date range / trade filter
+  const printRows = useMemo(() => {
+    return visPlots.map(plot => {
+      const sc = schedules[plot.id] || {};
+      const segs = sortedDefs
+        .filter(def => tradeFilter==='All' || def.trade === tradeFilter)
+        .map(def => {
+          const s = sc[def.id]; if (!s) return null;
+          const segStart = Math.max(s.start, startIdx);
+          const segEnd = Math.min(s.start + s.dur, rangeEndIdx);
+          if (segEnd <= segStart) return null; // outside the print range
+          return { def, dayOffset: segStart - startIdx, dayWidth: segEnd - segStart, behind: s.start > s.basStart };
+        }).filter(Boolean);
+      return { plot, segs };
+    }).filter(row => row.segs.length > 0);
+  }, [visPlots, schedules, sortedDefs, tradeFilter, startIdx, rangeEndIdx]);
+
+  // Inspection dates (CML/CRC) falling inside the printed range
+  const inspectionRows = useMemo(() => {
+    const out = [];
+    visPlots.forEach(plot => {
+      const sc = schedules[plot.id] || {};
+      [['CML', cmlDef], ['CRC', crcDef]].forEach(([label, def]) => {
+        if (!def) return;
+        const s = sc[def.id]; if (!s) return;
+        if (s.start < startIdx || s.start >= rangeEndIdx) return;
+        const d = workingDays[s.start];
+        out.push({ plot, label, date: d });
+      });
+    });
+    out.sort((a,b) => a.date - b.date);
+    return out;
+  }, [visPlots, schedules, cmlDef, crcDef, startIdx, rangeEndIdx, workingDays]);
+
+  const DAY_W = 34;
+  const printTitle = tradeFilter === 'All' ? 'SS17 Sandle Park — Construction Programme' : 'SS17 Sandle Park — ' + tradeFilter + ' Resource Schedule';
+
+  function doPrint() { window.print(); }
+
+  return e('div', { style:{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:500, display:'flex' }, className:'print-modal-overlay' },
+
+    // Controls sidebar (hidden when printing)
+    e('div', { className:'no-print', style:{ width:260, flexShrink:0, background:'#111827', padding:18, overflowY:'auto', color:'#fff' } },
+      e('div', { style:{ fontSize:15, fontWeight:700, marginBottom:14 } }, '🖨 Print Programme'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Date Range'),
+      e('div', { style:{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 } },
+        ...[1,2,3,4,5,6,7,8,9,10].map(w => e('button',{
+          key:w, onClick:()=>setWeeks(w),
+          style:{ width:26, height:26, fontSize:10, fontWeight:700, borderRadius:5, cursor:'pointer',
+            background: weeks===w ? '#f97316' : '#1f2937', color: weeks===w ? '#111' : '#9ca3af', border:'none' }
+        }, w))
+      ),
+      e('div', { style:{ fontSize:10, color:'#9ca3af', marginBottom:14 } }, weeks + ' week' + (weeks>1?'s':'') + ' shown'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Starting From'),
+      e('select', {
+        value: startIdx, onChange: ev => setStartIdx(parseInt(ev.target.value)),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:14 }
+      },
+        e('option', { value: todayIdx }, 'Today'),
+        ...workingDays.filter((d,i) => i%5===0 && i>=Math.max(0,todayIdx-40)).slice(0,16).map((d,k) => {
+          const i = workingDays.findIndex(wd=>wd===d);
+          return e('option', { key:i, value:i }, d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
+        })
+      ),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Resource / Trade'),
+      e('select', {
+        value: tradeFilter, onChange: ev => setTradeFilter(ev.target.value),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:4 }
+      },
+        e('option', { value:'All' }, 'All trades — full programme'),
+        ...uniqueTrades.map(t => e('option', { key:t, value:t }, t + ' only'))
+      ),
+      e('div', { style:{ fontSize:9, color:'#6b7280', marginBottom:14 } }, 'Select a trade to print only their stages — e.g. send the Carpenter just his works.'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Plots'),
+      e('select', {
+        value: plotFilter, onChange: ev => setPlotFilter(ev.target.value),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:14 }
+      },
+        ['All','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f,value:f},f==='All'?'All tenures':f))
+      ),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Include'),
+      ...[
+        ['Inspection dates (CML/CRC)', showInspections, setShowInspections],
+        ['Stage legend', showLegend, setShowLegend],
+        ['Behind-schedule markers', showBehind, setShowBehind],
+      ].map(([label, val, setter]) =>
+        e('label', { key:label, style:{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#d1d5db', marginBottom:6, cursor:'pointer' } },
+          e('input', { type:'checkbox', checked:val, onChange:()=>setter(v=>!v) }),
+          label
+        )
+      ),
+
+      e('div', { style:{ marginTop:20, display:'flex', flexDirection:'column', gap:8 } },
+        e('button', { onClick:doPrint, style:{ padding:'10px', background:'#16a34a', border:'none', borderRadius:8, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' } }, '🖨 Print / Save as PDF'),
+        e('button', { onClick:onClose, style:{ padding:'8px', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#d1d5db', fontSize:12, cursor:'pointer' } }, 'Close')
+      )
+    ),
+
+    // Print preview
+    e('div', { className:'print-preview-area', style:{ flex:1, overflow:'auto', background:'#525659', padding:24 } },
+      e('div', { id:'print-content', style:{ background:'#fff', width: Math.max(900, 200 + rangeDays.length*DAY_W), margin:'0 auto', padding:24, fontFamily:'system-ui,sans-serif' } },
+
+        // Header
+        e('div', { style:{ marginBottom:14, borderBottom:'2px solid #111827', paddingBottom:10 } },
+          e('div', { style:{ fontSize:20, fontWeight:800, color:'#111827' } }, printTitle),
+          e('div', { style:{ fontSize:11, color:'#6b7280', marginTop:3 } },
+            'Timeline: ' + weeks + ' Week' + (weeks>1?'s':'') + '   ·   Starting: ' + (rangeDays[0]?rangeDays[0].toLocaleDateString('en-GB'):'') +
+            '   ·   Generated: ' + new Date().toLocaleDateString('en-GB')
+          )
+        ),
+
+        // Grid
+        e('div', { style:{ display:'flex', borderTop:'1px solid #111827', borderLeft:'1px solid #111827' } },
+          // Plot label column
+          e('div', { style:{ width:130, flexShrink:0 } },
+            e('div', { style:{ height:40, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:10, background:'#e5e7eb' } }, 'Plot'),
+            ...printRows.map(({plot,segs}) =>
+              e('div', { key:plot.id, style:{ height:46, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', padding:'4px 6px', display:'flex', flexDirection:'column', justifyContent:'center' } },
+                e('div', { style:{ fontWeight:700, fontSize:11, color:'#111827' } }, 'Plot ' + plot.plot_number),
+                e('div', { style:{ fontSize:8, color:'#6b7280' } }, segs.length + ' stage' + (segs.length>1?'s':''))
+              )
+            )
+          ),
+          // Day grid
+          e('div', { style:{ flex:1 } },
+            // Day header row
+            e('div', { style:{ height:40, display:'flex', borderBottom:'1px solid #111827' } },
+              ...rangeDays.map((d,i) => {
+                const weekNum = Math.floor(i/5);
+                const isAlt = weekNum % 2 === 1;
+                return e('div', { key:i, style:{ width:DAY_W, flexShrink:0, borderRight:'1px solid #d1d5db', background:isAlt?'#dbeafe':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontSize:8, fontWeight:600, color:'#374151' } },
+                  e('div', null, d.toLocaleDateString('en-GB',{weekday:'short'})),
+                  e('div', null, d.getDate())
+                );
+              })
+            ),
+            // Plot rows
+            ...printRows.map(({plot,segs}) =>
+              e('div', { key:plot.id, style:{ height:46, position:'relative', borderBottom:'1px solid #111827', display:'flex' } },
+                // week shading background
+                ...rangeDays.map((d,i) => {
+                  const weekNum = Math.floor(i/5);
+                  const isAlt = weekNum % 2 === 1;
+                  return e('div', { key:'bg'+i, style:{ width:DAY_W, flexShrink:0, borderRight:'1px solid #f3f4f6', background:isAlt?'#eff6ff':'#fff' } });
+                }),
+                // stage segments overlay
+                ...segs.map((seg,si) =>
+                  e('div', {
+                    key:si,
+                    style:{
+                      position:'absolute', left: seg.dayOffset*DAY_W + 1, top:8, width: seg.dayWidth*DAY_W - 2, height:30,
+                      background: seg.def.color || '#6b7280', borderRadius:3,
+                      border: showBehind && seg.behind ? '2px solid #dc2626' : '1px solid rgba(0,0,0,0.2)',
+                      display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'
+                    }
+                  }, e('span', { style:{ fontSize:7.5, fontWeight:700, color:'#fff', padding:'0 3px', whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden' } }, seg.def.name))
+                )
+              )
+            )
+          )
+        ),
+
+        printRows.length === 0 && e('div', { style:{ padding:30, textAlign:'center', color:'#9ca3af', fontSize:12 } }, 'No stages fall within this date range / trade filter.'),
+
+        // Inspections section
+        showInspections && inspectionRows.length > 0 && e('div', { style:{ marginTop:22, pageBreakInside:'avoid' } },
+          e('div', { style:{ fontSize:13, fontWeight:800, color:'#111827', marginBottom:6, borderBottom:'1px solid #d1d5db', paddingBottom:4 } }, 'Upcoming Inspections Required'),
+          ...inspectionRows.map((r,i) =>
+            e('div', { key:i, style:{ fontSize:11, color:'#374151', padding:'2px 0' } },
+              'Plot ' + r.plot.plot_number + ' ' + r.label + ' Date: ' + r.date.toLocaleDateString('en-GB')
+            )
+          )
+        ),
+
+        // Legend
+        showLegend && e('div', { style:{ marginTop:22, pageBreakInside:'avoid' } },
+          e('div', { style:{ fontSize:13, fontWeight:800, color:'#111827', marginBottom:6, borderBottom:'1px solid #d1d5db', paddingBottom:4 } }, 'Legend — Build Stages'),
+          e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'3px 14px' } },
+            ...sortedDefs.filter(d => tradeFilter==='All' || d.trade===tradeFilter).map(d =>
+              e('div', { key:d.id, style:{ display:'flex', alignItems:'center', gap:5, fontSize:10, color:'#374151' } },
+                e('div', { style:{ width:12, height:8, borderRadius:2, background:d.color||'#6b7280', flexShrink:0 } }),
+                d.name
+              )
+            )
+          ),
+          e('div', { style:{ fontSize:9, color:'#9ca3af', marginTop:10 } },
+            'Timeline shows working days only (Monday–Friday). Dates shown in UK format (DD/MM/YYYY). Multiple stages may run in parallel when scheduled accordingly.' +
+            (showBehind ? ' Red outline = stage rescheduled behind its baseline.' : '')
+          )
+        )
+      )
+    )
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
@@ -601,6 +882,17 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
             e('div', { style:{ width:10, height:10, borderRadius:3, background:currentStage.color, flexShrink:0 } }),
             e('span', { style:{ fontSize:12, color:'#1f2937', fontWeight:600 } }, 'On site: ' + currentStage.name)
           )
+        ),
+
+        // CRC Deadline
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '🎯 CRC Deadline'),
+          e('input', {
+            type:'date', value: plot.crc_deadline_date || '',
+            onChange: ev => onUpdatePlot(plot.id, { crc_deadline_date: ev.target.value || null }),
+            style:{ width:'100%', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:7, color:'#374151', fontSize:13, padding:'8px 10px' }
+          }),
+          e('div', { style:{ fontSize:10, color:'#9ca3af', marginTop:4 } }, 'Target CRC date — the Gantt compares the scheduled CRC against this to show On Track / Behind / Ahead.')
         ),
 
         // Notes
