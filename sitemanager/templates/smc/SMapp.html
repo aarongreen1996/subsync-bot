@@ -374,18 +374,149 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
+// ══════════════════════════════════════════════════════════════════════════
+// PLOT DETAIL MODAL — opens when a placed dot is clicked
+// ══════════════════════════════════════════════════════════════════════════
+function PlotDetailModal({ plot, stageDefs, onClose, onUpdatePlot, onRemoveDot }) {
+  const [savingStage, setSavingStage] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(plot.notes || '');
+  const [savedFlash, setSavedFlash] = useState(false);
+  const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>a.stage_order-b.stage_order), [stageDefs]);
+  const currentStage = stageDefs.find(s => s.id === plot.current_stage_id);
+
+  async function setStage(stageId) {
+    setSavingStage(true);
+    await onUpdatePlot(plot.id, { current_stage_id: stageId || null });
+    setSavingStage(false);
+  }
+
+  async function saveNotes() {
+    await onUpdatePlot(plot.id, { notes: noteDraft });
+    setSavedFlash(true);
+    setTimeout(()=>setSavedFlash(false), 1500);
+  }
+
+  const col = TEN_COL[plot.tenure] || '#64748b';
+
+  return e('div', {
+    style: { position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 },
+    onClick: onClose
+  },
+    e('div', {
+      style: { width:480, maxWidth:'100%', maxHeight:'88vh', overflowY:'auto', background:'#111827', border:'1px solid #1e293b', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' },
+      onClick: ev => ev.stopPropagation()
+    },
+      // Header
+      e('div', { style:{ padding:'16px 18px', borderBottom:'1px solid #1e293b', background:col+'18', display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderRadius:'12px 12px 0 0' } },
+        e('div', null,
+          e('div', { style:{ fontSize:24, fontWeight:700, color:'#f1f5f9' } }, 'Plot ' + plot.plot_number),
+          e('div', { style:{ fontSize:12, color:'#94a3b8', marginTop:2 } }, plot.address + ', ' + plot.postcode),
+          e('div', { style:{ marginTop:8, display:'inline-block', padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:700, background:col+'30', color:col, border:'1px solid '+col+'50' } }, plot.tenure)
+        ),
+        e('button', { onClick:onClose, style:{ background:'#1e293b', border:'none', borderRadius:'50%', width:28, height:28, cursor:'pointer', color:'#94a3b8', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 } }, '×')
+      ),
+
+      // Body
+      e('div', { style:{ padding:'16px 18px' } },
+
+        // House details
+        e('div', { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:18 } },
+          ...[['House Type',plot.house_type],['Building Type',plot.plot_type],['Bedrooms',plot.beds],['Plot No.',plot.plot_number]].map(([k,v]) =>
+            e('div', { key:k, style:{ background:'#0f172a', borderRadius:7, padding:'8px 10px' } },
+              e('div', { style:{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 } }, k),
+              e('div', { style:{ fontSize:13, color:'#e2e8f0', fontWeight:600 } }, String(v||'—'))
+            )
+          )
+        ),
+
+        // Current build stage
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '🏗 Current Build Stage'),
+          e('div', { style:{ display:'flex', gap:8, alignItems:'center' } },
+            e('select', {
+              value: plot.current_stage_id || '',
+              onChange: ev => setStage(ev.target.value),
+              disabled: savingStage,
+              style:{ flex:1, background:'#0f172a', border:'1px solid #334155', borderRadius:7, color:'#f1f5f9', fontSize:13, padding:'8px 10px', fontWeight:600 }
+            },
+              e('option', { value:'' }, '— Not started —'),
+              ...sortedStages.map(s => e('option', { key:s.id, value:s.id }, s.name + ' (' + s.trade + ')'))
+            ),
+            savingStage && e('span', { style:{ fontSize:10, color:'#f97316' } }, 'Saving...')
+          ),
+          currentStage && e('div', {
+            style:{ marginTop:8, display:'flex', alignItems:'center', gap:6, padding:'6px 10px', background:currentStage.color+'18', border:'1px solid '+currentStage.color+'40', borderRadius:6 }
+          },
+            e('div', { style:{ width:10, height:10, borderRadius:3, background:currentStage.color, flexShrink:0 } }),
+            e('span', { style:{ fontSize:12, color:'#e2e8f0', fontWeight:600 } }, 'On site: ' + currentStage.name)
+          )
+        ),
+
+        // Notes
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '📝 Site Notes'),
+          e('textarea', {
+            value: noteDraft,
+            onChange: ev => setNoteDraft(ev.target.value),
+            placeholder: 'Add notes for this plot — defects, access issues, material needs...',
+            rows: 3,
+            style:{ width:'100%', background:'#0f172a', border:'1px solid #334155', borderRadius:7, color:'#e2e8f0', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
+          }),
+          e('div', { style:{ display:'flex', gap:8, marginTop:6, alignItems:'center' } },
+            e('button', { onClick:saveNotes, style:{ padding:'5px 14px', background:'#1e293b', border:'1px solid #334155', borderRadius:6, color:'#94a3b8', fontSize:11, cursor:'pointer', fontWeight:600 } }, 'Save Note'),
+            savedFlash && e('span', { style:{ fontSize:10, color:'#4ade80' } }, '✓ Saved')
+          )
+        ),
+
+        // Coming soon — actionable features roadmap
+        e('div', { style:{ background:'#0f172a', border:'1px dashed #1e293b', borderRadius:8, padding:'10px 12px' } },
+          e('div', { style:{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
+          e('div', { style:{ fontSize:11, color:'#475569', lineHeight:1.8 } },
+            '📦 Material call-off & ordering' , e('br'),
+            '⚠️ Raise H&S issue', e('br'),
+            '📋 RFI log', e('br'),
+            '📅 Asta programme vs live comparison'
+          )
+        )
+      ),
+
+      // Footer
+      e('div', { style:{ padding:'12px 18px', borderTop:'1px solid #1e293b', display:'flex', gap:8 } },
+        e('button', {
+          onClick: () => { onRemoveDot(plot.id); onClose(); },
+          style:{ padding:'7px 14px', background:'#450a0a', border:'1px solid #dc2626', borderRadius:7, color:'#f87171', fontSize:12, cursor:'pointer', fontWeight:600 }
+        }, '🗑 Remove Dot'),
+        e('div', { style:{ flex:1 } }),
+        e('button', { onClick:onClose, style:{ padding:'7px 16px', background:'#f97316', border:'none', borderRadius:7, color:'#111', fontSize:12, fontWeight:700, cursor:'pointer' } }, 'Close')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SITE MAP TAB
+// ══════════════════════════════════════════════════════════════════════════
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, onUpdatePlot }) {
   const [placeMode,  setPlaceMode]  = useState(false);
   const [nextId,     setNextId]     = useState(null);
   const [selected,   setSelected]   = useState(null);
   const [zoom,       setZoom]       = useState(1);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [filter,     setFilter]     = useState('All');
-  const imgRef  = useRef(null);
-  const fileRef = useRef(null);
-  const dragRef = useRef(null);
-  const dotsRef = useRef(dots);
+  const [natSize,    setNatSize]    = useState(null); // {w,h} natural image pixel size
+  const imgRef    = useRef(null);
+  const fileRef   = useRef(null);
+  const dragRef   = useRef(null);
+  const dotsRef   = useRef(dots);
+  const scrollRef = useRef(null);   // the overflow:auto map area — used for panning
+  const panRef    = useRef(null);   // pan-drag tracking
+  const suppressClickRef = useRef(false);
+  const [isPanning, setIsPanning] = useState(false);
+
   useEffect(()=>{ dotsRef.current = dots; }, [dots]);
+
+  // Reset natural size when image changes so it's recalculated
+  useEffect(()=>{ setNatSize(null); }, [bgImage]);
 
   async function handleUpload(ev) {
     const file = ev.target.files[0];
@@ -415,15 +546,12 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
 
   function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); }
 
-  // Sort plots by plot number
+  function handleImgLoad(ev) {
+    setNatSize({ w: ev.target.naturalWidth, h: ev.target.naturalHeight });
+  }
+
   const sortedPlots = useMemo(() => [...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
-
-  // Filter for the list
-  const listPlots = useMemo(() => {
-    if (filter === 'All') return sortedPlots;
-    return sortedPlots.filter(p => p.tenure === filter);
-  }, [filter, sortedPlots]);
-
+  const listPlots = useMemo(() => filter==='All' ? sortedPlots : sortedPlots.filter(p=>p.tenure===filter), [filter, sortedPlots]);
   const unplaced  = useMemo(() => sortedPlots.filter(p => !dots[p.id]), [sortedPlots, dots]);
   const placed    = useMemo(() => sortedPlots.filter(p =>  dots[p.id]), [sortedPlots, dots]);
   const selPlot   = selected ? sortedPlots.find(p => p.id === selected) : null;
@@ -435,45 +563,42 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
     if (first) setNextId(first.id);
   }
 
+  // ── Placement / selection click (on the image, not a dot) ────────────────
   function handleMapAreaClick(ev) {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
     if (!imgRef.current) return;
-    // Click must be on the img itself (not a dot)
     if (ev.target !== imgRef.current) return;
-    if (dragRef.current && dragRef.current.moved) return;
-    if (!placeMode || !nextId) {
-      setSelected(null);
-      return;
-    }
+    if (!placeMode || !nextId) return; // deselect handled by background click below
     const rect = imgRef.current.getBoundingClientRect();
     const px = ((ev.clientX - rect.left) / rect.width)  * 100;
     const py = ((ev.clientY - rect.top)  / rect.height) * 100;
     const nd = Object.assign({}, dotsRef.current, { [nextId]: { px, py } });
     saveDots(nd);
-    // Advance to next unplaced
     const remaining = sortedPlots.filter(p => !nd[p.id]);
     setNextId(remaining.length ? remaining[0].id : null);
-    if (!remaining.length) { setPlaceMode(false); }
+    if (!remaining.length) setPlaceMode(false);
   }
 
+  // ── Dot click → open detail modal ─────────────────────────────────────────
   function handleDotClick(ev, id) {
     ev.stopPropagation();
     if (placeMode) return;
-    setSelected(prev => prev === id ? null : id);
+    setSelected(id);
   }
 
+  // ── Dot drag-to-reposition ────────────────────────────────────────────────
   function handleDotMouseDown(ev, id) {
     ev.stopPropagation();
+    ev.preventDefault();
     if (placeMode) return;
     if (!imgRef.current || !dotsRef.current[id]) return;
-    setSelected(id);
     const rect = imgRef.current.getBoundingClientRect();
     const orig = Object.assign({}, dotsRef.current[id]);
     let moved = false;
-    dragRef.current = { id, moved: false };
     function onMove(me) {
-      moved = true; dragRef.current = { id, moved: true };
       const dx = ((me.clientX - ev.clientX) / rect.width)  * 100;
       const dy = ((me.clientY - ev.clientY) / rect.height) * 100;
+      if (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2) moved = true;
       setDots(prev => {
         const nd = Object.assign({}, prev, { [id]: { px: Math.max(0,Math.min(100,orig.px+dx)), py: Math.max(0,Math.min(100,orig.py+dy)) } });
         dotsRef.current = nd;
@@ -481,8 +606,8 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
       });
     }
     function onUp() {
-      if (moved) lsSet('smc_dots_v4', dotsRef.current);
-      dragRef.current = null;
+      if (moved) { lsSet('smc_dots_v4', dotsRef.current); }
+      else { setSelected(id); } // treat as a click if it didn't actually move
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     }
@@ -490,12 +615,49 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
     window.addEventListener('mouseup', onUp);
   }
 
+  // ── Click-and-drag panning of the whole drawing ───────────────────────────
+  function handleWrapperMouseDown(ev) {
+    if (placeMode) return;                 // placing takes priority — no pan
+    if (ev.target !== imgRef.current) return; // only pan when starting on the image itself
+    if (!scrollRef.current) return;
+    const startX = ev.clientX, startY = ev.clientY;
+    const startScrollLeft = scrollRef.current.scrollLeft;
+    const startScrollTop  = scrollRef.current.scrollTop;
+    let moved = false;
+    panRef.current = { moved:false };
+    function onMove(me) {
+      const dx = me.clientX - startX, dy = me.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { moved = true; setIsPanning(true); }
+      if (moved && scrollRef.current) {
+        scrollRef.current.scrollLeft = startScrollLeft - dx;
+        scrollRef.current.scrollTop  = startScrollTop  - dy;
+      }
+    }
+    function onUp() {
+      if (moved) suppressClickRef.current = true; // stop the click handler from firing select/place logic
+      setIsPanning(false);
+      panRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  // ── Background click (outside image) clears selection ─────────────────────
+  function handleBackgroundClick(ev) {
+    if (ev.target === scrollRef.current) setSelected(null);
+  }
+
   const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+  // ── Pixel-accurate rendered dimensions (fixes dot/zoom sync) ──────────────
+  const renderW = natSize ? natSize.w * zoom : null;
+  const renderH = natSize ? natSize.h * zoom : null;
 
   // ── Left sidebar ───────────────────────────────────────────────────────
   const sidebar = e('div',{style:{width:200,flexShrink:0,background:'#0a0e1a',borderRight:'1px solid #1e293b',display:'flex',flexDirection:'column',overflow:'hidden'}},
 
-    // Upload section
     e('div',{style:{padding:'10px 10px 6px',borderBottom:'1px solid #1e293b'}},
       e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Site Plan Drawing'),
       e('button',{
@@ -508,15 +670,14 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
         : e('div',{style:{fontSize:9,color:'#334155',lineHeight:1.4}},'Accepts PNG, JPG, or PDF. PDF renders at 3× resolution for sharp zoom.')
     ),
 
-    // Zoom
     bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
       e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}},'Zoom'),
       e('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
         ...ZOOMS.map(z=>e('button',{key:z,onClick:()=>setZoom(z),style:{padding:'3px 6px',background:zoom===z?'#f97316':'#1e293b',border:'1px solid '+(zoom===z?'#f97316':'#334155'),borderRadius:4,color:zoom===z?'#111':'#94a3b8',fontSize:9,cursor:'pointer',fontWeight:zoom===z?700:400}},z===1?'100%':(z*100|0)+'%'))
-      )
+      ),
+      e('div',{style:{fontSize:9,color:'#334155',marginTop:5}},'🖐 Click & drag the drawing to pan')
     ),
 
-    // Place dots controls
     e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
         e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}},'Plot Dots'),
@@ -547,30 +708,10 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
           },'🖱 Place Plot Dots'+(!bgImage?' (upload drawing first)':''))
     ),
 
-    // Selected plot inspector
-    selPlot
-      ? e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b',background:(TEN_COL[selPlot.tenure]||'#475569')+'15'}},
-          e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
-            e('div',{style:{fontSize:13,fontWeight:700,color:'#f1f5f9'}},'Plot '+selPlot.plot_number),
-            e('button',{onClick:()=>setSelected(null),style:{background:'none',border:'none',color:'#475569',cursor:'pointer',fontSize:16}},'×')
-          ),
-          e('div',{style:{fontSize:10,color:TEN_COL[selPlot.tenure]||'#94a3b8',fontWeight:700,marginBottom:4}},selPlot.tenure),
-          ...[['Type',selPlot.house_type],['Building',selPlot.plot_type],['Beds',selPlot.beds+'bd'],['Address',selPlot.address],['Postcode',selPlot.postcode]].map(([k,v])=>
-            e('div',{key:k,style:{display:'flex',justifyContent:'space-between',fontSize:10,marginBottom:2}},
-              e('span',{style:{color:'#475569'}},k+':'),
-              e('span',{style:{color:'#e2e8f0',textAlign:'right',maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},String(v||'—'))
-            )
-          ),
-          e('button',{
-            onClick:()=>{const d=Object.assign({},dotsRef.current);delete d[selPlot.id];saveDots(d);setSelected(null);},
-            style:{marginTop:6,width:'100%',padding:'4px',background:'#450a0a',border:'1px solid #dc2626',borderRadius:4,color:'#f87171',fontSize:10,cursor:'pointer'}
-          },'Remove Dot')
-        )
-      : e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b',flex:0}},
-          e('div',{style:{fontSize:9,color:'#334155'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to inspect it. Drag dots to reposition.')
-        ),
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #1e293b'}},
+      e('div',{style:{fontSize:9,color:'#334155'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to open its details. Drag dots to reposition.')
+    ),
 
-    // Scrollable plot list
     e('div',{style:{padding:'6px 10px 4px',borderBottom:'1px solid #0f172a'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
         e('div',{style:{fontSize:9,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'0.06em'}},'All Plots'),
@@ -585,7 +726,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
         const isSel = selected === p.id;
         return e('div',{
           key:p.id,
-          onClick:()=>{ if(placeMode){setNextId(p.id);}else{setSelected(prev=>prev===p.id?null:p.id);} },
+          onClick:()=>{ if(placeMode){setNextId(p.id);}else if(isPlaced){setSelected(p.id);} },
           style:{
             padding:'5px 10px',cursor:'pointer',
             background: isSel?'#1e293b':placeMode&&nextId===p.id?'rgba(249,115,22,0.1)':'transparent',
@@ -603,16 +744,17 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
         );
       })
     ),
-    // Bottom actions
     e('div',{style:{padding:'8px 10px',borderTop:'1px solid #1e293b',display:'flex',gap:4}},
       e('button',{onClick:()=>{saveDots({});setSelected(null);},style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Clear All'),
-      e('button',{onClick:()=>setSelected(null),style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Deselect')
+      e('button',{onClick:()=>setZoom(1),style:{flex:1,padding:'4px',background:'#1e293b',border:'1px solid #334155',borderRadius:4,color:'#475569',fontSize:9,cursor:'pointer'}},'Reset Zoom')
     )
   );
 
-  // ── Map area ───────────────────────────────────────────────────────────
+  // ── Map area (scrollable, pannable) ───────────────────────────────────────
   const mapArea = e('div',{
-    style:{flex:1,overflow:'auto',background:'#050810',position:'relative',cursor:placeMode?'crosshair':'default'}
+    ref: scrollRef,
+    style:{flex:1,overflow:'auto',background:'#050810',position:'relative'},
+    onClick: handleBackgroundClick
   },
     !bgImage
       ? e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14}},
@@ -622,19 +764,31 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
             e('div',{style:{fontSize:12,color:'#1e293b',lineHeight:1.8}},
               'Accepts PNG, JPG, or PDF. ',
               e('strong',{style:{color:'#f97316'}},'PDF is recommended'),
-              ' — rendered at 3× resolution so it stays sharp when zoomed in. Export P101 or P102 from the architect\'s drawing set.'
+              ' — rendered at 3× resolution so it stays sharp when zoomed in.'
             ),
             e('button',{onClick:()=>fileRef.current.click(),style:{marginTop:14,padding:'10px 22px',background:'#f97316',border:'none',borderRadius:8,color:'#111',fontSize:13,fontWeight:700,cursor:'pointer'}},'Upload Drawing')
           )
         )
-      : e('div',{style:{display:'inline-block',position:'relative',minWidth:'100%'},onClick:handleMapAreaClick},
-          e('img',{ref:imgRef,src:bgImage,alt:'Site Drawing',draggable:false,style:{display:'block',width:(zoom*100)+'%',userSelect:'none',pointerEvents:'auto'}}),
-          e('svg',{style:{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',pointerEvents:'none'}},
+      : e('div',{
+          style:{
+            position:'relative',
+            width: renderW ? renderW+'px' : '100%',
+            height: renderH ? renderH+'px' : 'auto',
+            cursor: placeMode ? 'crosshair' : (isPanning ? 'grabbing' : 'grab')
+          },
+          onMouseDown: handleWrapperMouseDown,
+          onClick: handleMapAreaClick
+        },
+          e('img',{
+            ref:imgRef, src:bgImage, alt:'Site Drawing', draggable:false, onLoad:handleImgLoad,
+            style:{ display:'block', width: renderW?renderW+'px':'100%', height: renderH?renderH+'px':'auto', userSelect:'none', pointerEvents:'auto' }
+          }),
+          e('svg',{ style:{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',pointerEvents:'none'} },
             ...sortedPlots.map(plot=>{
               const dot=dots[plot.id]; if(!dot)return null;
               const col=TEN_COL[plot.tenure]||'#f59e0b';
               const sel=selected===plot.id;
-              const r=Math.max(7,9/zoom);
+              const r=Math.max(6,9/Math.sqrt(zoom));
               const isBung=plot.plot_type==='Bungalow', isFlat=plot.plot_type==='Flat';
               const cx=dot.px+'%', cy=dot.py+'%';
               return e('g',{key:plot.id,style:{cursor:placeMode?'default':'pointer',pointerEvents:'auto'},onClick:ev=>handleDotClick(ev,plot.id),onMouseDown:ev=>handleDotMouseDown(ev,plot.id)},
@@ -644,16 +798,27 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots }) {
                   :isBung
                     ?e('polygon',{key:'d',points:dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%',fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
                     :e('circle',{key:'d',cx,cy,r,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2}),
-                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:Math.max(5,7/zoom),fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},plot.plot_number)
+                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:Math.max(5,7/Math.sqrt(zoom)),fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},plot.plot_number)
               );
             }).filter(Boolean)
           ),
-          placeMode&&nextPlot&&e('div',{style:{position:'fixed',bottom:56,left:'50%',transform:'translateX(-50%)',background:'rgba(249,115,22,0.97)',padding:'8px 20px',borderRadius:20,fontSize:12,fontWeight:700,color:'#111',pointerEvents:'none',zIndex:50,boxShadow:'0 4px 20px rgba(249,115,22,0.4)'}},'Click drawing to place Plot '+nextPlot.plot_number+' ('+nextPlot.house_type+') — or select different plot in sidebar')
+          placeMode&&nextPlot&&e('div',{style:{position:'fixed',bottom:56,left:'50%',transform:'translateX(-50%)',background:'rgba(249,115,22,0.97)',padding:'8px 20px',borderRadius:20,fontSize:12,fontWeight:700,color:'#111',pointerEvents:'none',zIndex:50,boxShadow:'0 4px 20px rgba(249,115,22,0.4)'}},'Click drawing to place Plot '+nextPlot.plot_number+' ('+nextPlot.house_type+')')
         )
   );
 
-  return e('div',{style:{display:'flex',height:'100%'}},sidebar,mapArea);
+  return e('div',{style:{display:'flex',height:'100%'}},
+    sidebar,
+    mapArea,
+    selPlot && e(PlotDetailModal, {
+      plot: selPlot,
+      stageDefs: stageDefs,
+      onClose: () => setSelected(null),
+      onUpdatePlot: onUpdatePlot,
+      onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); }
+    })
+  );
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // H&S TAB
@@ -766,6 +931,14 @@ function App() {
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
 
+  // Update a plot's fields both locally (instant) and on the server
+  async function onUpdatePlot(plotId, fields) {
+    setPlots(prev => prev.map(p => p.id === plotId ? Object.assign({}, p, fields) : p));
+    try {
+      await api('/plots/' + plotId, { method: 'PATCH', body: JSON.stringify(fields) });
+    } catch (ex) { console.error('Plot update failed', ex); }
+  }
+
   const TABS=[
     {id:'programme', label:'📅  Programme'},
     {id:'map',       label:'🗺️  Site Map'},
@@ -811,7 +984,7 @@ function App() {
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages})
             :tab==='map'
-              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots})
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,onUpdatePlot})
               :e(HSTab,{inspections,hsLog})
     ),
     // Footer
