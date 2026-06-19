@@ -94,7 +94,7 @@ def api_plots():
 @_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date"}}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date"}}
     if not updates:
         return jsonify({"ok": False, "error": "No valid fields"}), 400
     try:
