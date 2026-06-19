@@ -420,10 +420,14 @@ function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSe
   );
 }
 
-function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onClose, onUpdatePlot, onRemoveDot }) {
+function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onRaiseHsIssue, onClose, onUpdatePlot, onRemoveDot }) {
   const [savingStage, setSavingStage] = useState(false);
   const [noteDraft, setNoteDraft] = useState(plot.notes || '');
   const [savedFlash, setSavedFlash] = useState(false);
+  const [hsDraft, setHsDraft] = useState('');
+  const [hsSeverity, setHsSeverity] = useState('amber');
+  const [hsSubmitting, setHsSubmitting] = useState(false);
+  const [hsSubmitted, setHsSubmitted] = useState(false);
   const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>a.stage_order-b.stage_order), [stageDefs]);
   const currentStage = stageDefs.find(s => s.id === plot.current_stage_id);
   const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
@@ -464,6 +468,18 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
     await onUpdatePlot(plot.id, { notes: noteDraft });
     setSavedFlash(true);
     setTimeout(()=>setSavedFlash(false), 1500);
+  }
+
+  async function submitHsIssue() {
+    if (!hsDraft.trim()) return;
+    setHsSubmitting(true);
+    const ok = await onRaiseHsIssue(plot.id, hsDraft.trim(), hsSeverity);
+    setHsSubmitting(false);
+    if (ok) {
+      setHsDraft('');
+      setHsSubmitted(true);
+      setTimeout(()=>setHsSubmitted(false), 2000);
+    }
   }
 
   const col = TEN_COL[plot.tenure] || '#6b7280';
@@ -554,11 +570,40 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
           )
         ),
 
+        // Raise H&S issue — posts to the H&S log automatically tagged with this plot
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#dc2626', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '⚠️ Raise H&S Issue'),
+          e('textarea', {
+            value: hsDraft,
+            onChange: ev => setHsDraft(ev.target.value),
+            placeholder: 'Describe the issue — e.g. unsecured scaffold, missing PPE, blocked fire exit...',
+            rows: 2,
+            style:{ width:'100%', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:7, color:'#1f2937', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
+          }),
+          e('div', { style:{ display:'flex', gap:8, marginTop:6, alignItems:'center' } },
+            e('select', {
+              value: hsSeverity,
+              onChange: ev => setHsSeverity(ev.target.value),
+              style:{ background:'#ffffff', border:'1px solid #d1d5db', borderRadius:6, color:'#374151', fontSize:11, padding:'5px 8px', fontWeight:600 }
+            },
+              e('option', { value:'green' }, '🟢 Low'),
+              e('option', { value:'amber' }, '🟠 Medium'),
+              e('option', { value:'red' }, '🔴 High')
+            ),
+            e('button', {
+              onClick: submitHsIssue,
+              disabled: hsSubmitting || !hsDraft.trim(),
+              style:{ padding:'6px 14px', background:'#dc2626', border:'none', borderRadius:6, color:'#ffffff', fontSize:11, fontWeight:700, cursor:'pointer', opacity:(hsSubmitting||!hsDraft.trim())?0.6:1 }
+            }, hsSubmitting ? 'Submitting...' : 'Submit Issue'),
+            hsSubmitted && e('span', { style:{ fontSize:10, color:'#16a34a', fontWeight:600 } }, '✓ Logged to H&S')
+          ),
+          e('div', { style:{ fontSize:10, color:'#9ca3af', marginTop:5 } }, 'This automatically creates an entry on the H&S tab tagged with Plot ' + plot.plot_number + '.')
+        ),
+
         // Coming soon — actionable features roadmap
         e('div', { style:{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:8, padding:'10px 12px' } },
           e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
           e('div', { style:{ fontSize:11, color:'#9ca3af', lineHeight:1.8 } },
-            '⚠️ Raise H&S issue', e('br'),
             '📋 RFI log', e('br'),
             '📅 Asta programme vs live comparison'
           )
@@ -581,7 +626,7 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder }) {
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue }) {
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
   const [nextId,     setNextId]     = useState(null);
@@ -916,6 +961,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       materials: materials,
       materialOrders: materialOrders,
       onSetOrder: onSetOrder,
+      onRaiseHsIssue: onRaiseHsIssue,
       onClose: () => setSelected(null),
       onUpdatePlot: onUpdatePlot,
       onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); }
@@ -1395,6 +1441,22 @@ function App() {
     } catch (ex) { console.error('Set order failed', ex); }
   }
 
+  // Raise an H&S issue from a plot's modal — posts to the existing endpoint
+  // and refreshes the H&S log so it shows up on the H&S tab immediately.
+  async function onRaiseHsIssue(plotId, detail, severity) {
+    try {
+      const r = await api('/plots/' + plotId + '/raise-hs-issue', {
+        method: 'POST',
+        body: JSON.stringify({ detail, severity })
+      }).then(r=>r.json());
+      if (r.ok) {
+        const fresh = await api('/hs-log').then(r=>r.json());
+        setHsLog(Array.isArray(fresh)?fresh:[]);
+      }
+      return r.ok;
+    } catch (ex) { console.error('Raise H&S issue failed', ex); return false; }
+  }
+
   const TABS=[
     {id:'programme', label:'📅  Programme'},
     {id:'map',       label:'🗺️  Site Map'},
@@ -1441,7 +1503,7 @@ function App() {
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages})
             :tab==='map'
-              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder})
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue})
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onSetOrder})
                 :e(HSTab,{inspections,hsLog})
