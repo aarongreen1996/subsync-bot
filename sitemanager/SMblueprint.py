@@ -247,3 +247,206 @@ def api_map_image_set():
         return ok()
     except Exception as e:
         return err(e)
+
+
+# ── Trades ─────────────────────────────────────────────────────────────────────
+@smc_bp.route("/api/trades")
+@_require_auth
+def api_trades():
+    try:
+        r = supabase.table("smc_trades").select("*").order("sort_order").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+# ── Stage templates ───────────────────────────────────────────────────────────
+@smc_bp.route("/api/stage-templates")
+@_require_auth
+def api_stage_templates():
+    try:
+        r = supabase.table("smc_stage_templates").select("*").order("name").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+# ── Stage def editing (rename, change trade, change duration, reorder) ───────
+@smc_bp.route("/api/stage-defs/<stage_id>", methods=["PATCH"])
+@_require_auth
+def api_stage_def_update(stage_id):
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in {"name", "trade", "trade_id", "color", "default_duration", "stage_order"}}
+    if not updates:
+        return jsonify({"ok": False, "error": "No valid fields"}), 400
+    try:
+        supabase.table("smc_stage_defs").update(updates).eq("id", stage_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/stage-defs", methods=["POST"])
+@_require_auth
+def api_stage_def_create():
+    data = request.get_json() or {}
+    row = {
+        "project_id": SMC_PROJECT_ID,
+        "template_id": data.get("template_id"),
+        "stage_order": data.get("stage_order", 999),
+        "name": data.get("name", "New Stage"),
+        "trade": data.get("trade", ""),
+        "trade_id": data.get("trade_id"),
+        "color": data.get("color", "#64748b"),
+        "default_duration": data.get("default_duration", 1),
+    }
+    try:
+        r = supabase.table("smc_stage_defs").insert(row).execute()
+        return jsonify({"ok": True, "stage": r.data[0] if r.data else None})
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/stage-defs/<stage_id>", methods=["DELETE"])
+@_require_auth
+def api_stage_def_delete(stage_id):
+    try:
+        supabase.table("smc_stage_defs").delete().eq("id", stage_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+# ── Materials master tracker ──────────────────────────────────────────────────
+@smc_bp.route("/api/materials")
+@_require_auth
+def api_materials():
+    try:
+        r = supabase.table("smc_materials").select("*, smc_stage_defs(name)") \
+            .eq("project_id", SMC_PROJECT_ID).order("created_at").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/materials", methods=["POST"])
+@_require_auth
+def api_material_create():
+    data = request.get_json() or {}
+    row = {
+        "project_id": SMC_PROJECT_ID,
+        "material_name": data.get("material_name", ""),
+        "linked_stage_id": data.get("linked_stage_id"),
+        "lead_time_weeks": data.get("lead_time_weeks", 1),
+        "supplier_name": data.get("supplier_name", ""),
+        "supplier_email": data.get("supplier_email", ""),
+        "po_number": data.get("po_number", ""),
+        "applies_to_all_plots": data.get("applies_to_all_plots", True),
+        "description": data.get("description", ""),
+    }
+    try:
+        r = supabase.table("smc_materials").insert(row).execute()
+        material = r.data[0] if r.data else None
+        # If specific plots given, create the plot links
+        plot_ids = data.get("plot_ids", [])
+        if material and not row["applies_to_all_plots"] and plot_ids:
+            links = [{"material_id": material["id"], "plot_id": pid} for pid in plot_ids]
+            supabase.table("smc_material_plot_links").insert(links).execute()
+        return jsonify({"ok": True, "material": material})
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/materials/<material_id>", methods=["PATCH"])
+@_require_auth
+def api_material_update(material_id):
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in
+               {"material_name", "linked_stage_id", "lead_time_weeks", "supplier_name", "supplier_email", "po_number", "description"}}
+    try:
+        supabase.table("smc_materials").update(updates).eq("id", material_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/materials/<material_id>", methods=["DELETE"])
+@_require_auth
+def api_material_delete(material_id):
+    try:
+        supabase.table("smc_materials").delete().eq("id", material_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+# ── Material orders (the per-plot master tracker) ────────────────────────────
+@smc_bp.route("/api/material-orders")
+@_require_auth
+def api_material_orders():
+    try:
+        r = supabase.table("smc_material_orders").select("*").execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/material-orders", methods=["POST"])
+@_require_auth
+def api_material_order_upsert():
+    """Upsert a material's order status for a specific plot."""
+    data = request.get_json() or {}
+    material_id = data.get("material_id")
+    plot_id = data.get("plot_id")
+    if not material_id or not plot_id:
+        return jsonify({"ok": False, "error": "material_id and plot_id required"}), 400
+    try:
+        from datetime import datetime, timezone
+        existing = supabase.table("smc_material_orders").select("id") \
+            .eq("material_id", material_id).eq("plot_id", plot_id).execute()
+        row = {
+            "material_id": material_id,
+            "plot_id": plot_id,
+            "status": data.get("status", "pending"),
+            "ordered_date": data.get("ordered_date"),
+            "delivery_date": data.get("delivery_date"),
+            "notes": data.get("notes", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if existing.data:
+            supabase.table("smc_material_orders").update(row).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.table("smc_material_orders").insert(row).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+# ── Plot H&S issue — auto-populates the H&S log ──────────────────────────────
+@smc_bp.route("/api/plots/<plot_id>/raise-hs-issue", methods=["POST"])
+@_require_auth
+def api_plot_raise_hs(plot_id):
+    """Called from the plot detail modal's H&S box. Creates an smc_hs_log entry
+    linked to this plot, which automatically shows on the H&S tab."""
+    data = request.get_json() or {}
+    detail = data.get("detail", "").strip()
+    if not detail:
+        return jsonify({"ok": False, "error": "No detail provided"}), 400
+    try:
+        plot = supabase.table("smc_plots").select("plot_number").eq("id", plot_id).single().execute()
+        plot_number = plot.data.get("plot_number", "?") if plot.data else "?"
+        from datetime import date
+        row = {
+            "project_id": SMC_PROJECT_ID,
+            "plot_id": plot_id,
+            "log_date": str(date.today()),
+            "log_type": "Plot Issue — Plot " + str(plot_number),
+            "person_name": data.get("person_name", "Site Manager"),
+            "status": "Open",
+            "detail": detail,
+            "severity": data.get("severity", "amber"),
+        }
+        supabase.table("smc_hs_log").insert(row).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
