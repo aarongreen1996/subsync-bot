@@ -80,7 +80,7 @@ const lsSet = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch(_)
 // ══════════════════════════════════════════════════════════════════════════
 // PROGRAMME TAB — Overview dashboard + Gantt chart
 // ══════════════════════════════════════════════════════════════════════════
-function ProgrammeTab({ plots, stageDefs, plotStages }) {
+function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages }) {
   const TOTAL_WD=300, LEFT_W=170, ROW_H=34, HDR_H=54;
   const [cellW, setCellW]   = useState(22);
   const [filter, setFilter] = useState('All');
@@ -88,7 +88,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
   const scrollRef = useRef(null);
   const dragRef   = useRef(null);
 
-  const workingDays = useMemo(() => genWDs('2026-01-02', TOTAL_WD), []);
+  const workingDays = useMemo(() => genWDs(PROG_START, TOTAL_WD), []);
   const todayIdx = useMemo(() => {
     const t = new Date(TODAY);
     const i = workingDays.findIndex(d => d >= t);
@@ -104,24 +104,64 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
   useEffect(() => { if(scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300); }, [todayIdx]);
 
   const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
+  const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
 
-  function onDragStart(ev, plotId, defId) {
+  // ── Drag = reschedule. Click (no movement) = set as the plot's current stage. ──
+  function onBarMouseDown(ev, plot, defId) {
     ev.preventDefault();
-    const sc = schedules[plotId]; if(!sc||!sc[defId]) return;
+    ev.stopPropagation();
+    const sc = schedules[plot.id]; if(!sc||!sc[defId]) return;
     const orig = sc[defId].start;
-    dragRef.current = { plotId, defId, startX: ev.clientX, orig };
+    const startX = ev.clientX;
+    let moved = false;
+    dragRef.current = { plotId: plot.id, defId };
+
     function onMove(me) {
-      if (!dragRef.current) return;
-      const delta = Math.round((me.clientX - dragRef.current.startX) / cellW);
+      const delta = Math.round((me.clientX - startX) / cellW);
+      if (Math.abs(me.clientX - startX) > 4) moved = true;
+      if (!moved) return;
       const ns = Math.max(0, orig + delta);
       setSchedules(prev => {
         const c = Object.assign({}, prev);
-        c[plotId] = Object.assign({}, c[plotId]);
-        c[plotId][defId] = Object.assign({}, c[plotId][defId], { start: ns });
+        c[plot.id] = Object.assign({}, c[plot.id]);
+        c[plot.id][defId] = Object.assign({}, c[plot.id][defId], { start: ns });
         return c;
       });
     }
-    function onUp() { dragRef.current=null; window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp); }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      dragRef.current = null;
+
+      if (!moved) {
+        // Plain click — set this as the plot's confirmed current build stage
+        onUpdatePlot(plot.id, { current_stage_id: defId });
+        return;
+      }
+
+      // Was dragged — cascade every later stage to follow immediately after
+      // (no gaps, no overlaps) and persist the whole chain in one call.
+      setSchedules(prev => {
+        const plotSched = Object.assign({}, prev[plot.id]);
+        const draggedOrder = (defMap[defId]||{}).stage_order || 0;
+        const changed = [{ stage_def_id: defId, start_day: plotSched[defId].start, duration: plotSched[defId].dur, baseline_start: plotSched[defId].basStart }];
+        let cursor = plotSched[defId].start + plotSched[defId].dur;
+        sortedDefs.forEach(def => {
+          if ((def.stage_order||0) <= draggedOrder) return;
+          const cur = plotSched[def.id];
+          if (!cur) return;
+          plotSched[def.id] = Object.assign({}, cur, { start: cursor });
+          changed.push({ stage_def_id: def.id, start_day: cursor, duration: cur.dur, baseline_start: cur.basStart });
+          cursor += cur.dur;
+        });
+        onSaveStages(plot.id, changed);
+        const next = Object.assign({}, prev);
+        next[plot.id] = plotSched;
+        return next;
+      });
+    }
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }
@@ -134,6 +174,50 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
 
   const sortedPlots = useMemo(() => [...plots].sort((a,b) => parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
 
+  // ── Stage status now driven by the plot's actual current_stage_id when set,
+  // falling back to date-estimate only if no stage has been confirmed yet.
+  function stageStatus(plot, def) {
+    if (plot.current_stage_id) {
+      const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+      const thisOrder = def.stage_order || 0;
+      if (thisOrder < curOrder) return 'done';
+      if (thisOrder === curOrder) return 'active';
+      return 'future';
+    }
+    // No confirmed stage — fall back to a date estimate
+    const s = schedules[plot.id] && schedules[plot.id][def.id];
+    if (!s) return 'future';
+    if (s.start + s.dur <= todayIdx) return 'done-estimated';
+    if (s.start <= todayIdx && s.start + s.dur > todayIdx) return 'active-estimated';
+    return 'future';
+  }
+
+  function plotOverallStatus(plot) {
+    const sc = schedules[plot.id]; if (!sc) return { label:'Not Started', col:'#9ca3af', pct:0 };
+    const vals = sortedDefs.map(d => ({ def:d, s: sc[d.id] })).filter(x=>x.s);
+    const total = vals.length;
+    if (plot.current_stage_id) {
+      const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+      const lastOrder = sortedDefs[sortedDefs.length-1] ? sortedDefs[sortedDefs.length-1].stage_order : 0;
+      const doneCount = vals.filter(x => (x.def.stage_order||0) < curOrder).length;
+      const pct = total ? Math.round(doneCount/total*100) : 0;
+      const isDone = curOrder >= lastOrder; // current stage is the final stage = complete
+      const behind = vals.some(x => x.s.start > x.s.basStart);
+      if (isDone) return { label:'Complete', col:'#16a34a', pct:100 };
+      if (behind) return { label:'Behind', col:'#dc2626', pct };
+      return { label:'In Progress', col:'#2563eb', pct };
+    }
+    // No confirmed stage — estimate from dates
+    const doneCount = vals.filter(x => x.s.start+x.s.dur<=todayIdx).length;
+    const activeCount = vals.filter(x => x.s.start<=todayIdx && x.s.start+x.s.dur>todayIdx).length;
+    const behind = vals.some(x => x.s.start > x.s.basStart);
+    const pct = total ? Math.round(doneCount/total*100) : 0;
+    if (doneCount === total) return { label:'Complete (est.)', col:'#16a34a', pct:100 };
+    if (behind) return { label:'Behind (est.)', col:'#dc2626', pct };
+    if (activeCount > 0) return { label:'In Progress (est.)', col:'#2563eb', pct };
+    return { label:'Not Started', col:'#9ca3af', pct:0 };
+  }
+
   const visPlots = useMemo(() => {
     let p = sortedPlots;
     if (filter === 'Behind') p = p.filter(pl => { const sc=schedules[pl.id]; return sc&&Object.values(sc).some(s=>s.start>s.basStart); });
@@ -144,36 +228,18 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
   const stats = useMemo(() => {
     let behind=0, done=0, inProg=0, notStarted=0;
     sortedPlots.forEach(p => {
-      const sc=schedules[p.id]; if(!sc)return;
-      const vals=Object.values(sc);
-      if (vals.every(s=>s.start+s.dur<=todayIdx)) done++;
-      else if (vals.some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx)) inProg++;
+      const st = plotOverallStatus(p);
+      if (st.label.startsWith('Complete')) done++;
+      else if (st.label.startsWith('Behind')) { behind++; inProg++; }
+      else if (st.label.startsWith('In Progress')) inProg++;
       else notStarted++;
-      if (vals.some(s=>s.start>s.basStart)) behind++;
     });
     return { behind, done, inProg, notStarted };
-  }, [sortedPlots, schedules, todayIdx]);
+  }, [sortedPlots, schedules]);
 
-  // Tenure breakdown
-  const tenureStats = useMemo(() => {
-    const t={};
-    sortedPlots.forEach(p => { t[p.tenure]=(t[p.tenure]||0)+1; });
-    return Object.entries(t).sort((a,b)=>b[1]-a[1]);
-  }, [sortedPlots]);
-
-  // Type breakdown
-  const typeStats = useMemo(() => {
-    const t={};
-    sortedPlots.forEach(p => { t[p.plot_type]=(t[p.plot_type]||0)+1; });
-    return Object.entries(t).sort((a,b)=>b[1]-a[1]);
-  }, [sortedPlots]);
-
-  // Bed breakdown
-  const bedStats = useMemo(() => {
-    const t={};
-    sortedPlots.forEach(p => { t[p.beds+'bd']=(t[p.beds+'bd']||0)+1; });
-    return Object.entries(t).sort((a,b)=>a[0].localeCompare(b[0]));
-  }, [sortedPlots]);
+  const tenureStats = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.tenure]=(t[p.tenure]||0)+1; }); return Object.entries(t).sort((a,b)=>b[1]-a[1]); }, [sortedPlots]);
+  const typeStats   = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.plot_type]=(t[p.plot_type]||0)+1; }); return Object.entries(t).sort((a,b)=>b[1]-a[1]); }, [sortedPlots]);
+  const bedStats     = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.beds+'bd']=(t[p.beds+'bd']||0)+1; }); return Object.entries(t).sort((a,b)=>a[0].localeCompare(b[0])); }, [sortedPlots]);
 
   if (!plots.length) return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:14}},'No plot data loaded — check API connection.');
 
@@ -182,6 +248,13 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     e('div',{style:{fontSize:10,fontWeight:600,color:'#6b7280',marginTop:1}},label),
     sub && e('div',{style:{fontSize:9,color:'#9ca3af',marginTop:1}},sub)
   );
+
+  async function toggleSignOff(plot, field, dateField) {
+    const newVal = !plot[field];
+    const fields = { [field]: newVal };
+    fields[dateField] = newVal ? new Date().toISOString().slice(0,10) : null;
+    await onUpdatePlot(plot.id, fields);
+  }
 
   return e('div',{style:{display:'flex',flexDirection:'column',height:'100%'}},
 
@@ -196,6 +269,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
         style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='gantt'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='gantt'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
       },'📅 Gantt Chart'),
       e('div',{style:{flex:1}}),
+      view==='gantt' && e('span',{style:{fontSize:9,color:'#9ca3af'}},'Click a bar = set as current stage · Drag a bar = reschedule (pushes later stages)'),
       view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
         ['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
       ),
@@ -206,7 +280,6 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     // ── OVERVIEW VIEW ─────────────────────────────────────────────────────
     view === 'overview' && e('div',{style:{flex:1,overflowY:'auto',padding:14}},
 
-      // Project header
       e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:10,padding:'14px 18px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}},
         e('div',null,
           e('div',{style:{fontSize:18,fontWeight:700,color:'#111827'}},'SS17 Phase 1C — Sandle Park'),
@@ -222,8 +295,6 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
       ),
 
       e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}},
-
-        // Tenure breakdown
         e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Tenure Mix'),
           ...tenureStats.map(([tenure,count]) =>
@@ -235,8 +306,6 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
             )
           )
         ),
-
-        // Building types
         e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Building Types'),
           ...typeStats.map(([type,count]) =>
@@ -247,8 +316,6 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
             )
           )
         ),
-
-        // Bedroom breakdown
         e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
           e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Bedroom Mix'),
           ...bedStats.map(([bd,count]) =>
@@ -261,39 +328,50 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
         )
       ),
 
-      // Plot schedule table
-      e('div',{style:{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots'),
-      e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden'}},
-        e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
+      // Fully editable plot schedule table
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots (editable)'),
+      e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',maxWidth:'100%'}},
+        e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:1100}},
           e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
-            ...['Plot','House Type','Type','Beds','Address','Postcode','Tenure','Status'].map(h=>
+            ...['Plot','House Type','Tenure','Status','Current Stage','Next Stage','Next Due','CML Signed Off','CRC Signed Off'].map(h=>
               e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
             )
           )),
           e('tbody',null,
             ...sortedPlots.map((p,i) => {
-              const sc = schedules[p.id]||{};
-              const vals = Object.values(sc);
-              const isDone = vals.length>0&&vals.every(s=>s.start+s.dur<=todayIdx);
-              const isActive = vals.some(s=>s.start<=todayIdx&&s.start+s.dur>todayIdx);
-              const isBehind = vals.some(s=>s.start>s.basStart);
-              const pct = vals.length>0?Math.round(vals.filter(s=>s.start+s.dur<=todayIdx).length/vals.length*100):0;
-              const statusLabel = isDone?'Complete':isBehind?'Behind':isActive?'In Progress':'Not Started';
-              const statusCol = isDone?'#16a34a':isBehind?'#dc2626':isActive?'#2563eb':'#9ca3af';
+              const st = plotOverallStatus(p);
+              const curOrder = p.current_stage_id ? ((defMap[p.current_stage_id]||{}).stage_order||0) : 0;
+              const nextDef = sortedDefs.find(d => (d.stage_order||0) === curOrder + 1) || (p.current_stage_id ? null : sortedDefs[0]);
+              const sc = schedules[p.id];
+              const nextDate = nextDef && sc && sc[nextDef.id] ? workingDays[sc[nextDef.id].start] : null;
               return e('tr',{key:p.id,style:{borderTop:'1px solid #e5e7eb',background:i%2===0?'#f9fafb':'#ffffff'}},
                 e('td',{style:{padding:'6px 10px',color:'#f97316',fontWeight:700}},p.plot_number),
-                e('td',{style:{padding:'6px 10px',color:'#1f2937',fontWeight:500}},p.house_type),
-                e('td',{style:{padding:'6px 10px',color:'#6b7280'}},p.plot_type),
-                e('td',{style:{padding:'6px 10px',color:'#6b7280'}},p.beds+'bd'),
-                e('td',{style:{padding:'6px 10px',color:'#6b7280',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},p.address),
-                e('td',{style:{padding:'6px 10px',color:'#9ca3af',whiteSpace:'nowrap'}},p.postcode),
+                e('td',{style:{padding:'6px 10px',color:'#1f2937',fontWeight:500,whiteSpace:'nowrap'}},p.house_type),
                 e('td',{style:{padding:'6px 10px'}},
-                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#6b7280')+'25',color:TEN_COL[p.tenure]||'#6b7280',border:'1px solid '+(TEN_COL[p.tenure]||'#6b7280')+'40',whiteSpace:'nowrap'}},p.tenure)
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#6b7280')+'25',color:TEN_COL[p.tenure]||'#6b7280',whiteSpace:'nowrap'}},p.tenure)
                 ),
                 e('td',{style:{padding:'6px 10px'}},
-                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,color:statusCol,whiteSpace:'nowrap'}},
-                    isDone?'✓ '+statusLabel:isActive?pct+'% '+statusLabel:statusLabel
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,color:st.col,whiteSpace:'nowrap'}}, st.pct+'% '+st.label)
+                ),
+                e('td',{style:{padding:'4px 10px'}},
+                  e('select',{
+                    value: p.current_stage_id || '',
+                    onChange: ev => onUpdatePlot(p.id, { current_stage_id: ev.target.value || null }),
+                    style:{ background:'#ffffff', border:'1px solid #d1d5db', borderRadius:5, color:'#1f2937', fontSize:10, padding:'3px 5px', minWidth:150 }
+                  },
+                    e('option',{value:''},'— Not started —'),
+                    ...sortedDefs.map(d => e('option',{key:d.id, value:d.id}, d.stage_order+'. '+d.name))
                   )
+                ),
+                e('td',{style:{padding:'6px 10px',color:'#6b7280',whiteSpace:'nowrap'}}, nextDef ? nextDef.name : '—'),
+                e('td',{style:{padding:'6px 10px',color:'#9ca3af',whiteSpace:'nowrap'}}, nextDate ? nextDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—'),
+                e('td',{style:{padding:'6px 10px',textAlign:'center'}},
+                  e('input',{type:'checkbox', checked:!!p.cml_signed_off, onChange:()=>toggleSignOff(p,'cml_signed_off','cml_signed_off_date'), style:{cursor:'pointer'}}),
+                  p.cml_signed_off_date && e('span',{style:{fontSize:8,color:'#9ca3af',marginLeft:4}}, p.cml_signed_off_date)
+                ),
+                e('td',{style:{padding:'6px 10px',textAlign:'center'}},
+                  e('input',{type:'checkbox', checked:!!p.crc_signed_off, onChange:()=>toggleSignOff(p,'crc_signed_off','crc_signed_off_date'), style:{cursor:'pointer'}}),
+                  p.crc_signed_off_date && e('span',{style:{fontSize:8,color:'#9ca3af',marginLeft:4}}, p.crc_signed_off_date)
                 )
               );
             })
@@ -306,12 +384,9 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     view === 'gantt' && e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
       e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #d1d5db',display:'flex',flexDirection:'column'}},
         e('div',{style:{height:HDR_H,background:'#ffffff',borderBottom:'1px solid #d1d5db',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
-        e('div',{style:{flex:1,overflowY:'auto'},id:'g-left'},
+        e('div',{style:{flex:1,overflowY:'scroll'},id:'g-left'},
           ...visPlots.map(p => {
-            const sc=schedules[p.id]||{}, vals=Object.values(sc);
-            const isDone=vals.length>0&&vals.every(s=>s.start+s.dur<=todayIdx);
-            const isBehind=vals.some(s=>s.start>s.basStart);
-            const pct=vals.length>0?Math.round(vals.filter(s=>s.start+s.dur<=todayIdx).length/vals.length*100):0;
+            const st = plotOverallStatus(p);
             return e('div',{key:p.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#f8fafc',borderBottom:'1px solid #e5e7eb'}},
               e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
               e('div',{style:{flex:1,minWidth:0}},
@@ -320,14 +395,14 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
                 ),
                 e('div',{style:{fontSize:9,color:'#9ca3af',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.address)
               ),
-              isDone?e('span',{style:{fontSize:9,color:'#16a34a',fontWeight:700,flexShrink:0}},'✓')
-                :isBehind?e('span',{style:{fontSize:9,color:'#dc2626',fontWeight:700,flexShrink:0}},'▲')
-                :e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},pct+'%')
+              st.label.startsWith('Complete')?e('span',{style:{fontSize:9,color:'#16a34a',fontWeight:700,flexShrink:0}},'✓')
+                :st.label.startsWith('Behind')?e('span',{style:{fontSize:9,color:'#dc2626',fontWeight:700,flexShrink:0}},'▲')
+                :e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},st.pct+'%')
             );
           })
         )
       ),
-      e('div',{ref:scrollRef,style:{flex:1,overflow:'auto'},onScroll:ev=>{const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;}},
+      e('div',{ref:scrollRef,style:{flex:1,overflow:'scroll'},onScroll:ev=>{const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;}},
         e('div',{style:{width:workingDays.length*cellW,position:'relative',minHeight:'100%'}},
           e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#ffffff',height:HDR_H,borderBottom:'1px solid #d1d5db'}},
             e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #e5e7eb'}},
@@ -348,18 +423,24 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
             ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
               return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #e5e7eb'}},
-                ...Object.entries(sc).map(([defId,s])=>{
-                  const def=defMap[defId]; if(!def)return null;
-                  const isDone=s.start+s.dur<=todayIdx,isActive=s.start<=todayIdx&&s.start+s.dur>todayIdx,behind=s.start>s.basStart;
-                  const w=Math.max(s.dur*cellW-2,6);
-                  return e('div',{key:defId,
-                    onMouseDown:ev=>{ev.stopPropagation();onDragStart(ev,p.id,defId);},
-                    title:def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':''),
-                    style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'grab',
-                      background:isDone?'#d1d5db':(def.color||'#6b7280'),opacity:isDone?0.5:1,
-                      border:'1px solid '+(isActive?'#fff':isDone?'#9ca3af':(def.color||'#6b7280')),
-                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 1.5px rgba(255,255,255,0.3)':'none',
-                      display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:2}
+                ...sortedDefs.map(def=>{
+                  const s = sc[def.id]; if(!s) return null;
+                  const status = stageStatus(p, def);
+                  const isDone = status==='done'||status==='done-estimated';
+                  const isActive = status==='active'||status==='active-estimated';
+                  const isEstimated = status.includes('estimated');
+                  const behind = s.start > s.basStart;
+                  const w = Math.max(s.dur*cellW-2,6);
+                  return e('div',{key:def.id,
+                    onMouseDown: ev => onBarMouseDown(ev, p, def.id),
+                    title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':'')+(isEstimated?' (estimated — click to confirm)':''),
+                    style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'pointer',
+                      background:isDone?'#d1d5db':(def.color||'#6b7280'),
+                      opacity:isDone?0.5:(isEstimated?0.7:1),
+                      border:'1px solid '+(isActive?(isEstimated?'#9ca3af':'#111827'):isDone?'#9ca3af':(def.color||'#6b7280')),
+                      borderStyle: isEstimated ? 'dashed' : 'solid',
+                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive&&!isEstimated?'0 0 0 2px #111827':'none',
+                      display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2}
                   }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
                 }).filter(Boolean)
               );
@@ -370,15 +451,19 @@ function ProgrammeTab({ plots, stageDefs, plotStages }) {
     ),
 
     // Stage legend
-    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto'}},
-      ...stageDefs.map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
+    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto',alignItems:'center'}},
+      e('span',{style:{fontSize:9,color:'#111827',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'2px solid #111827',borderRadius:2}}), 'Current stage'),
+      e('span',{style:{fontSize:9,color:'#9ca3af',display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'1px dashed #9ca3af',borderRadius:2}}), 'Estimated (unconfirmed)'),
+      ...stageDefs.slice(0,6).map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
         e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#6b7280'}}),
         e('span',{style:{fontSize:9,color:'#6b7280',whiteSpace:'nowrap'}},d.name)
       )),
-      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af',flexShrink:0}},'▲ Drag bars to reschedule · Click Overview to see all plot data')
+      e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},'+'+(stageDefs.length-6)+' more'),
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af',flexShrink:0}},'Click bar = set current stage · Drag = reschedule (pushes later stages along)')
     )
   );
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
@@ -973,7 +1058,96 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
 // ══════════════════════════════════════════════════════════════════════════
 // H&S TAB
 // ══════════════════════════════════════════════════════════════════════════
-function HSTab({ inspections, hsLog }) {
+// Editable row for the statutory inspection matrix
+function InspectionRow({ ins, i, badge, onUpdateInspection }) {
+  const [editing, setEditing] = useState(false);
+  const [lastDate, setLastDate] = useState(ins.last_date || '');
+  const [nextDate, setNextDate] = useState(ins.next_date || '');
+  const [responsible, setResponsible] = useState(ins.responsible_person || '');
+  const [saving, setSaving] = useState(false);
+  const s = badge(ins);
+
+  async function save() {
+    setSaving(true);
+    await onUpdateInspection(ins.id, { last_date: lastDate, next_date: nextDate, responsible_person: responsible });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:'#fffbeb' } },
+      e('td', { style:{ padding:'6px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
+      e('td', { style:{ padding:'6px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:lastDate, onChange:ev=>setLastDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:nextDate, onChange:ev=>setNextDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
+      e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'text', value:responsible, onChange:ev=>setResponsible(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:130 } })),
+      e('td', { style:{ padding:'6px 9px', display:'flex', gap:4 } },
+        e('button', { onClick:save, disabled:saving, style:{ padding:'3px 8px', background:'#16a34a', border:'none', borderRadius:4, color:'#fff', fontSize:9, fontWeight:700, cursor:'pointer' } }, saving?'...':'✓'),
+        e('button', { onClick:()=>setEditing(false), style:{ padding:'3px 8px', background:'#e5e7eb', border:'none', borderRadius:4, color:'#6b7280', fontSize:9, cursor:'pointer' } }, '×')
+      )
+    );
+  }
+
+  return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:i%2===0?'#f9fafb':'#ffffff' } },
+    e('td', { style:{ padding:'7px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
+    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency),
+    e('td', { style:{ padding:'7px 9px', color:'#9ca3af', whiteSpace:'nowrap' } }, ins.last_date),
+    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.next_date),
+    e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
+    e('td', { style:{ padding:'7px 9px', color:'#9ca3af', fontSize:10 } }, ins.responsible_person),
+    e('td', { style:{ padding:'7px 9px' } }, e('button', { onClick:()=>setEditing(true), style:{ padding:'3px 9px', background:'#e5e7eb', border:'1px solid #d1d5db', borderRadius:5, color:'#6b7280', fontSize:9, fontWeight:600, cursor:'pointer' } }, '✎ Edit'))
+  );
+}
+
+// Editable / sign-off-able H&S log entry
+function HsLogEntry({ log, sevC, onUpdateLog }) {
+  const [commenting, setCommenting] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(log.comment || '');
+  const [saving, setSaving] = useState(false);
+  const sc = sevC[log.severity]||sevC.green;
+
+  async function saveComment() {
+    setSaving(true);
+    await onUpdateLog(log.id, { comment: commentDraft });
+    setSaving(false);
+    setCommenting(false);
+  }
+
+  async function signOff() {
+    await onUpdateLog(log.id, { signed_off:true, signed_off_by:'Site Manager', status:'Closed' });
+  }
+
+  return e('div', { style:{ display:'flex', gap:10, padding:11, background:sc.bg, border:'1px solid '+sc.border, borderRadius:7 } },
+    e('div', { style:{ flexShrink:0, paddingTop:4 } }, e('div', { style:{ width:8, height:8, borderRadius:'50%', background:sc.dot } })),
+    e('div', { style:{ flex:1 } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 } },
+        e('span', { style:{ fontSize:12, fontWeight:700, color:'#1f2937' } }, log.log_type),
+        e('span', { style:{ fontSize:10, color:'#9ca3af' } }, log.log_date),
+        log.signed_off && e('span', { style:{ fontSize:9, fontWeight:700, color:'#16a34a', background:'#dcfce7', padding:'1px 6px', borderRadius:8 } }, '✓ Signed off'),
+        e('span', { style:{ marginLeft:'auto', fontSize:10, fontWeight:700, color:['Closed','Complete','Cleared'].includes(log.status)?'#16a34a':'#d97706' } }, log.status)
+      ),
+      e('div', { style:{ fontSize:10, color:'#6b7280', marginBottom:2 } }, log.person_name),
+      e('div', { style:{ fontSize:11, color:'#9ca3af', marginBottom:6 } }, log.detail),
+
+      log.comment && !commenting && e('div', { style:{ fontSize:10, color:'#374151', background:'rgba(255,255,255,0.6)', borderRadius:5, padding:'5px 7px', marginBottom:6 } }, '💬 ' + log.comment),
+
+      commenting
+        ? e('div', { style:{ display:'flex', gap:5, alignItems:'flex-start' } },
+            e('textarea', { value:commentDraft, onChange:ev=>setCommentDraft(ev.target.value), rows:2, style:{ flex:1, fontSize:10, padding:5, border:'1px solid #d1d5db', borderRadius:5, fontFamily:'inherit', resize:'vertical' } }),
+            e('button', { onClick:saveComment, disabled:saving, style:{ padding:'4px 8px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:9, fontWeight:700, cursor:'pointer' } }, saving?'...':'✓'),
+            e('button', { onClick:()=>setCommenting(false), style:{ padding:'4px 8px', background:'#e5e7eb', border:'none', borderRadius:5, color:'#6b7280', fontSize:9, cursor:'pointer' } }, '×')
+          )
+        : e('div', { style:{ display:'flex', gap:6 } },
+            e('button', { onClick:()=>setCommenting(true), style:{ padding:'3px 9px', background:'rgba(255,255,255,0.7)', border:'1px solid '+sc.border, borderRadius:5, color:'#374151', fontSize:9, fontWeight:600, cursor:'pointer' } }, '💬 Comment'),
+            !log.signed_off && e('button', { onClick:signOff, style:{ padding:'3px 9px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:9, fontWeight:600, cursor:'pointer' } }, '✓ Sign Off & Close')
+          )
+    )
+  );
+}
+
+function HSTab({ inspections, hsLog, onUpdateInspection, onUpdateLog }) {
+  const [logFilter, setLogFilter] = useState('All');
   const todayD=new Date(TODAY);
   function badge(ins){
     const d=Math.round((new Date(ins.next_date)-todayD)/86400000);
@@ -983,9 +1157,24 @@ function HSTab({ inspections, hsLog }) {
   }
   const sevC={red:{bg:'#fee2e2',border:'#dc2626',dot:'#dc2626'},amber:{bg:'#fef3c7',border:'#d97706',dot:'#f59e0b'},green:{bg:'#dcfce7',border:'#86efac',dot:'#16a34a'}};
 
+  const visibleLog = useMemo(() => {
+    if (logFilter==='All') return hsLog;
+    if (logFilter==='Open') return hsLog.filter(l => !l.signed_off);
+    if (logFilter==='Signed Off') return hsLog.filter(l => l.signed_off);
+    return hsLog.filter(l => l.severity === logFilter);
+  }, [hsLog, logFilter]);
+
+  const overdueCount = inspections.filter(ins => Math.round((new Date(ins.next_date)-todayD)/86400000) < 0).length;
+  const openIssues = hsLog.filter(l => !l.signed_off).length;
+
   return e('div',{style:{overflowY:'auto',height:'100%',padding:14}},
     e('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
-      ...[['87%','Induction Rate','68/78 operatives','#16a34a','#dcfce7','#16a34a'],['3','Near-Misses','1 action overdue','#d97706','#fef3c7','#d97706'],['5','Open Actions','2 due ≤7 days','#d97706','#fef3c7','#d97706'],['92%','RAMS Approval','22 of 24 subs','#16a34a','#dcfce7','#16a34a']].map(([v,l,s,tc,bg,bc])=>
+      ...[
+        [String(overdueCount),'Overdue Inspections', overdueCount>0?'needs action':'all up to date', overdueCount>0?'#dc2626':'#16a34a', overdueCount>0?'#fee2e2':'#dcfce7', overdueCount>0?'#dc2626':'#16a34a'],
+        [String(openIssues),'Open H&S Issues','awaiting sign-off', openIssues>0?'#d97706':'#16a34a', openIssues>0?'#fef3c7':'#dcfce7', openIssues>0?'#d97706':'#16a34a'],
+        [String(inspections.length),'Tracked Inspections','statutory items','#6b7280','#f3f4f6','#6b7280'],
+        [String(hsLog.length),'Total Log Entries','all time','#6b7280','#f3f4f6','#6b7280'],
+      ].map(([v,l,s,tc,bg,bc])=>
         e('div',{key:l,style:{background:bg,border:'1px solid '+bc,borderRadius:8,padding:12}},
           e('div',{style:{fontSize:20,fontWeight:700,color:tc}},v),
           e('div',{style:{fontSize:11,fontWeight:600,color:'#6b7280',marginTop:2}},l),
@@ -993,50 +1182,36 @@ function HSTab({ inspections, hsLog }) {
         )
       )
     ),
-    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Statutory Inspection Matrix'),
+    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Statutory Inspection Matrix (editable)'),
     inspections.length===0
       ?e('div',{style:{color:'#9ca3af',fontSize:12,marginBottom:14}},'No inspection data loaded.')
-      :e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'hidden',marginBottom:14}},
-          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
+      :e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',marginBottom:14}},
+          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:760}},
             e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
-              ...['Inspection','Frequency','Last Done','Next Due','Status','Responsible','Cert Ref'].map(h=>
+              ...['Inspection','Frequency','Last Done','Next Due','Status','Responsible',''].map(h=>
                 e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
               )
             )),
-            e('tbody',null,...inspections.map((ins,i)=>{
-              const s=badge(ins);
-              return e('tr',{key:ins.id,style:{borderTop:'1px solid #e5e7eb',background:i%2===0?'#f9fafb':'#ffffff'}},
-                e('td',{style:{padding:'7px 9px',color:'#1f2937',fontWeight:500}},ins.item),
-                e('td',{style:{padding:'7px 9px',color:'#6b7280',whiteSpace:'nowrap'}},ins.frequency),
-                e('td',{style:{padding:'7px 9px',color:'#9ca3af',whiteSpace:'nowrap'}},ins.last_date),
-                e('td',{style:{padding:'7px 9px',color:'#6b7280',whiteSpace:'nowrap'}},ins.next_date),
-                e('td',{style:{padding:'7px 9px'}},e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:s.bg,color:s.col,border:'1px solid '+s.border,whiteSpace:'nowrap'}},s.label)),
-                e('td',{style:{padding:'7px 9px',color:'#9ca3af',fontSize:10}},ins.responsible_person),
-                e('td',{style:{padding:'7px 9px',color:'#9ca3af',fontSize:10}},ins.cert_ref)
-              );
-            }))
+            e('tbody',null,...inspections.map((ins,i)=>
+              e(InspectionRow,{key:ins.id, ins, i, badge, onUpdateInspection})
+            ))
           )
         ),
-    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'H&S Reports & Visits Log'),
+    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em'}},'H&S Reports & Visits Log'),
+      e('select',{value:logFilter,onChange:ev=>setLogFilter(ev.target.value),style:{background:'#ffffff',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',fontSize:10,padding:'3px 8px'}},
+        ['All','Open','Signed Off','red','amber','green'].map(f=>e('option',{key:f,value:f},f==='red'?'High severity':f==='amber'?'Medium severity':f==='green'?'Low severity':f))
+      )
+    ),
     e('div',{style:{display:'flex',flexDirection:'column',gap:5}},
-      ...hsLog.map(log=>{
-        const sc=sevC[log.severity]||sevC.green;
-        return e('div',{key:log.id,style:{display:'flex',gap:10,padding:11,background:sc.bg,border:'1px solid '+sc.border,borderRadius:7}},
-          e('div',{style:{flexShrink:0,paddingTop:4}},e('div',{style:{width:8,height:8,borderRadius:'50%',background:sc.dot}})),
-          e('div',{style:{flex:1}},
-            e('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}},
-              e('span',{style:{fontSize:12,fontWeight:700,color:'#1f2937'}},log.log_type),
-              e('span',{style:{fontSize:10,color:'#9ca3af'}},log.log_date),
-              e('span',{style:{marginLeft:'auto',fontSize:10,fontWeight:700,color:['Closed','Complete','Cleared'].includes(log.status)?'#16a34a':'#d97706'}},log.status)
-            ),
-            e('div',{style:{fontSize:10,color:'#6b7280',marginBottom:2}},log.person_name),
-            e('div',{style:{fontSize:11,color:'#9ca3af'}},log.detail)
-          )
-        );
-      })
+      visibleLog.length===0
+        ? e('div',{style:{color:'#9ca3af',fontSize:12}},'No entries match this filter.')
+        : null,
+      ...visibleLog.map(log => e(HsLogEntry,{key:log.id, log, sevC, onUpdateLog}))
     )
   );
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ROOT APP
@@ -1044,21 +1219,22 @@ function HSTab({ inspections, hsLog }) {
 // ══════════════════════════════════════════════════════════════════════════
 // ADD MATERIAL MODAL
 // ══════════════════════════════════════════════════════════════════════════
-function AddMaterialModal({ stageDefs, onClose, onCreate }) {
-  const [name, setName] = useState('');
-  const [stageId, setStageId] = useState('');
-  const [leadWeeks, setLeadWeeks] = useState('4');
-  const [supplier, setSupplier] = useState('');
-  const [supplierEmail, setSupplierEmail] = useState('');
-  const [po, setPo] = useState('');
-  const [desc, setDesc] = useState('');
+function AddMaterialModal({ stageDefs, onClose, onCreate, onUpdate, editing }) {
+  const isEdit = !!editing;
+  const [name, setName] = useState(editing ? editing.material_name : '');
+  const [stageId, setStageId] = useState(editing ? editing.linked_stage_id : '');
+  const [leadWeeks, setLeadWeeks] = useState(editing ? String(editing.lead_time_weeks) : '4');
+  const [supplier, setSupplier] = useState(editing ? (editing.supplier_name||'') : '');
+  const [supplierEmail, setSupplierEmail] = useState(editing ? (editing.supplier_email||'') : '');
+  const [po, setPo] = useState(editing ? (editing.po_number||'') : '');
+  const [desc, setDesc] = useState(editing ? (editing.description||'') : '');
   const [saving, setSaving] = useState(false);
   const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
 
-  async function handleCreate() {
+  async function handleSave() {
     if (!name.trim() || !stageId) { alert('Material name and linked build stage are required.'); return; }
     setSaving(true);
-    await onCreate({
+    const payload = {
       material_name: name.trim(),
       linked_stage_id: stageId,
       lead_time_weeks: parseInt(leadWeeks) || 1,
@@ -1067,7 +1243,9 @@ function AddMaterialModal({ stageDefs, onClose, onCreate }) {
       po_number: po.trim(),
       applies_to_all_plots: true,
       description: desc.trim(),
-    });
+    };
+    if (isEdit) await onUpdate(editing.id, payload);
+    else await onCreate(payload);
     setSaving(false);
     onClose();
   }
@@ -1084,7 +1262,7 @@ function AddMaterialModal({ stageDefs, onClose, onCreate }) {
       onClick:ev=>ev.stopPropagation()
     },
       e('div',{style:{padding:'18px 20px',borderBottom:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
-        e('div',{style:{fontSize:17,fontWeight:700,color:'#111827'}},'Add Material Call Off'),
+        e('div',{style:{fontSize:17,fontWeight:700,color:'#111827'}}, isEdit ? 'Edit Material Call Off' : 'Add Material Call Off'),
         e('button',{onClick:onClose,style:{background:'#f3f4f6',border:'none',borderRadius:'50%',width:28,height:28,cursor:'pointer',color:'#6b7280',fontSize:16}},'×')
       ),
       e('div',{style:{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
@@ -1130,12 +1308,12 @@ function AddMaterialModal({ stageDefs, onClose, onCreate }) {
         ),
 
         e('div',{style:{fontSize:11,color:'#9ca3af',background:'#f9fafb',padding:'8px 10px',borderRadius:6}},
-          'This material will apply to all 74 plots by default. Per-plot selection is coming soon.'
+          'This material applies to all 74 plots by default. Per-plot selection is coming soon.'
         )
       ),
       e('div',{style:{padding:'14px 20px',borderTop:'1px solid #e5e7eb',display:'flex',justifyContent:'flex-end',gap:8}},
         e('button',{onClick:onClose,style:{padding:'9px 18px',background:'#ffffff',border:'1px solid #d1d5db',borderRadius:8,color:'#374151',fontSize:13,fontWeight:600,cursor:'pointer'}},'Cancel'),
-        e('button',{onClick:handleCreate,disabled:saving,style:{padding:'9px 18px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:saving?0.6:1}},saving?'Creating...':'💾 Create')
+        e('button',{onClick:handleSave,disabled:saving,style:{padding:'9px 18px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:saving?0.6:1}},saving?'Saving...':(isEdit?'💾 Save Changes':'💾 Create'))
       )
     )
   );
@@ -1144,7 +1322,7 @@ function AddMaterialModal({ stageDefs, onClose, onCreate }) {
 // ══════════════════════════════════════════════════════════════════════════
 // MATERIAL CARD — expandable per-plot status breakdown
 // ══════════════════════════════════════════════════════════════════════════
-function MaterialCard({ material, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onDelete }) {
+function MaterialCard({ material, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onDelete, onEdit }) {
   const [expanded, setExpanded] = useState(false);
   const [filterMode, setFilterMode] = useState('flagged'); // flagged | all | ordered
 
@@ -1201,6 +1379,10 @@ function MaterialCard({ material, plots, schedules, workingDays, todayIdx, order
       counts.flagged > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#fee2e2',color:'#dc2626',border:'1px solid #fca5a5'}},'⚠ '+counts.flagged+' Due Now'),
       counts.ordered > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#fef3c7',color:'#d97706',border:'1px solid #fcd34d'}},counts.ordered+' Ordered'),
       counts.delivered > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#dcfce7',color:'#16a34a',border:'1px solid #86efac'}},'✓ '+counts.delivered+' Delivered'),
+      e('button',{
+        onClick:(ev)=>{ev.stopPropagation(); onEdit(material);},
+        style:{padding:'4px 10px',background:'#ffffff',border:'1px solid #d1d5db',borderRadius:6,color:'#374151',fontSize:11,cursor:'pointer'}
+      },'✎ Edit'),
       e('button',{
         onClick:(ev)=>{ev.stopPropagation(); if(confirm('Delete this material call-off? This cannot be undone.')) onDelete(material.id);},
         style:{padding:'4px 10px',background:'#ffffff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:11,cursor:'pointer'}
@@ -1276,8 +1458,9 @@ function MaterialPlotRow({ plot, status, stageStartDate, order, material, onSetO
 // ══════════════════════════════════════════════════════════════════════════
 // MATERIALS TAB — master tracker
 // ══════════════════════════════════════════════════════════════════════════
-function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders, onCreateMaterial, onDeleteMaterial, onSetOrder }) {
+function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders, onCreateMaterial, onDeleteMaterial, onUpdateMaterial, onSetOrder }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState(null);
   const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages), [plots, stageDefs, plotStages]);
@@ -1339,12 +1522,13 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
           ...materials.map(material =>
             e(MaterialCard,{
               key:material.id, material, plots, schedules, workingDays, todayIdx,
-              orders:materialOrders, onSetOrder, onDelete:onDeleteMaterial
+              orders:materialOrders, onSetOrder, onDelete:onDeleteMaterial, onEdit:setEditingMaterial
             })
           )
         ),
 
-    showAdd && e(AddMaterialModal,{stageDefs,onClose:()=>setShowAdd(false),onCreate:onCreateMaterial})
+    showAdd && e(AddMaterialModal,{stageDefs,onClose:()=>setShowAdd(false),onCreate:onCreateMaterial}),
+    editingMaterial && e(AddMaterialModal,{stageDefs,editing:editingMaterial,onClose:()=>setEditingMaterial(null),onUpdate:onUpdateMaterial})
   );
 }
 
@@ -1411,6 +1595,19 @@ function App() {
     } catch (ex) { console.error('Plot update failed', ex); }
   }
 
+  // Persist a batch of rescheduled stages for one plot (used by the Gantt's
+  // cascade-on-drag logic), then refresh plotStages so every tab agrees.
+  async function onSaveStages(plotId, changedStages) {
+    try {
+      await api('/plot-stages', {
+        method: 'POST',
+        body: JSON.stringify({ stages: changedStages.map(s => Object.assign({ plot_id: plotId }, s)) })
+      });
+      const fresh = await api('/plot-stages').then(r=>r.json());
+      setPlotStages(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) { console.error('Save stages failed', ex); }
+  }
+
   // ── Materials handlers ──────────────────────────────────────────────────
   async function onCreateMaterial(payload) {
     try {
@@ -1429,16 +1626,31 @@ function App() {
     catch (ex) { console.error('Delete material failed', ex); }
   }
 
+  async function onUpdateMaterial(materialId, fields) {
+    try {
+      await api('/materials/' + materialId, { method:'PATCH', body: JSON.stringify(fields) });
+      const fresh = await api('/materials').then(r=>r.json());
+      setMaterials(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) { console.error('Update material failed', ex); }
+  }
+
   async function onSetOrder(materialId, plotId, fields) {
-    // Optimistic local update
+    // Optimistic local update so the UI feels instant
     setMaterialOrders(prev => {
       const existing = prev.find(o => o.material_id===materialId && o.plot_id===plotId);
       if (existing) return prev.map(o => o===existing ? Object.assign({},o,fields) : o);
       return [...prev, Object.assign({material_id:materialId, plot_id:plotId}, fields)];
     });
     try {
-      await api('/material-orders', { method:'POST', body: JSON.stringify(Object.assign({material_id:materialId, plot_id:plotId}, fields)) });
-    } catch (ex) { console.error('Set order failed', ex); }
+      const r = await api('/material-orders', { method:'POST', body: JSON.stringify(Object.assign({material_id:materialId, plot_id:plotId}, fields)) }).then(r=>r.json());
+      if (!r.ok) { alert('Could not save — ' + (r.error||'unknown error') + '. Please try again.'); }
+      // Re-fetch from server as the source of truth, so the UI can never silently drift out of sync
+      const fresh = await api('/material-orders').then(r=>r.json());
+      setMaterialOrders(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) {
+      console.error('Set order failed', ex);
+      alert('Could not save — check your connection and try again.');
+    }
   }
 
   // Raise an H&S issue from a plot's modal — posts to the existing endpoint
@@ -1455,6 +1667,18 @@ function App() {
       }
       return r.ok;
     } catch (ex) { console.error('Raise H&S issue failed', ex); return false; }
+  }
+
+  async function onUpdateInspection(inspId, fields) {
+    setInspections(prev => prev.map(i => i.id===inspId ? Object.assign({},i,fields) : i));
+    try { await api('/hs-inspections/' + inspId, { method:'PATCH', body: JSON.stringify(fields) }); }
+    catch (ex) { console.error('Update inspection failed', ex); }
+  }
+
+  async function onUpdateLog(logId, fields) {
+    setHsLog(prev => prev.map(l => l.id===logId ? Object.assign({},l,fields) : l));
+    try { await api('/hs-log/' + logId, { method:'PATCH', body: JSON.stringify(fields) }); }
+    catch (ex) { console.error('Update log failed', ex); }
   }
 
   const TABS=[
@@ -1501,12 +1725,12 @@ function App() {
         :loadErr
           ?e('div',{style:{padding:20,color:'#dc2626',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
           :tab==='programme'
-            ?e(ProgrammeTab,{plots,stageDefs,plotStages})
+            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages})
             :tab==='map'
               ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue})
               :tab==='materials'
-                ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onSetOrder})
-                :e(HSTab,{inspections,hsLog})
+                ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
+                :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
     ),
     // Footer
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
