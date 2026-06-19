@@ -94,7 +94,7 @@ def api_plots():
 @_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes"}}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date"}}
     if not updates:
         return jsonify({"ok": False, "error": "No valid fields"}), 400
     try:
@@ -214,6 +214,25 @@ def api_hs_log_create():
            {"project_id", "log_date", "log_type", "person_name", "status", "detail", "severity"}}
     try:
         supabase.table("smc_hs_log").insert(row).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/hs-log/<log_id>", methods=["PATCH"])
+@_require_auth
+def api_hs_log_update(log_id):
+    """Edit a log entry's status/comment, or sign it off."""
+    data = request.get_json() or {}
+    updates = {k: v for k, v in data.items() if k in
+               {"status", "comment", "detail", "severity", "signed_off", "signed_off_by"}}
+    if not updates:
+        return jsonify({"ok": False, "error": "No valid fields"}), 400
+    if updates.get("signed_off"):
+        from datetime import datetime, timezone
+        updates["signed_off_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        supabase.table("smc_hs_log").update(updates).eq("id", log_id).execute()
         return ok()
     except Exception as e:
         return err(e)
