@@ -18,11 +18,13 @@ select, button, input { font-family: inherit; }
 @media print {
   body * { visibility: hidden; }
   #print-content, #print-content * { visibility: visible; }
-  #print-content { position: absolute; left: 0; top: 0; width: 100% !important; margin: 0 !important; box-shadow: none !important; }
+  #print-content { position: absolute; left: 0; top: 0; width: 100% !important; margin: 0 !important; box-shadow: none !important; font-size: 10px; }
+  #print-content div[style*="background:"] { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+  #print-content * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
   .no-print { display: none !important; }
   .print-modal-overlay { position: static !important; background: none !important; display: block !important; }
   .print-preview-area { overflow: visible !important; background: none !important; padding: 0 !important; }
-  @page { size: landscape; margin: 10mm; }
+  @page { size: landscape; margin: 8mm; }
 }
 </style>
 </head>
@@ -61,24 +63,96 @@ const PROG_START = '2026-01-02';
 // Shared schedule builder — produces { [plotId]: { [stageDefId]: {start,dur,basStart} } }
 // Used by Programme tab (Gantt) and Materials tab (call-off flagging) so both
 // always agree on exactly when each plot reaches each stage.
-function buildSchedules(plots, stageDefs, plotStages) {
+// When a plot has current_stage_id set, the schedule is anchored so that stage
+// starts at today (todayIdx), with completed stages placed sequentially behind,
+// and future stages placed sequentially after — making the Gantt truthful.
+function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
   const s = {};
   if (!plots.length || !stageDefs.length) return s;
   const sortedDefs = [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0));
+  const defMap = {}; stageDefs.forEach(d=>{ defMap[d.id]=d; });
+  const today = todayIdx || 0;
+
   plots.forEach(plot => {
     s[plot.id] = {};
     const dbRows = (plotStages||[]).filter(ps => ps.plot_id === plot.id);
-    let cum = parseInt(plot.programme_start_day) || 0;
-    sortedDefs.forEach(def => {
-      const db = dbRows.find(ps => ps.stage_def_id === def.id);
-      if (db) {
-        s[plot.id][def.id] = { start: db.start_day, dur: db.duration, basStart: db.baseline_start != null ? db.baseline_start : db.start_day };
-        cum = db.start_day + db.duration;
-      } else {
-        s[plot.id][def.id] = { start: cum, dur: def.default_duration, basStart: cum };
-        cum += def.default_duration;
+
+    if (plot.current_stage_id && defMap[plot.current_stage_id]) {
+      // Anchor mode: place the current stage at today, build outward
+      const curDef = defMap[plot.current_stage_id];
+      const curOrder = curDef.stage_order || 0;
+      const curDb = dbRows.find(ps => ps.stage_def_id === plot.current_stage_id);
+      const curDur = curDb ? curDb.duration : (curDef.default_duration || 1);
+      s[plot.id][plot.current_stage_id] = { start: today, dur: curDur, basStart: today };
+
+      // Place all stages with lower order working backwards from today
+      let backCursor = today;
+      [...sortedDefs].reverse().forEach(def => {
+        if ((def.stage_order||0) >= curOrder) return; // skip current + future, handled below
+        const db = dbRows.find(ps => ps.stage_def_id === def.id);
+        const dur = db ? db.duration : (def.default_duration || 1);
+        backCursor = backCursor - dur;
+        s[plot.id][def.id] = { start: Math.max(0, backCursor), dur, basStart: Math.max(0, backCursor) };
+      });
+
+      // Place all stages with higher order working forwards from end of current stage
+      let fwdCursor = today + curDur;
+      sortedDefs.forEach(def => {
+        if ((def.stage_order||0) <= curOrder) return; // already handled
+        const db = dbRows.find(ps => ps.stage_def_id === def.id);
+        const dur = db ? db.duration : (def.default_duration || 1);
+        s[plot.id][def.id] = { start: fwdCursor, dur, basStart: fwdCursor };
+        fwdCursor += dur;
+      });
+
+    } else if (plot.crc_deadline_date) {
+      // CRC backwards scheduling mode: no confirmed current stage, but a target CRC deadline is set.
+      // Calculate the LATEST start date for each stage working backwards from CRC so the Gantt
+      // shows "if we need CRC by [date], each stage must START no later than [date]".
+      // todayIdx is only used for the working-day index conversion; the actual scheduling
+      // is entirely deadline-driven.
+      const crcDeadlineDate = new Date(plot.crc_deadline_date);
+      // Find CRC deadline as a working-day index. The working days array starts at PROG_START.
+      // We need to find which working-day index corresponds to the CRC deadline date.
+      const PROG_START_DATE = new Date(PROG_START);
+      let wdCount = 0;
+      let crcIdx = 0;
+      {
+        const d = new Date(PROG_START_DATE);
+        const UK_HOL_SET = new Set(['2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28','2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31','2027-08-30','2027-12-27','2027-12-28']);
+        while (d <= crcDeadlineDate) {
+          const w=d.getDay();
+          const iso=d.toISOString().slice(0,10);
+          if(w!==0&&w!==6&&!UK_HOL_SET.has(iso)) wdCount++;
+          d.setDate(d.getDate()+1);
+        }
+        crcIdx = Math.max(0, wdCount - 1);
       }
-    });
+
+      // Work backwards: start from CRC, place each stage so it ends exactly as the next begins
+      let cursor = crcIdx;
+      [...sortedDefs].reverse().forEach(def => {
+        const db = dbRows.find(ps => ps.stage_def_id === def.id);
+        const dur = db ? db.duration : (def.default_duration || 1);
+        const startDay = Math.max(0, cursor - dur);
+        s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
+        cursor = startDay;
+      });
+
+    } else {
+      // Standard sequential mode — no confirmed stage, no CRC deadline
+      let cum = parseInt(plot.programme_start_day) || 0;
+      sortedDefs.forEach(def => {
+        const db = dbRows.find(ps => ps.stage_def_id === def.id);
+        if (db) {
+          s[plot.id][def.id] = { start: db.start_day, dur: db.duration, basStart: db.baseline_start != null ? db.baseline_start : db.start_day };
+          cum = db.start_day + db.duration;
+        } else {
+          s[plot.id][def.id] = { start: cum, dur: def.default_duration, basStart: cum };
+          cum += def.default_duration;
+        }
+      });
+    }
   });
   return s;
 }
@@ -89,7 +163,25 @@ const lsSet = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch(_)
 // ══════════════════════════════════════════════════════════════════════════
 // PROGRAMME TAB — Overview dashboard + Gantt chart
 // ══════════════════════════════════════════════════════════════════════════
-function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages }) {
+function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages, trades }) {
+  // Trade → colour map: each trade has one canonical colour; all its stages share it.
+  // Falls back to the stage's own .color field for backwards compatibility.
+  const tradeColorMap = useMemo(() => {
+    const m = {};
+    // Prefer the trades table (authoritative) if available
+    if (trades && trades.length) {
+      trades.forEach(t => { m[t.name] = t.color; });
+    } else {
+      // Derive from stageDefs (same trade always has same color since seeding)
+      stageDefs.forEach(d => { if (d.trade && d.color) m[d.trade] = d.color; });
+    }
+    return m;
+  }, [trades, stageDefs]);
+
+  function stageColor(def) {
+    return (def.trade && tradeColorMap[def.trade]) || def.color || '#6b7280';
+  }
+
   const TOTAL_WD=300, LEFT_W=170, ROW_H=34, HDR_H=54;
   const [cellW, setCellW]   = useState(22);
   const [filter, setFilter] = useState('All');
@@ -109,10 +201,17 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   const [schedules, setSchedules] = useState({});
 
   useEffect(() => {
-    setSchedules(buildSchedules(plots, stageDefs, plotStages));
+    setSchedules(buildSchedules(plots, stageDefs, plotStages, todayIdx));
   }, [plots, stageDefs, plotStages]);
 
-  useEffect(() => { if(scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300); }, [todayIdx]);
+  // Scroll to today only on initial mount — NOT on every render so dragging doesn't reset position
+  const scrollInitialised = useRef(false);
+  useEffect(() => {
+    if (!scrollInitialised.current && scrollRef.current && todayIdx > 0) {
+      scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300);
+      scrollInitialised.current = true;
+    }
+  }, [todayIdx, cellW, schedules]); // re-check when schedules load, but guard prevents re-firing
 
   const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
   const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
@@ -468,9 +567,9 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                     onMouseDown: ev => onBarMouseDown(ev, p, def.id),
                     title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':''),
                     style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'pointer',
-                      background:isDone?'#d1d5db':(def.color||'#6b7280'),
+                      background:isDone?'#d1d5db':stageColor(def),
                       opacity:isDone?0.5:1,
-                      border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':(def.color||'#6b7280')),
+                      border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':stageColor(def)),
                       boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 2px #111827':'none',
                       display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2}
                   }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
@@ -486,7 +585,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto',alignItems:'center'}},
       e('span',{style:{fontSize:9,color:'#111827',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'2px solid #111827',borderRadius:2}}), 'Current stage'),
       ...stageDefs.slice(0,6).map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
-        e('div',{style:{width:14,height:7,borderRadius:2,background:d.color||'#6b7280'}}),
+        e('div',{style:{width:14,height:7,borderRadius:2,background:stageColor(d)}}),
         e('span',{style:{fontSize:9,color:'#6b7280',whiteSpace:'nowrap'}},d.name)
       )),
       e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},'+'+(stageDefs.length-6)+' more'),
@@ -509,7 +608,16 @@ function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayId
   }, [stageDefs]);
 
   const [weeks, setWeeks] = useState(5);
-  const [startIdx, setStartIdx] = useState(todayIdx);
+  // Snap to the Monday of the current week — working days in our array are Mon-Fri,
+  // so "Monday of this week" is the nearest Monday at or before todayIdx.
+  const mondayIdx = useMemo(() => {
+    // Walk backwards from todayIdx until we hit a Monday (getDay()===1)
+    for (let i = todayIdx; i >= 0; i--) {
+      if (workingDays[i] && workingDays[i].getDay() === 1) return i;
+    }
+    return todayIdx;
+  }, [todayIdx, workingDays]);
+  const [startIdx, setStartIdx] = useState(mondayIdx);
   const [tradeFilter, setTradeFilter] = useState('All');
   const [plotFilter, setPlotFilter] = useState('All');
   const [showInspections, setShowInspections] = useState(true);
@@ -586,8 +694,8 @@ function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayId
         value: startIdx, onChange: ev => setStartIdx(parseInt(ev.target.value)),
         style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:14 }
       },
-        e('option', { value: todayIdx }, 'Today'),
-        ...workingDays.filter((d,i) => i%5===0 && i>=Math.max(0,todayIdx-40)).slice(0,16).map((d,k) => {
+        e('option', { value: mondayIdx }, 'This week (Mon)'),
+        ...workingDays.filter((d,i) => d.getDay()===1 && i>=Math.max(0,todayIdx-40)).slice(0,16).map((d,k) => {
           const i = workingDays.findIndex(wd=>wd===d);
           return e('option', { key:i, value:i }, d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
         })
@@ -984,7 +1092,8 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
 function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue }) {
-  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages), [plots, stageDefs, plotStages]);
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
   const [nextId,     setNextId]     = useState(null);
   const [selected,   setSelected]   = useState(null);
@@ -1735,7 +1844,8 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
   const [editingMaterial, setEditingMaterial] = useState(null);
   const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
-  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages), [plots, stageDefs, plotStages]);
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
 
   // Overall flagged count across all materials, for the header banner
   const totalFlagged = useMemo(() => {
@@ -1813,6 +1923,7 @@ function App() {
   const [hsLog,setHsLog]           = useState([]);
   const [materials,setMaterials]   = useState([]);
   const [materialOrders,setMaterialOrders] = useState([]);
+  const [trades,setTrades]         = useState([]);
   const [loading,setLoading]       = useState(true);
   const [loadErr,setLoadErr]       = useState(null);
 
@@ -1846,6 +1957,7 @@ function App() {
       api('/materials').then(r=>r.json()).catch(()=>[]),
       api('/material-orders').then(r=>r.json()).catch(()=>[]),
       api('/map-image').then(r=>r.json()).catch(()=>({})),
+      api('/trades').then(r=>r.json()).catch(()=>[]),
     ]).then(function(res){
       setPlots(Array.isArray(res[0])?res[0]:[]);
       setStageDefs(Array.isArray(res[1])?res[1]:[]);
@@ -1854,7 +1966,8 @@ function App() {
       setHsLog(Array.isArray(res[4])?res[4]:[]);
       setMaterials(Array.isArray(res[5])?res[5]:[]);
       setMaterialOrders(Array.isArray(res[6])?res[6]:[]);
-      if (res[7] && res[7].image_url) setBgImageRaw(res[7].image_url); // server is the source of truth
+      if (res[7] && res[7].image_url) setBgImageRaw(res[7].image_url);
+      setTrades(Array.isArray(res[8])?res[8]:[]);
       setLoading(false);
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
@@ -1997,7 +2110,7 @@ function App() {
         :loadErr
           ?e('div',{style:{padding:20,color:'#dc2626',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
           :tab==='programme'
-            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages})
+            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades})
             :tab==='map'
               ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue})
               :tab==='materials'
