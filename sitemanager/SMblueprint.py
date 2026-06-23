@@ -290,6 +290,41 @@ def api_stage_templates():
         return err(e)
 
 
+@smc_bp.route("/api/stage-templates/<target_id>/clone-from/<source_id>", methods=["POST"])
+@_require_auth
+def api_stage_template_clone(target_id, source_id):
+    """Clone all stage defs from source template into target template.
+    Used to seed Bungalow/Flat templates from House Standard as a starting point."""
+    try:
+        # Fetch source stages
+        src = supabase.table("smc_stage_defs").select("*") \
+            .eq("project_id", SMC_PROJECT_ID).eq("template_id", source_id).order("stage_order").execute()
+        if not src.data:
+            return jsonify({"ok": False, "error": "No stages found in source template"}), 400
+
+        # Delete any existing stages in the target template first
+        supabase.table("smc_stage_defs").delete() \
+            .eq("project_id", SMC_PROJECT_ID).eq("template_id", target_id).execute()
+
+        # Insert cloned stages into target
+        new_rows = []
+        for s in src.data:
+            new_rows.append({
+                "project_id": SMC_PROJECT_ID,
+                "template_id": target_id,
+                "stage_order": s["stage_order"],
+                "name": s["name"],
+                "trade": s.get("trade", ""),
+                "trade_id": s.get("trade_id"),
+                "color": s.get("color", "#64748b"),
+                "default_duration": s.get("default_duration", 1),
+            })
+        supabase.table("smc_stage_defs").insert(new_rows).execute()
+        return jsonify({"ok": True, "cloned": len(new_rows)})
+    except Exception as e:
+        return err(e)
+
+
 # ── Stage def editing (rename, change trade, change duration, reorder) ───────
 @smc_bp.route("/api/stage-defs/<stage_id>", methods=["PATCH"])
 @_require_auth
