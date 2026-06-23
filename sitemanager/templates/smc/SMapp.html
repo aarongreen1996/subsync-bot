@@ -220,7 +220,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   // Shared row-height calculator — same logic as the Gantt bar renderer uses.
   // Returns the pixel height a plot's row needs given the current trade filter
   // and how many lanes of parallel stages exist.
-  const LANE_H = 24;
+  const LANE_H = 40;
   function plotRowHeight(plot) {
     const sc = schedules[plot.id] || {};
     const stages = sortedDefs
@@ -578,7 +578,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
             e('div',{style:{position:'absolute',left:todayIdx*cellW+1,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none',zIndex:3}}),
             ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
-              const LANE_H=24;
+              const LANE_H=40;
 
               // ── Lane assignment: greedy interval scheduler ─────────────────────────
               // Sort visible stages by start day, assign each to the lowest lane that
@@ -621,8 +621,9 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                       opacity:isDone?0.5:1,
                       border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':stageColor(def)),
                       boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 2px #111827':'none',
-                      display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2}
-                  }, w>36?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
+                      display:'flex',alignItems:'flex-start',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2,
+                      padding:'2px 3px',boxSizing:'border-box'}
+                  }, e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',lineHeight:1.2,whiteSpace:'normal',wordBreak:'break-word',overflow:'hidden',display:'block',width:'100%'}},def.name));
                 }).filter(Boolean)
               );
             })
@@ -806,7 +807,7 @@ function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayId
           e('div', { style:{ width:130, flexShrink:0 } },
             e('div', { style:{ height:40, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:10, background:'#e5e7eb' } }, 'Plot'),
             ...printRows.map(({plot,segs}) =>
-              e('div', { key:plot.id, style:{ height:46, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', padding:'4px 6px', display:'flex', flexDirection:'column', justifyContent:'center' } },
+              e('div', { key:plot.id, style:{ height:60, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', padding:'4px 6px', display:'flex', flexDirection:'column', justifyContent:'center' } },
                 e('div', { style:{ fontWeight:700, fontSize:11, color:'#111827' } }, 'Plot ' + plot.plot_number),
                 e('div', { style:{ fontSize:8, color:'#6b7280' } }, segs.length + ' stage' + (segs.length>1?'s':''))
               )
@@ -827,24 +828,24 @@ function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayId
             ),
             // Plot rows
             ...printRows.map(({plot,segs}) =>
-              e('div', { key:plot.id, style:{ height:46, position:'relative', borderBottom:'1px solid #111827', display:'flex' } },
+              e('div', { key:plot.id, style:{ height:60, position:'relative', borderBottom:'1px solid #111827', display:'flex' } },
                 // week shading background
                 ...rangeDays.map((d,i) => {
                   const weekNum = Math.floor(i/5);
                   const isAlt = weekNum % 2 === 1;
-                  return e('div', { key:'bg'+i, style:{ width:DAY_W, flexShrink:0, borderRight:'1px solid #f3f4f6', background:isAlt?'#eff6ff':'#fff' } });
+                  return e('div', { key:'bg'+i, style:{ width:DAY_W, height:60, flexShrink:0, borderRight:'1px solid #f3f4f6', background:isAlt?'#eff6ff':'#fff' } });
                 }),
                 // stage segments overlay
                 ...segs.map((seg,si) =>
                   e('div', {
                     key:si,
                     style:{
-                      position:'absolute', left: seg.dayOffset*DAY_W + 1, top:8, width: seg.dayWidth*DAY_W - 2, height:30,
+                      position:'absolute', left: seg.dayOffset*DAY_W + 1, top:6, width: seg.dayWidth*DAY_W - 2, minHeight:32,
                       background: seg.def.color || '#6b7280', borderRadius:3,
                       border: showBehind && seg.behind ? '2px solid #dc2626' : '1px solid rgba(0,0,0,0.2)',
-                      display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'
+                      display:'flex', alignItems:'flex-start', padding:'3px 3px', boxSizing:'border-box', overflow:'hidden'
                     }
-                  }, e('span', { style:{ fontSize:7.5, fontWeight:700, color:'#fff', padding:'0 3px', whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden' } }, seg.def.name))
+                  }, e('span', { style:{ fontSize:7, fontWeight:700, color:'#fff', lineHeight:1.2, whiteSpace:'normal', wordBreak:'break-word', display:'block', width:'100%' } }, seg.def.name))
                 )
               )
             )
