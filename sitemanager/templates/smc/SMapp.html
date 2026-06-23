@@ -1491,6 +1491,299 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
 // H&S TAB
 // ══════════════════════════════════════════════════════════════════════════
 // Editable row for the statutory inspection matrix
+// ══════════════════════════════════════════════════════════════════════════
+// STAGE EDITOR TAB
+// ══════════════════════════════════════════════════════════════════════════
+function StageEditorTab({ stageDefs, setStageDefs, trades, stageTemplates, setStageTemplates }) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [editingId, setEditingId]     = useState(null);
+  const [editName, setEditName]       = useState('');
+  const [editTrade, setEditTrade]     = useState('');
+  const [editTradeId, setEditTradeId] = useState('');
+  const [editDur, setEditDur]         = useState(1);
+  const [saving, setSaving]           = useState(false);
+  const [cloning, setCloning]         = useState(null); // target template id being cloned into
+  const [addingStage, setAddingStage] = useState(false);
+  const [newName, setNewName]         = useState('');
+  const [newTrade, setNewTrade]       = useState('');
+  const [newTradeId, setNewTradeId]   = useState('');
+  const [newDur, setNewDur]           = useState(1);
+
+  // Auto-select the House (Standard) template on first load
+  useEffect(() => {
+    if (!selectedTemplateId && stageTemplates.length) {
+      const house = stageTemplates.find(t => t.name === 'House (Standard)') || stageTemplates[0];
+      setSelectedTemplateId(house.id);
+    }
+  }, [stageTemplates]);
+
+  const sortedTemplates = useMemo(() => [...stageTemplates].sort((a,b) => (b.is_default?1:0)-(a.is_default?1:0) || a.name.localeCompare(b.name)), [stageTemplates]);
+
+  // Stages for the currently selected template
+  const templateStages = useMemo(() => {
+    if (!selectedTemplateId) return [];
+    return [...stageDefs]
+      .filter(d => d.template_id === selectedTemplateId)
+      .sort((a,b) => (a.stage_order||0)-(b.stage_order||0));
+  }, [stageDefs, selectedTemplateId]);
+
+  const selectedTemplate = stageTemplates.find(t => t.id === selectedTemplateId);
+  const houseTemplate    = stageTemplates.find(t => t.name === 'House (Standard)');
+
+  // Trade colour lookup
+  const tradeColorMap = useMemo(() => {
+    const m = {};
+    trades.forEach(t => { m[t.name] = t.color; m[t.id] = t.color; });
+    return m;
+  }, [trades]);
+
+  function getTradeColor(tradeNameOrId) {
+    return tradeColorMap[tradeNameOrId] || '#64748b';
+  }
+
+  // ── Inline edit helpers ──────────────────────────────────────────────────
+  function startEdit(def) {
+    setEditingId(def.id);
+    setEditName(def.name);
+    setEditTrade(def.trade || '');
+    setEditTradeId(def.trade_id || '');
+    setEditDur(def.default_duration || 1);
+  }
+
+  function cancelEdit() { setEditingId(null); }
+
+  async function saveEdit(def) {
+    setSaving(true);
+    const trade = trades.find(t => t.id === editTradeId);
+    const tradeName = trade ? trade.name : editTrade;
+    const tradeColor = trade ? trade.color : (def.color || '#64748b');
+    const fields = { name: editName.trim(), trade: tradeName, trade_id: editTradeId||null, color: tradeColor, default_duration: parseInt(editDur)||1 };
+    try {
+      await api('/stage-defs/' + def.id, { method:'PATCH', body:JSON.stringify(fields) });
+      setStageDefs(prev => prev.map(d => d.id===def.id ? Object.assign({},d,fields) : d));
+      setEditingId(null);
+    } catch(ex) { alert('Save failed: '+ex.message); }
+    setSaving(false);
+  }
+
+  async function deleteStage(def) {
+    if (!confirm('Delete "'+def.name+'" from this template? This cannot be undone.')) return;
+    try {
+      await api('/stage-defs/'+def.id, { method:'DELETE' });
+      setStageDefs(prev => prev.filter(d => d.id !== def.id));
+    } catch(ex) { alert('Delete failed: '+ex.message); }
+  }
+
+  async function moveStage(def, direction) {
+    const idx = templateStages.findIndex(d => d.id === def.id);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= templateStages.length) return;
+    const swapDef = templateStages[swapIdx];
+    const newOrder = def.stage_order;
+    const swapOrder = swapDef.stage_order;
+    // Swap the stage_order values
+    await Promise.all([
+      api('/stage-defs/'+def.id, { method:'PATCH', body:JSON.stringify({stage_order: swapOrder}) }),
+      api('/stage-defs/'+swapDef.id, { method:'PATCH', body:JSON.stringify({stage_order: newOrder}) }),
+    ]);
+    setStageDefs(prev => prev.map(d => {
+      if (d.id===def.id) return Object.assign({},d,{stage_order:swapOrder});
+      if (d.id===swapDef.id) return Object.assign({},d,{stage_order:newOrder});
+      return d;
+    }));
+  }
+
+  async function addStage() {
+    if (!newName.trim() || !selectedTemplateId) return;
+    const trade = trades.find(t => t.id === newTradeId);
+    const tradeName = trade ? trade.name : newTrade;
+    const tradeColor = trade ? trade.color : '#64748b';
+    const nextOrder = templateStages.length ? Math.max(...templateStages.map(d=>d.stage_order||0)) + 1 : 1;
+    try {
+      const r = await api('/stage-defs', { method:'POST', body:JSON.stringify({
+        template_id: selectedTemplateId,
+        name: newName.trim(),
+        trade: tradeName,
+        trade_id: newTradeId||null,
+        color: tradeColor,
+        default_duration: parseInt(newDur)||1,
+        stage_order: nextOrder,
+      }) }).then(r=>r.json());
+      if (r.ok && r.stage) {
+        setStageDefs(prev => [...prev, r.stage]);
+      }
+      setNewName(''); setNewTrade(''); setNewTradeId(''); setNewDur(1);
+      setAddingStage(false);
+    } catch(ex) { alert('Add failed: '+ex.message); }
+  }
+
+  async function cloneTemplate(targetId) {
+    if (!houseTemplate) { alert('House (Standard) template not found'); return; }
+    const target = stageTemplates.find(t => t.id === targetId);
+    if (!confirm('Clone all 61 House (Standard) stages into "'+target.name+'"? This will replace any existing stages in that template.')) return;
+    setCloning(targetId);
+    try {
+      const r = await api('/stage-templates/'+targetId+'/clone-from/'+houseTemplate.id, { method:'POST' }).then(r=>r.json());
+      if (r.ok) {
+        // Refresh stageDefs
+        const fresh = await api('/stage-defs').then(r=>r.json());
+        setStageDefs(Array.isArray(fresh)?fresh:[]);
+        alert('✓ Cloned '+r.cloned+' stages into '+target.name+'. Select that template to start customising.');
+      }
+    } catch(ex) { alert('Clone failed: '+ex.message); }
+    setCloning(null);
+  }
+
+  const totalDays = templateStages.reduce((sum,d)=>sum+(d.default_duration||0),0);
+
+  const inputCls = { padding:'4px 7px', border:'1px solid #d1d5db', borderRadius:6, fontSize:11, color:'#111827', background:'#fff', outline:'none' };
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}},
+
+    // Header bar
+    e('div',{style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'10px 16px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
+      e('div',{style:{fontSize:16,fontWeight:700,color:'#111827'}},'Stage Editor'),
+      e('div',{style:{height:20,width:1,background:'#e5e7eb'}}),
+      // Template selector tabs
+      ...sortedTemplates.map(t =>
+        e('button',{key:t.id, onClick:()=>{ setSelectedTemplateId(t.id); setEditingId(null); setAddingStage(false); },
+          style:{padding:'5px 12px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+            background:selectedTemplateId===t.id?'#f97316':'#f3f4f6',
+            color:selectedTemplateId===t.id?'#fff':'#374151',
+            border:'1px solid '+(selectedTemplateId===t.id?'#f97316':'#d1d5db')}
+        }, t.name + (t.is_default?' ★':'') + (selectedTemplateId===t.id?' ('+templateStages.length+')':''))
+      ),
+      e('div',{style:{flex:1}}),
+      // Clone buttons (only show for non-House templates)
+      selectedTemplate && !selectedTemplate.is_default && e('button',{
+        onClick:()=>cloneTemplate(selectedTemplateId),
+        disabled:!!cloning,
+        style:{padding:'5px 12px',background:'#1e40af',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',opacity:cloning?0.6:1}
+      }, cloning===selectedTemplateId ? 'Cloning...' : '📋 Clone from House (Standard)'),
+      e('button',{
+        onClick:()=>{ setAddingStage(true); setEditingId(null); },
+        disabled:!selectedTemplateId,
+        style:{padding:'5px 12px',background:'#16a34a',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
+      },'+ Add Stage')
+    ),
+
+    // Stats bar
+    selectedTemplate && e('div',{style:{background:'#f9fafb',borderBottom:'1px solid #e5e7eb',padding:'6px 16px',display:'flex',gap:16,fontSize:10,color:'#6b7280',flexShrink:0,flexWrap:'wrap',alignItems:'center'}},
+      e('span',null,e('b',{style:{color:'#111827'}},templateStages.length),' stages in this template'),
+      e('span',null,e('b',{style:{color:'#111827'}},totalDays),' working days total ('+Math.round(totalDays/5)+' weeks approx)'),
+      !selectedTemplate.is_default && templateStages.length===0 && e('span',{style:{color:'#d97706',fontWeight:700}},'⚠ No stages yet — use "Clone from House (Standard)" to get started'),
+      selectedTemplate.is_default && e('span',{style:{color:'#f97316',fontWeight:700}},'★ Default template — applied to all plots unless a specific template is assigned')
+    ),
+
+    // Add stage form
+    addingStage && e('div',{style:{background:'#fffbeb',borderBottom:'1px solid #fcd34d',padding:'10px 16px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',flexShrink:0}},
+      e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'New stage:'),
+      e('input',{type:'text',value:newName,onChange:ev=>setNewName(ev.target.value),placeholder:'Stage name',style:Object.assign({},inputCls,{width:180})}),
+      e('select',{value:newTradeId,onChange:ev=>{setNewTradeId(ev.target.value);},style:Object.assign({},inputCls,{width:180})},
+        e('option',{value:''},'— Select trade —'),
+        ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+      ),
+      e('input',{type:'number',min:1,max:30,value:newDur,onChange:ev=>setNewDur(ev.target.value),placeholder:'Days',style:Object.assign({},inputCls,{width:64})}),
+      e('span',{style:{fontSize:10,color:'#9ca3af'}},'days'),
+      e('button',{onClick:addStage,disabled:!newName.trim(),style:{padding:'4px 12px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'Add'),
+      e('button',{onClick:()=>setAddingStage(false),style:{padding:'4px 10px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#6b7280',fontSize:11,cursor:'pointer'}},'Cancel')
+    ),
+
+    // Stage table
+    e('div',{style:{flex:1,overflow:'auto'}},
+      templateStages.length === 0
+        ? e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+            e('div',{style:{fontSize:40,marginBottom:10}},'📋'),
+            e('div',{style:{fontSize:14,fontWeight:700,color:'#374151',marginBottom:6}},selectedTemplate ? 'No stages in '+selectedTemplate.name : 'Select a template'),
+            !selectedTemplate?.is_default && e('div',{style:{fontSize:12,color:'#9ca3af'}},'Click "Clone from House (Standard)" above to start with the full 61-stage sequence, then customise it.')
+          )
+        : e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+            e('thead',null,
+              e('tr',{style:{background:'#e5e7eb',position:'sticky',top:0,zIndex:10}},
+                ...['#','Stage Name','Trade','Default Duration','',''].map((h,i)=>
+                  e('th',{key:i,style:{textAlign:'left',padding:'8px 10px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap',
+                    width:i===0?40:i===4?100:i===5?80:'auto'}},h)
+                )
+              )
+            ),
+            e('tbody',null,
+              ...templateStages.map((def,idx) => {
+                const tradeObj = trades.find(t=>t.id===def.trade_id||t.name===def.trade);
+                const col = tradeObj ? tradeObj.color : def.color || '#64748b';
+                const isEditing = editingId === def.id;
+
+                if (isEditing) {
+                  return e('tr',{key:def.id,style:{background:'#fffbeb',borderTop:'1px solid #fcd34d',borderBottom:'1px solid #fcd34d'}},
+                    e('td',{style:{padding:'6px 10px',color:'#9ca3af',fontSize:10}},def.stage_order),
+                    e('td',{style:{padding:'4px 8px'}},
+                      e('input',{type:'text',value:editName,onChange:ev=>setEditName(ev.target.value),
+                        style:Object.assign({},inputCls,{width:'100%'})})
+                    ),
+                    e('td',{style:{padding:'4px 8px'}},
+                      e('select',{value:editTradeId,onChange:ev=>setEditTradeId(ev.target.value),style:Object.assign({},inputCls,{width:180})},
+                        e('option',{value:''},'— select —'),
+                        ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+                      )
+                    ),
+                    e('td',{style:{padding:'4px 8px'}},
+                      e('div',{style:{display:'flex',alignItems:'center',gap:5}},
+                        e('input',{type:'number',min:1,max:30,value:editDur,onChange:ev=>setEditDur(ev.target.value),style:Object.assign({},inputCls,{width:60})}),
+                        e('span',{style:{fontSize:10,color:'#6b7280'}},'days')
+                      )
+                    ),
+                    e('td',{style:{padding:'4px 8px'}},
+                      e('div',{style:{display:'flex',gap:4}},
+                        e('button',{onClick:()=>saveEdit(def),disabled:saving,style:{padding:'4px 10px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}},saving?'...':'✓ Save'),
+                        e('button',{onClick:cancelEdit,style:{padding:'4px 8px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#6b7280',fontSize:10,cursor:'pointer'}},'Cancel')
+                      )
+                    ),
+                    e('td',null)
+                  );
+                }
+
+                return e('tr',{key:def.id,style:{borderBottom:'1px solid #e5e7eb',background:idx%2===0?'#f9fafb':'#fff'}},
+                  e('td',{style:{padding:'8px 10px',color:'#9ca3af',fontSize:10,fontWeight:600}},def.stage_order),
+                  e('td',{style:{padding:'8px 10px',fontWeight:600,color:'#111827'}},
+                    e('div',{style:{display:'flex',alignItems:'center',gap:7}},
+                      e('div',{style:{width:10,height:10,borderRadius:3,background:col,flexShrink:0}}),
+                      def.name
+                    )
+                  ),
+                  e('td',{style:{padding:'8px 10px'}},
+                    tradeObj
+                      ? e('span',{style:{padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,background:col+'20',color:col,border:'1px solid '+col+'40'}},tradeObj.name)
+                      : e('span',{style:{color:'#d1d5db',fontSize:10}},'— unassigned —')
+                  ),
+                  e('td',{style:{padding:'8px 10px',color:'#374151'}},
+                    e('span',{style:{fontWeight:600}},def.default_duration),
+                    e('span',{style:{color:'#9ca3af',fontSize:10}},def.default_duration===1?' day':' days')
+                  ),
+                  e('td',{style:{padding:'4px 8px'}},
+                    e('div',{style:{display:'flex',gap:4,alignItems:'center'}},
+                      e('button',{onClick:()=>startEdit(def),style:{padding:'4px 10px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',fontSize:10,fontWeight:600,cursor:'pointer'}},'✎ Edit'),
+                      e('button',{onClick:()=>moveStage(def,-1),disabled:idx===0,style:{padding:'3px 6px',background:idx===0?'#f3f4f6':'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:idx===0?'#d1d5db':'#374151',fontSize:11,cursor:idx===0?'default':'pointer'}},'▲'),
+                      e('button',{onClick:()=>moveStage(def,1),disabled:idx===templateStages.length-1,style:{padding:'3px 6px',background:idx===templateStages.length-1?'#f3f4f6':'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:idx===templateStages.length-1?'#d1d5db':'#374151',fontSize:11,cursor:idx===templateStages.length-1?'default':'pointer'}},'▼')
+                    )
+                  ),
+                  e('td',{style:{padding:'4px 8px'}},
+                    e('button',{onClick:()=>deleteStage(def),style:{padding:'4px 9px',background:'#fff',border:'1px solid #fca5a5',borderRadius:5,color:'#dc2626',fontSize:10,cursor:'pointer'}},'🗑')
+                  )
+                );
+              })
+            )
+          )
+    ),
+
+    // Footer summary
+    templateStages.length > 0 && e('div',{style:{background:'#f9fafb',borderTop:'1px solid #e5e7eb',padding:'6px 16px',fontSize:10,color:'#6b7280',flexShrink:0,display:'flex',gap:20,flexWrap:'wrap'}},
+      e('span',null,'Total: '+totalDays+' working days from start to finish'),
+      e('span',null,'~'+Math.round(totalDays/5)+' calendar weeks'),
+      e('span',null,templateStages.length+' stages across '+[...new Set(templateStages.map(d=>d.trade).filter(Boolean))].length+' trades')
+    )
+  );
+}
+
 function InspectionRow({ ins, i, badge, onUpdateInspection }) {
   const [editing, setEditing] = useState(false);
   const [lastDate, setLastDate] = useState(ins.last_date || '');
@@ -1974,8 +2267,9 @@ function App() {
   const [hsLog,setHsLog]           = useState([]);
   const [materials,setMaterials]   = useState([]);
   const [materialOrders,setMaterialOrders] = useState([]);
-  const [trades,setTrades]         = useState([]);
-  const [loading,setLoading]       = useState(true);
+  const [trades,setTrades]               = useState([]);
+  const [stageTemplates,setStageTemplates] = useState([]);
+  const [loading,setLoading]             = useState(true);
   const [loadErr,setLoadErr]       = useState(null);
 
   // Persistent state — survives tab switches. The drawing image is stored in
@@ -2009,6 +2303,7 @@ function App() {
       api('/material-orders').then(r=>r.json()).catch(()=>[]),
       api('/map-image').then(r=>r.json()).catch(()=>({})),
       api('/trades').then(r=>r.json()).catch(()=>[]),
+      api('/stage-templates').then(r=>r.json()).catch(()=>[]),
     ]).then(function(res){
       setPlots(Array.isArray(res[0])?res[0]:[]);
       setStageDefs(Array.isArray(res[1])?res[1]:[]);
@@ -2019,6 +2314,7 @@ function App() {
       setMaterialOrders(Array.isArray(res[6])?res[6]:[]);
       if (res[7] && res[7].image_url) setBgImageRaw(res[7].image_url);
       setTrades(Array.isArray(res[8])?res[8]:[]);
+      setStageTemplates(Array.isArray(res[9])?res[9]:[]);
       setLoading(false);
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
@@ -2121,6 +2417,7 @@ function App() {
     {id:'programme', label:'📅  Programme'},
     {id:'map',       label:'🗺️  Site Map'},
     {id:'materials', label:'📦  Materials'},
+    {id:'stages',    label:'⚙️  Stage Editor'},
     {id:'hs',        label:'⛑️  H&S'},
   ];
 
@@ -2166,7 +2463,9 @@ function App() {
               ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue})
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
-                :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
+                :tab==='stages'
+                  ?e(StageEditorTab,{stageDefs,setStageDefs,trades,stageTemplates,setStageTemplates})
+                  :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
     ),
     // Footer
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
