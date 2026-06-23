@@ -217,6 +217,28 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
   const crcDef = useMemo(() => stageDefs.find(d => d.name === 'CRC'), [stageDefs]);
 
+  // Shared row-height calculator — same logic as the Gantt bar renderer uses.
+  // Returns the pixel height a plot's row needs given the current trade filter
+  // and how many lanes of parallel stages exist.
+  const LANE_H = 24;
+  function plotRowHeight(plot) {
+    const sc = schedules[plot.id] || {};
+    const stages = sortedDefs
+      .filter(def => tradeFilter==='All' || def.trade===tradeFilter)
+      .map(def => sc[def.id]).filter(Boolean)
+      .sort((a,b) => a.start - b.start);
+    const laneEnd = [];
+    stages.forEach(s => {
+      const end = s.start + s.dur;
+      let lane = laneEnd.findIndex(e => e <= s.start);
+      if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
+      laneEnd[lane] = end;
+    });
+    return Math.max(1, laneEnd.length) * LANE_H + 4;
+  }
+
+
+
   // ── Drag = reschedule. Click (no movement) = set as the plot's current stage. ──
   function onBarMouseDown(ev, plot, defId) {
     ev.preventDefault();
@@ -520,7 +542,8 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
         e('div',{style:{flex:1,overflowY:'scroll'},id:'g-left'},
           ...visPlots.map(p => {
             const st = plotOverallStatus(p);
-            return e('div',{key:p.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#f8fafc',borderBottom:'1px solid #e5e7eb'}},
+            const rowH = plotRowHeight(p);
+            return e('div',{key:p.id,style:{height:rowH,display:'flex',alignItems:'center',padding:'0 8px',gap:5,background:'#f8fafc',borderBottom:'1px solid #e5e7eb'}},
               e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
               e('div',{style:{flex:1,minWidth:0}},
                 e('div',{style:{fontSize:11,fontWeight:700,color:'#1f2937',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
@@ -555,9 +578,36 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
             e('div',{style:{position:'absolute',left:todayIdx*cellW+1,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none',zIndex:3}}),
             ...visPlots.map(p => {
               const sc=schedules[p.id]||{};
-              return e('div',{key:p.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #e5e7eb'}},
+              const LANE_H=24;
+
+              // ── Lane assignment: greedy interval scheduler ─────────────────────────
+              // Sort visible stages by start day, assign each to the lowest lane that
+              // doesn't overlap with an already-placed bar. Two bars overlap when their
+              // time ranges intersect: a.start < b.end && b.start < a.end.
+              // This means overlapping bars appear on separate sub-rows, never on top.
+              const stagesForLane = sortedDefs
+                .filter(def => tradeFilter==='All' || def.trade===tradeFilter)
+                .map(def => ({ def, s: sc[def.id] }))
+                .filter(x => x.s)
+                .sort((a,b) => a.s.start - b.s.start);
+
+              const laneAssign = {}; // defId -> laneIndex
+              const laneEnd = [];    // laneIndex -> latest end day placed so far
+              stagesForLane.forEach(({def, s}) => {
+                const end = s.start + s.dur;
+                let lane = laneEnd.findIndex(endDay => endDay <= s.start);
+                if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
+                laneEnd[lane] = end;
+                laneAssign[def.id] = lane;
+              });
+
+              const numLanes = Math.max(1, laneEnd.length);
+              const rowH = numLanes * LANE_H + 4;
+
+              return e('div',{key:p.id,style:{height:rowH,position:'relative',borderBottom:'1px solid #e5e7eb'}},
                 ...sortedDefs.filter(def => tradeFilter==='All' || def.trade===tradeFilter).map(def=>{
                   const s = sc[def.id]; if(!s) return null;
+                  const lane = laneAssign[def.id] || 0;
                   const status = stageStatus(p, def);
                   const isDone = status==='done';
                   const isActive = status==='active';
@@ -566,13 +616,13 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                   return e('div',{key:def.id,
                     onMouseDown: ev => onBarMouseDown(ev, p, def.id),
                     title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':''),
-                    style:{position:'absolute',left:s.start*cellW+1,top:(ROW_H-22)/2,width:w,height:22,borderRadius:3,cursor:'pointer',
+                    style:{position:'absolute',left:s.start*cellW+1,top:2+lane*LANE_H,width:w,height:LANE_H-4,borderRadius:3,cursor:'pointer',
                       background:isDone?'#d1d5db':stageColor(def),
                       opacity:isDone?0.5:1,
                       border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':stageColor(def)),
                       boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 2px #111827':'none',
                       display:'flex',alignItems:'center',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2}
-                  }, w>32?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
+                  }, w>36?e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',padding:'0 4px',overflow:'hidden',whiteSpace:'nowrap'}},def.name):null);
                 }).filter(Boolean)
               );
             })
