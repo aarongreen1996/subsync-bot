@@ -504,3 +504,350 @@ def api_plot_raise_hs(plot_id):
         return ok()
     except Exception as e:
         return err(e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ITEMS (cleanup notices, outstanding works, dayworks, RFI notes)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _next_ref(item_type):
+    """Generate the next reference number for an item type (e.g. CLN-001)."""
+    prefixes = {
+        'cleanup_notice':   'CLN',
+        'outstanding_work': 'OSW',
+        'daywork':          'DW',
+        'rfi_note':         'RFI',
+    }
+    prefix = prefixes.get(item_type, 'REF')
+    try:
+        r = supabase.table("smc_ref_counters") \
+            .select("next_val") \
+            .eq("project_id", SMC_PROJECT_ID) \
+            .eq("item_type", item_type) \
+            .single().execute()
+        n = r.data["next_val"] if r.data else 1
+        supabase.table("smc_ref_counters") \
+            .update({"next_val": n + 1}) \
+            .eq("project_id", SMC_PROJECT_ID) \
+            .eq("item_type", item_type).execute()
+        return f"{prefix}-{n:03d}"
+    except Exception:
+        return f"{prefix}-001"
+
+
+@smc_bp.route("/api/items")
+@_require_auth
+def api_items():
+    plot_id = request.args.get("plot_id")
+    item_type = request.args.get("type")
+    try:
+        q = supabase.table("smc_items").select("*").eq("project_id", SMC_PROJECT_ID)
+        if plot_id:
+            q = q.eq("plot_id", plot_id)
+        if item_type:
+            q = q.eq("item_type", item_type)
+        r = q.order("created_at", desc=True).execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/items", methods=["POST"])
+@_require_auth
+def api_item_create():
+    data = request.get_json() or {}
+    item_type = data.get("item_type", "general")
+    from datetime import datetime, timezone
+    row = {
+        "project_id":     SMC_PROJECT_ID,
+        "plot_id":        data.get("plot_id"),
+        "item_type":      item_type,
+        "ref_number":     _next_ref(item_type),
+        "title":          data.get("title", "").strip(),
+        "description":    data.get("description", "").strip(),
+        "trade_id":       data.get("trade_id"),
+        "trade_name":     data.get("trade_name", ""),
+        "status":         data.get("status", "open"),
+        "priority":       data.get("priority", "medium"),
+        "deadline_date":  data.get("deadline_date"),
+        "chargeable":     data.get("chargeable", False),
+        "estimated_cost": data.get("estimated_cost"),
+        "ref_drawing":    data.get("ref_drawing", ""),
+        "updated_at":     datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        r = supabase.table("smc_items").insert(row).execute()
+        return jsonify({"ok": True, "item": r.data[0] if r.data else None})
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/items/<item_id>", methods=["PATCH"])
+@_require_auth
+def api_item_update(item_id):
+    data = request.get_json() or {}
+    from datetime import datetime, timezone
+    updates = {k: v for k, v in data.items() if k in {
+        "title", "description", "trade_id", "trade_name", "status",
+        "priority", "deadline_date", "resolved_date", "chargeable",
+        "estimated_cost", "ref_drawing"
+    }}
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        supabase.table("smc_items").update(updates).eq("id", item_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/items/<item_id>", methods=["DELETE"])
+@_require_auth
+def api_item_delete(item_id):
+    try:
+        supabase.table("smc_items").delete().eq("id", item_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PHOTOS — Supabase Storage upload + metadata
+# ══════════════════════════════════════════════════════════════════════════
+
+@smc_bp.route("/api/photos", methods=["POST"])
+@_require_auth
+def api_photo_upload():
+    """Receive a base64-encoded image, upload to Supabase Storage, record metadata."""
+    data = request.get_json() or {}
+    plot_id   = data.get("plot_id")
+    item_id   = data.get("item_id")          # optional
+    caption   = data.get("caption", "")
+    taken_at  = data.get("taken_at")         # ISO string from client
+    image_b64 = data.get("image_b64", "")
+    mime_type = data.get("mime_type", "image/jpeg")
+    if not plot_id or not image_b64:
+        return jsonify({"ok": False, "error": "plot_id and image_b64 required"}), 400
+    try:
+        import base64, uuid, datetime as dt
+        img_bytes = base64.b64decode(image_b64)
+        ext       = "jpg" if "jpeg" in mime_type else mime_type.split("/")[-1]
+        ts        = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        uid       = str(uuid.uuid4())[:8]
+        path      = f"{plot_id}/{ts}_{uid}.{ext}"
+        # Upload to Supabase Storage
+        supabase.storage.from_("smc-photos").upload(
+            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
+        )
+        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
+        # Store metadata
+        row = {
+            "project_id":   SMC_PROJECT_ID,
+            "plot_id":      plot_id,
+            "item_id":      item_id,
+            "storage_path": path,
+            "public_url":   public_url,
+            "caption":      caption,
+            "taken_at":     taken_at or dt.datetime.utcnow().isoformat(),
+        }
+        r = supabase.table("smc_photos").insert(row).execute()
+        return jsonify({"ok": True, "photo": r.data[0] if r.data else None, "public_url": public_url})
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/photos")
+@_require_auth
+def api_photos_list():
+    plot_id = request.args.get("plot_id")
+    item_id = request.args.get("item_id")
+    try:
+        q = supabase.table("smc_photos").select("*").eq("project_id", SMC_PROJECT_ID)
+        if plot_id:
+            q = q.eq("plot_id", plot_id)
+        if item_id:
+            q = q.eq("item_id", item_id)
+        r = q.order("taken_at", desc=True).execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
+
+
+@smc_bp.route("/api/photos/<photo_id>", methods=["DELETE"])
+@_require_auth
+def api_photo_delete(photo_id):
+    try:
+        r = supabase.table("smc_photos").select("storage_path").eq("id", photo_id).single().execute()
+        if r.data:
+            supabase.storage.from_("smc-photos").remove([r.data["storage_path"]])
+        supabase.table("smc_photos").delete().eq("id", photo_id).execute()
+        return ok()
+    except Exception as e:
+        return err(e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# AI COMMUNICATIONS — generate emails/summaries via Claude API
+# ══════════════════════════════════════════════════════════════════════════
+
+@smc_bp.route("/api/ai/generate", methods=["POST"])
+@_require_auth
+def api_ai_generate():
+    """Generate professional communications using Claude.
+    The prompt is built server-side from live site data so the AI has full context."""
+    data = request.get_json() or {}
+    comm_type = data.get("type")           # 'daily_summary' | 'weekly_summary' | 'trade_notice' | 'qs_dayworks' | 'progress_report'
+    context   = data.get("context", {})   # extra context from the frontend
+
+    # Fetch fresh data for AI context
+    try:
+        plots_r    = supabase.table("smc_plots").select("plot_number,house_type,tenure,current_stage_id,crc_deadline_date,cml_signed_off,crc_signed_off,notes").eq("project_id", SMC_PROJECT_ID).execute()
+        items_r    = supabase.table("smc_items").select("*").eq("project_id", SMC_PROJECT_ID).eq("status", "open").order("created_at", desc=True).execute()
+        hs_r       = supabase.table("smc_hs_log").select("*").eq("project_id", SMC_PROJECT_ID).order("log_date", desc=True).limit(20).execute()
+        stages_r   = supabase.table("smc_stage_defs").select("id,name,stage_order").eq("project_id", SMC_PROJECT_ID).order("stage_order").execute()
+        plots      = plots_r.data or []
+        items      = items_r.data or []
+        hs_log     = hs_r.data or []
+        stage_map  = {s["id"]: s["name"] for s in (stages_r.data or [])}
+    except Exception as e:
+        return err(e)
+
+    # Enrich plots with current stage name
+    from datetime import date
+    today_str = str(date.today())
+    for p in plots:
+        p["current_stage_name"] = stage_map.get(p.get("current_stage_id"), "Not started")
+
+    # Build prompt based on communication type
+    site_name = "SS17 Phase 1C — Sandle Park, Fordingbridge"
+
+    def summarise_items(item_type, label):
+        filtered = [i for i in items if i["item_type"] == item_type]
+        if not filtered:
+            return ""
+        lines = []
+        for i in filtered:
+            parts = [f"• [{i.get('ref_number','—')}] Plot {context.get('plot_number_map', {}).get(i.get('plot_id',''), '?')}: {i['title']}"]
+            if i.get("trade_name"):  parts.append(f"({i['trade_name']})")
+            if i.get("deadline_date"): parts.append(f"— due {i['deadline_date']}")
+            if i.get("estimated_cost"): parts.append(f"— est. £{i['estimated_cost']}")
+            lines.append(" ".join(parts))
+        return f"\n{label}:\n" + "\n".join(lines)
+
+    in_prog  = [p for p in plots if p["current_stage_name"] not in ("Not started", "CRC")]
+    complete = [p for p in plots if p.get("crc_signed_off")]
+    behind   = [p for p in plots if p.get("crc_deadline_date")]  # simplified — could add schedule calc
+
+    plot_summary = f"Site: {site_name}\nTotal plots: {len(plots)}\nIn progress: {len(in_prog)}\nCRC signed off: {len(complete)}"
+    plot_stages  = "\n".join([f"  Plot {p['plot_number']}: {p['current_stage_name']}" for p in plots if p['current_stage_name'] != 'Not started'])
+
+    cleanup_text    = summarise_items("cleanup_notice", "Clean-Up Notices (Open)")
+    outstanding_txt = summarise_items("outstanding_work", "Outstanding Works")
+    daywork_txt     = summarise_items("daywork", "Dayworks/Extras")
+    rfi_txt         = summarise_items("rfi_note", "RFI Notes")
+    hs_txt = "\n".join([f"  • {h['log_date']} [{h.get('severity','').upper()}] {h['log_type']}: {h['detail']}" for h in hs_log[:5]]) or "None logged recently."
+
+    prompts = {
+        "daily_summary": f"""You are a professional site manager at {site_name}.
+Write a concise daily site report email (suitable for copying into an email to a line manager).
+Include: today's date ({today_str}), progress on key plots, any issues or H&S concerns, outstanding actions.
+Keep it professional but conversational — not overly formal.
+
+SITE DATA:
+{plot_summary}
+
+Current build stages (in-progress plots):
+{plot_stages or 'None currently active'}
+
+Outstanding items:
+{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
+
+Recent H&S log:
+{hs_txt}
+
+Extra notes from site manager: {context.get('notes', 'None')}
+
+Generate the email now. Start with 'Subject:' then 'Body:' on a new line.""",
+
+        "weekly_summary": f"""You are a professional site manager at {site_name}.
+Write a weekly progress report email suitable for a line manager or senior stakeholder.
+Include: week summary, plots progressed, plots at risk, H&S summary, outstanding items, next week's focus.
+
+SITE DATA:
+{plot_summary}
+
+Current build stages:
+{plot_stages or 'None currently active'}
+
+Open items this week:
+{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
+
+H&S activity:
+{hs_txt}
+
+Extra notes: {context.get('notes', 'None')}
+
+Generate the email. Start with 'Subject:' then 'Body:' on a new line.""",
+
+        "trade_notice": f"""You are a professional site manager writing a notice to a trade contractor.
+Trade: {context.get('trade_name', 'Contractor')}
+Site: {site_name}
+Today: {today_str}
+
+Write a short, professional but firm notice covering:
+{context.get('notice_content', 'General instruction to the trade.')}
+
+If the notice is about site cleanliness, include that failure to comply within the given timeframe will result in costs being charged back.
+Keep it brief — 3-5 short paragraphs max. No legal jargon. Professional tone.
+Start with 'Subject:' then 'Body:' on a new line.""",
+
+        "qs_dayworks": f"""You are a professional site manager informing a quantity surveyor of dayworks and agreed extras on site.
+Site: {site_name}
+Date: {today_str}
+
+Write a clear, professional email to the QS summarising the following agreed extras and dayworks that need to be recorded and valued:
+
+{daywork_txt or 'See attached notes.'}
+
+Extra context from site manager: {context.get('notes', 'None')}
+
+Keep it factual and brief. The QS needs enough detail to raise instructions or value the works.
+Start with 'Subject:' then 'Body:' on a new line.""",
+
+        "progress_report": f"""You are a professional site manager writing a formal progress report for {site_name}.
+Date: {today_str}
+
+Write a structured progress report covering: programme status, plots at risk, H&S summary, outstanding actions, and immediate priorities.
+
+SITE DATA:
+{plot_summary}
+
+Build progress:
+{plot_stages or 'None currently active'}
+
+Open actions:
+{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
+
+H&S:
+{hs_txt}
+
+Notes: {context.get('notes', 'None')}
+
+Format as a clear report with headings. Professional, concise.""",
+    }
+
+    prompt = prompts.get(comm_type)
+    if not prompt:
+        return jsonify({"ok": False, "error": f"Unknown communication type: {comm_type}"}), 400
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = msg.content[0].text if msg.content else ""
+        return jsonify({"ok": True, "text": text})
+    except Exception as e:
+        return err(e)
