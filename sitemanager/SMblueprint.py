@@ -302,6 +302,24 @@ def api_stage_templates():
         return err(e)
 
 
+@smc_bp.route("/api/stage-templates", methods=["POST"])
+@_require_auth
+def api_stage_template_create():
+    """Create a new custom programme template (e.g. '3-Bed House', 'Townhouse')."""
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    try:
+        r = supabase.table("smc_stage_templates").insert({
+            "name": name,
+            "description": data.get("description", "Custom programme"),
+            "is_default": False,
+        }).execute()
+        return jsonify({"ok": True, "template": r.data[0] if r.data else None})
+    except Exception as e:
+        return err(e)
+
 @smc_bp.route("/api/stage-templates/<target_id>/clone-from/<source_id>", methods=["POST"])
 @_require_auth
 def api_stage_template_clone(target_id, source_id):
@@ -800,16 +818,27 @@ Extra notes: {context.get('notes', 'None')}
 
 Generate the email. Start with 'Subject:' then 'Body:' on a new line.""",
 
-        "trade_notice": f"""You are a professional site manager writing a notice to a trade contractor.
+        "trade_notice": f"""You are a professional site manager writing a formal notice to a trade contractor.
 Trade: {context.get('trade_name', 'Contractor')}
 Site: {site_name}
-Today: {today_str}
+Date: {today_str}
+Area / Location: {context.get('area_reference', 'Site')}
 
-Write a short, professional but firm notice covering:
+Write a short, professional but firm notice. Include:
+1. A clear statement of the issue or instruction
+2. The specific area or location this relates to: {context.get('area_reference', 'as noted on site')}
+3. A specific timeframe for compliance (use a reasonable timeframe based on urgency)
+4. A warning that failure to comply will result in {site_name} arranging the works at the contractor's cost
+5. A sign-off section with a space for the contractor to acknowledge receipt
+
+Issue / Instruction:
 {context.get('notice_content', 'General instruction to the trade.')}
 
-If the notice is about site cleanliness, include that failure to comply within the given timeframe will result in costs being charged back.
-Keep it brief — 3-5 short paragraphs max. No legal jargon. Professional tone.
+Keep it concise — 3-5 short paragraphs. Professional tone. Factual, not aggressive.
+End with:
+Issued by: {context.get('signed_by', 'Site Manager')}
+Received by: ___________________  Date: ___________  Signature: ___________
+
 Start with 'Subject:' then 'Body:' on a new line.""",
 
         "qs_dayworks": f"""You are a professional site manager informing a quantity surveyor of dayworks and agreed extras on site.
