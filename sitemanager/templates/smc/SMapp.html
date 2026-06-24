@@ -955,7 +955,7 @@ function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSe
   );
 }
 
-function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onRaiseHsIssue, onClose, onUpdatePlot, onRemoveDot }) {
+function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onRaiseHsIssue, onClose, onUpdatePlot, onRemoveDot, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
   const [savingStage, setSavingStage] = useState(false);
   const [noteDraft, setNoteDraft] = useState(plot.notes || '');
   const [savedFlash, setSavedFlash] = useState(false);
@@ -1146,13 +1146,16 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
           e('div', { style:{ fontSize:10, color:'#9ca3af', marginTop:5 } }, 'This automatically creates an entry on the H&S tab tagged with Plot ' + plot.plot_number + '.')
         ),
 
-        // Coming soon — actionable features roadmap
+        // Site Logbook (outstanding works, cleanup notices, dayworks, RFI notes, photos)
+        e('div', { style:{ marginBottom:18, borderTop:'1px solid #e5e7eb', marginTop:8, paddingTop:14 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4, paddingLeft:0 } }, '📒 Site Logbook'),
+          e(PlotLogbook, { plot, items, trades, onCreateItem, onUpdateItem, onDeleteItem })
+        ),
+
+        // Coming soon
         e('div', { style:{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:8, padding:'10px 12px' } },
-          e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 } }, 'Coming Soon for This Plot'),
-          e('div', { style:{ fontSize:11, color:'#9ca3af', lineHeight:1.8 } },
-            '📋 RFI log', e('br'),
-            '📅 Asta programme vs live comparison'
-          )
+          e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 } }, 'Coming Soon'),
+          e('div', { style:{ fontSize:11, color:'#9ca3af' } }, '📅 Asta programme vs live comparison')
         )
       ),
 
@@ -1172,7 +1175,7 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue }) {
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
   const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
@@ -1526,7 +1529,12 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       onRaiseHsIssue: onRaiseHsIssue,
       onClose: () => setSelected(null),
       onUpdatePlot: onUpdatePlot,
-      onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); }
+      onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); },
+      items: items,
+      trades: trades,
+      onCreateItem: onCreateItem,
+      onUpdateItem: onUpdateItem,
+      onDeleteItem: onDeleteItem,
     })
   );
 }
@@ -2360,6 +2368,371 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// PLOT LOGBOOK — tab inside the PlotDetailModal for items (cleanup notices,
+// outstanding works, dayworks, RFI notes) + photo upload
+// ══════════════════════════════════════════════════════════════════════════
+function PlotLogbook({ plot, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
+  const [activeType, setActiveType] = useState('outstanding_work');
+  const [showAdd, setShowAdd]       = useState(false);
+  const [newTitle, setNewTitle]     = useState('');
+  const [newDesc, setNewDesc]       = useState('');
+  const [newTrade, setNewTrade]     = useState('');
+  const [newTradeId, setNewTradeId] = useState('');
+  const [newDeadline, setNewDeadline] = useState('');
+  const [newCost, setNewCost]       = useState('');
+  const [newChargeable, setNewChargeable] = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [photos, setPhotos]         = useState([]);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const fileRef = useRef(null);
+
+  const typeLabels = {
+    outstanding_work: { label:'Outstanding Works', icon:'🔧', color:'#d97706', bg:'#fef3c7' },
+    cleanup_notice:   { label:'Clean-up Notices',  icon:'🧹', color:'#dc2626', bg:'#fee2e2' },
+    daywork:          { label:'Dayworks / Extras',  icon:'💷', color:'#2563eb', bg:'#dbeafe' },
+    rfi_note:         { label:'RFI Notes',          icon:'📋', color:'#7c3aed', bg:'#ede9fe' },
+  };
+
+  const plotItems = useMemo(() =>
+    items.filter(i => i.plot_id === plot.id && i.item_type === activeType)
+    , [items, plot.id, activeType]);
+
+  // Load photos for this plot
+  useEffect(() => {
+    api('/photos?plot_id='+plot.id).then(r=>r.json()).then(data => setPhotos(Array.isArray(data)?data:[])).catch(()=>{});
+  }, [plot.id]);
+
+  async function addItem() {
+    if (!newTitle.trim()) return;
+    setSaving(true);
+    const trade = trades.find(t=>t.id===newTradeId);
+    await onCreateItem({
+      plot_id: plot.id,
+      item_type: activeType,
+      title: newTitle.trim(),
+      description: newDesc.trim(),
+      trade_id: newTradeId||null,
+      trade_name: trade?trade.name:newTrade,
+      deadline_date: newDeadline||null,
+      estimated_cost: newCost?parseFloat(newCost):null,
+      chargeable: newChargeable,
+      priority: 'medium',
+    });
+    setNewTitle(''); setNewDesc(''); setNewTrade(''); setNewTradeId(''); setNewDeadline(''); setNewCost(''); setNewChargeable(false);
+    setShowAdd(false);
+    setSaving(false);
+  }
+
+  async function handlePhotoUpload(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    setPhotoLoading(true);
+    const reader = new FileReader();
+    reader.onload = async e2 => {
+      const b64 = e2.target.result.split(',')[1];
+      const r = await api('/photos', { method:'POST', body:JSON.stringify({
+        plot_id: plot.id,
+        image_b64: b64,
+        mime_type: file.type,
+        taken_at: new Date().toISOString(),
+        caption: '',
+      })}).then(r=>r.json());
+      if (r.ok && r.photo) setPhotos(prev=>[r.photo,...prev]);
+      setPhotoLoading(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const tc = typeLabels[activeType];
+  const inp = { padding:'7px 9px', border:'1px solid #d1d5db', borderRadius:7, fontSize:12, color:'#111827', background:'#fff', width:'100%' };
+
+  return e('div',{style:{padding:'0 0 12px 0'}},
+
+    // Type tab bar
+    e('div',{style:{display:'flex',gap:4,padding:'12px 18px 10px',flexWrap:'wrap'}},
+      ...Object.entries(typeLabels).map(([type, cfg])=>{
+        const count = items.filter(i=>i.plot_id===plot.id&&i.item_type===type&&i.status==='open').length;
+        return e('button',{key:type, onClick:()=>{setActiveType(type);setShowAdd(false);},
+          style:{padding:'5px 12px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+            background:activeType===type?cfg.color:'#f3f4f6',
+            color:activeType===type?'#fff':'#374151',
+            border:'1px solid '+(activeType===type?cfg.color:'#d1d5db')}
+        }, cfg.icon+' '+cfg.label+(count?' ('+count+')':''));
+      })
+    ),
+
+    // Add item form
+    e('div',{style:{padding:'0 18px 10px'}},
+      !showAdd
+        ? e('button',{onClick:()=>setShowAdd(true),style:{width:'100%',padding:'7px',background:'#f9fafb',border:'1px dashed #d1d5db',borderRadius:7,color:'#6b7280',fontSize:12,cursor:'pointer',textAlign:'left'}},
+            '+ Add '+tc.label.slice(0,-1))
+        : e('div',{style:{background:tc.bg,border:'1px solid',borderColor:tc.color+'40',borderRadius:8,padding:'12px'}},
+            e('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+              e('input',{type:'text',value:newTitle,onChange:ev=>setNewTitle(ev.target.value),placeholder:'Title / summary *',style:inp}),
+              e('textarea',{value:newDesc,onChange:ev=>setNewDesc(ev.target.value),placeholder:'Details (optional)',rows:2,style:Object.assign({},inp,{resize:'vertical',fontFamily:'inherit'})}),
+              e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+                e('select',{value:newTradeId,onChange:ev=>setNewTradeId(ev.target.value),style:inp},
+                  e('option',{value:''},'— Trade (optional) —'),
+                  ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+                ),
+                e('input',{type:'date',value:newDeadline,onChange:ev=>setNewDeadline(ev.target.value),style:inp,placeholder:'Deadline'})
+              ),
+              activeType==='daywork' && e('input',{type:'number',value:newCost,onChange:ev=>setNewCost(ev.target.value),placeholder:'Estimated cost £',style:inp}),
+              activeType==='cleanup_notice' && e('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#374151',cursor:'pointer'}},
+                e('input',{type:'checkbox',checked:newChargeable,onChange:()=>setNewChargeable(p=>!p)}),
+                'Include chargeable warning'
+              ),
+              e('div',{style:{display:'flex',gap:6}},
+                e('button',{onClick:addItem,disabled:saving||!newTitle.trim(),style:{padding:'6px 14px',background:tc.color,border:'none',borderRadius:6,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},saving?'Saving...':'Add'),
+                e('button',{onClick:()=>setShowAdd(false),style:{padding:'6px 10px',background:'#e5e7eb',border:'none',borderRadius:6,color:'#6b7280',fontSize:12,cursor:'pointer'}},'Cancel')
+              )
+            )
+          )
+    ),
+
+    // Items list
+    plotItems.length === 0
+      ? e('div',{style:{padding:'8px 18px 4px',fontSize:11,color:'#9ca3af'}},'No '+tc.label.toLowerCase()+' logged for this plot.')
+      : e('div',{style:{padding:'0 18px',display:'flex',flexDirection:'column',gap:6}},
+          ...plotItems.map(item=>
+            e('div',{key:item.id,style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px',borderLeft:'3px solid '+tc.color}},
+              e('div',{style:{display:'flex',alignItems:'flex-start',gap:8}},
+                e('div',{style:{flex:1}},
+                  e('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}},
+                    e('span',{style:{fontSize:10,fontWeight:700,color:'#9ca3af'}},item.ref_number),
+                    e('span',{style:{fontSize:12,fontWeight:700,color:'#111827'}},item.title),
+                    item.trade_name&&e('span',{style:{fontSize:10,color:'#6b7280'}},'— '+item.trade_name),
+                    item.deadline_date&&e('span',{style:{fontSize:10,color:new Date(item.deadline_date)<new Date()?'#dc2626':'#6b7280'}},'📅 '+item.deadline_date),
+                    item.estimated_cost&&e('span',{style:{fontSize:10,fontWeight:700,color:'#2563eb'}},'£'+parseFloat(item.estimated_cost).toFixed(0)),
+                    item.chargeable&&e('span',{style:{fontSize:9,fontWeight:700,color:'#dc2626',background:'#fee2e2',padding:'1px 5px',borderRadius:4}},'CHARGEABLE')
+                  ),
+                  item.description&&e('div',{style:{fontSize:11,color:'#6b7280',marginTop:2}},item.description)
+                ),
+                e('div',{style:{display:'flex',gap:4,alignItems:'center',flexShrink:0}},
+                  e('select',{value:item.status,onChange:ev=>onUpdateItem(item.id,{status:ev.target.value}),
+                    style:{fontSize:10,padding:'2px 5px',border:'1px solid #d1d5db',borderRadius:4,color:'#374151',background:'#fff',cursor:'pointer'}},
+                    ['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+                  ),
+                  e('button',{onClick:()=>onDeleteItem(item.id),style:{padding:'2px 6px',background:'#fff',border:'1px solid #fca5a5',borderRadius:4,color:'#dc2626',fontSize:10,cursor:'pointer'}},'✕')
+                )
+              )
+            )
+          )
+        ),
+
+    // Photos section
+    e('div',{style:{padding:'14px 18px 0',borderTop:'1px solid #e5e7eb',marginTop:12}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+        e('div',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'📷 Site Photos ('+photos.length+')'),
+        e('button',{onClick:()=>fileRef.current.click(),disabled:photoLoading,
+          style:{padding:'4px 10px',background:'#f97316',border:'none',borderRadius:5,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer'}},
+          photoLoading?'Uploading...':'+ Add Photo')
+      ),
+      e('input',{ref:fileRef,type:'file',accept:'image/*',capture:'environment',style:{display:'none'},onChange:handlePhotoUpload}),
+      photos.length===0
+        ? e('div',{style:{fontSize:11,color:'#9ca3af'}},'No photos yet for this plot.')
+        : e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}},
+            ...photos.map(ph=>
+              e('div',{key:ph.id,style:{position:'relative'}},
+                e('img',{src:ph.public_url,alt:ph.caption||'Site photo',style:{width:'100%',height:80,objectFit:'cover',borderRadius:6,border:'1px solid #e5e7eb'}}),
+                e('div',{style:{fontSize:8,color:'#9ca3af',textAlign:'center',marginTop:2}},new Date(ph.taken_at).toLocaleDateString('en-GB'))
+              )
+            )
+          )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMMS TAB — AI-powered communication generation
+// ══════════════════════════════════════════════════════════════════════════
+function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateItem, onUpdateItem, onDeleteItem, onGenerateComm }) {
+  const [activeSection, setActiveSection] = useState('generate');
+  const [commType, setCommType]   = useState('daily_summary');
+  const [tradeSel, setTradeSel]   = useState('');
+  const [notes, setNotes]         = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [output, setOutput]       = useState('');
+  const [copied, setCopied]       = useState(false);
+  const [error, setError]         = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterTrade, setFilterTrade] = useState('');
+  const [filterStatus, setFilterStatus] = useState('open');
+
+  const sortedPlots = useMemo(()=>[...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)),[plots]);
+  const plotNumberMap = useMemo(()=>{const m={};plots.forEach(p=>{m[p.id]=p.plot_number;});return m;},[plots]);
+
+  const allItems = useMemo(() => {
+    let i = items;
+    if (filterType!=='all') i = i.filter(x=>x.item_type===filterType);
+    if (filterTrade) i = i.filter(x=>x.trade_name===filterTrade||x.trade_id===filterTrade);
+    if (filterStatus!=='all') i = i.filter(x=>x.status===filterStatus);
+    return i.map(x=>Object.assign({},x,{plot_number:plotNumberMap[x.plot_id]||'?'}));
+  }, [items, filterType, filterTrade, filterStatus, plotNumberMap]);
+
+  const typeLabels = {
+    outstanding_work:'Outstanding Works', cleanup_notice:'Clean-up Notices',
+    daywork:'Dayworks/Extras', rfi_note:'RFI Notes'
+  };
+
+  const statusColor = {open:'#d97706',issued:'#2563eb',actioned:'#16a34a',closed:'#9ca3af'};
+
+  async function generate() {
+    setGenerating(true); setOutput(''); setError('');
+    try {
+      const text = await onGenerateComm(commType, {
+        notes,
+        trade_name: tradeSel ? (trades.find(t=>t.id===tradeSel)||{}).name : '',
+        notice_content: commType==='trade_notice' ? notes : '',
+        plot_number_map: plotNumberMap,
+      });
+      setOutput(text);
+    } catch(ex) { setError(ex.message||'Generation failed — check API connection.'); }
+    setGenerating(false);
+  }
+
+  function copyOutput() {
+    navigator.clipboard.writeText(output).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+  }
+
+  const commTypes = [
+    {id:'daily_summary',    label:'📋 Daily Report',      desc:'Progress update for your line manager'},
+    {id:'weekly_summary',   label:'📊 Weekly Summary',    desc:'Stakeholder progress report'},
+    {id:'trade_notice',     label:'🧹 Trade Notice',      desc:'Cleanup notice or instruction to a contractor'},
+    {id:'qs_dayworks',      label:'💷 QS Dayworks',       desc:'Inform the QS of agreed extras/dayworks'},
+    {id:'progress_report',  label:'🏗 Progress Report',   desc:'Formal structured site progress report'},
+  ];
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}},
+
+    // Section tabs
+    e('div',{style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'0 16px',display:'flex',gap:0,flexShrink:0}},
+      ...([['generate','✉️ Generate Communication'],['logbook','📒 All Site Items']]).map(([id,label])=>
+        e('button',{key:id,onClick:()=>setActiveSection(id),
+          style:{padding:'10px 16px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',
+            background:'transparent',color:activeSection===id?'#f97316':'#6b7280',
+            borderBottom:activeSection===id?'2px solid #f97316':'2px solid transparent'}
+        },label)
+      )
+    ),
+
+    // ── GENERATE ──────────────────────────────────────────────────────────
+    activeSection==='generate' && e('div',{style:{flex:1,overflow:'auto',display:'flex',gap:0}},
+
+      // Left: controls
+      e('div',{style:{width:280,flexShrink:0,borderRight:'1px solid #e5e7eb',padding:16,overflowY:'auto'}},
+        e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:12}},'Choose what to generate'),
+        ...commTypes.map(ct=>
+          e('div',{key:ct.id,onClick:()=>setCommType(ct.id),
+            style:{padding:'10px 12px',borderRadius:8,border:'1px solid',marginBottom:6,cursor:'pointer',
+              borderColor:commType===ct.id?'#f97316':'#e5e7eb',
+              background:commType===ct.id?'#fff7ed':'#fff'}
+          },
+            e('div',{style:{fontSize:12,fontWeight:700,color:commType===ct.id?'#f97316':'#111827'}},ct.label),
+            e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:2}},ct.desc)
+          )
+        ),
+
+        commType==='trade_notice' && e('div',{style:{marginTop:10}},
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:5}},'Trade / Contractor'),
+          e('select',{value:tradeSel,onChange:ev=>setTradeSel(ev.target.value),style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+            e('option',{value:''},'— Select trade —'),
+            ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+          )
+        ),
+
+        e('div',{style:{marginTop:12}},
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:5}},'Additional notes for the AI'),
+          e('textarea',{value:notes,onChange:ev=>setNotes(ev.target.value),rows:4,
+            placeholder:'Any extra context — specific plots to mention, particular issues, tone adjustments...',
+            style:{width:'100%',padding:'7px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827',fontFamily:'inherit',resize:'vertical'}
+          })
+        ),
+
+        e('button',{onClick:generate,disabled:generating,
+          style:{width:'100%',padding:'10px',marginTop:12,background:generating?'#9ca3af':'#f97316',border:'none',borderRadius:8,color:'#fff',fontSize:13,fontWeight:700,cursor:generating?'default':'pointer'}
+        },generating?'⏳ Generating...':'✨ Generate with AI')
+      ),
+
+      // Right: output
+      e('div',{style:{flex:1,padding:16,overflowY:'auto',display:'flex',flexDirection:'column',gap:10}},
+        error && e('div',{style:{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#dc2626'}},
+          '⚠ '+error
+        ),
+        output
+          ? e('div',null,
+              e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+                e('div',{style:{fontSize:12,fontWeight:700,color:'#374151'}},'Generated Output — copy and paste into your email or message'),
+                e('button',{onClick:copyOutput,style:{padding:'6px 14px',background:copied?'#16a34a':'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},
+                  copied?'✓ Copied!':'📋 Copy')
+              ),
+              e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'14px 16px',fontSize:12,color:'#111827',lineHeight:1.7,whiteSpace:'pre-wrap',fontFamily:'Georgia,serif'}},output)
+            )
+          : !generating && e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',color:'#d1d5db',gap:12}},
+              e('div',{style:{fontSize:48}},'✉️'),
+              e('div',{style:{fontSize:13,color:'#9ca3af',textAlign:'center',maxWidth:300}},'Select a communication type and click Generate. The AI reads your live site data — stages, H&S log, materials, and logged items — and drafts a professional email for you to copy and send.')
+            )
+      )
+    ),
+
+    // ── LOGBOOK ───────────────────────────────────────────────────────────
+    activeSection==='logbook' && e('div',{style:{flex:1,overflow:'auto',padding:16}},
+      e('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}},
+        e('select',{value:filterType,onChange:ev=>setFilterType(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:'all'},'All Types'),
+          ...Object.entries(typeLabels).map(([k,v])=>e('option',{key:k,value:k},v))
+        ),
+        e('select',{value:filterTrade,onChange:ev=>setFilterTrade(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:''},'All Trades'),
+          ...trades.map(t=>e('option',{key:t.id,value:t.name},t.name))
+        ),
+        e('select',{value:filterStatus,onChange:ev=>setFilterStatus(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:'all'},'All Statuses'),
+          ...['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+        ),
+        e('span',{style:{fontSize:11,color:'#9ca3af'}},allItems.length+' items')
+      ),
+      allItems.length===0
+        ? e('div',{style:{textAlign:'center',padding:40,color:'#9ca3af'}},
+            e('div',{style:{fontSize:36,marginBottom:8}},'📒'),
+            e('div',{style:{fontSize:13}},filterStatus==='open'?'No open items — all clear!':'No items match this filter.')
+          )
+        : e('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+            ...allItems.map(item=>{
+              const tc = {outstanding_work:'#d97706',cleanup_notice:'#dc2626',daywork:'#2563eb',rfi_note:'#7c3aed'}[item.item_type]||'#6b7280';
+              const tl = typeLabels[item.item_type]||item.item_type;
+              return e('div',{key:item.id,style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid '+tc}},
+                e('div',{style:{display:'flex',alignItems:'flex-start',gap:10}},
+                  e('div',{style:{flex:1}},
+                    e('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:2}},
+                      e('span',{style:{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase'}},item.ref_number),
+                      e('span',{style:{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:4,background:tc+'15',color:tc}},tl),
+                      e('span',{style:{fontSize:11,fontWeight:700,color:'#111827'}},item.title),
+                      e('span',{style:{fontSize:10,color:'#6b7280'}},'Plot '+item.plot_number),
+                      item.trade_name&&e('span',{style:{fontSize:10,color:tc}},item.trade_name)
+                    ),
+                    item.description&&e('div',{style:{fontSize:11,color:'#6b7280',marginBottom:3}},item.description),
+                    e('div',{style:{display:'flex',gap:10,fontSize:10,color:'#9ca3af'}},
+                      item.deadline_date&&e('span',null,'📅 '+item.deadline_date),
+                      item.estimated_cost&&e('span',{style:{color:'#2563eb',fontWeight:700}},'£'+parseFloat(item.estimated_cost).toFixed(0)),
+                      item.chargeable&&e('span',{style:{color:'#dc2626',fontWeight:700}},'CHARGEABLE'),
+                      e('span',null,new Date(item.created_at).toLocaleDateString('en-GB'))
+                    )
+                  ),
+                  e('select',{value:item.status,onChange:ev=>onUpdateItem(item.id,{status:ev.target.value}),
+                    style:{fontSize:10,padding:'3px 6px',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',background:'#fff',cursor:'pointer'}},
+                    ['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+                  )
+                )
+              );
+            })
+          )
+    )
+  );
+}
+
 function App() {
   const [tab,setTab]               = useState('programme');
   const [plots,setPlots]           = useState([]);
@@ -2368,6 +2741,7 @@ function App() {
   const [inspections,setInspections]= useState([]);
   const [hsLog,setHsLog]           = useState([]);
   const [materials,setMaterials]   = useState([]);
+  const [items,setItems]           = useState([]);
   const [materialOrders,setMaterialOrders] = useState([]);
   const [trades,setTrades]               = useState([]);
   const [stageTemplates,setStageTemplates] = useState([]);
@@ -2412,6 +2786,7 @@ function App() {
       api('/material-orders').then(r=>r.json()).catch(()=>[]),
       api('/trades').then(r=>r.json()).catch(()=>[]),
       api('/stage-templates').then(r=>r.json()).catch(()=>[]),
+      api('/items').then(r=>r.json()).catch(()=>[]),
     ]).then(function(res){
       setPlots(Array.isArray(res[0])?res[0]:[]);
       setStageDefs(Array.isArray(res[1])?res[1]:[]);
@@ -2422,6 +2797,7 @@ function App() {
       setMaterialOrders(Array.isArray(res[6])?res[6]:[]);
       setTrades(Array.isArray(res[7])?res[7]:[]);
       setStageTemplates(Array.isArray(res[8])?res[8]:[]);
+      setItems(Array.isArray(res[9])?res[9]:[]);
       setLoading(false);
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
@@ -2520,11 +2896,40 @@ function App() {
     catch (ex) { console.error('Update log failed', ex); }
   }
 
+  // ── Items handlers ─────────────────────────────────────────────────────
+  async function onCreateItem(payload) {
+    try {
+      const r = await api('/items', { method:'POST', body:JSON.stringify(payload) }).then(r=>r.json());
+      if (r.ok && r.item) setItems(prev => [r.item, ...prev]);
+      return r.item;
+    } catch(ex) { console.error('Create item failed', ex); return null; }
+  }
+
+  async function onUpdateItem(itemId, fields) {
+    setItems(prev => prev.map(i => i.id===itemId ? Object.assign({},i,fields) : i));
+    try { await api('/items/'+itemId, { method:'PATCH', body:JSON.stringify(fields) }); }
+    catch(ex) { console.error('Update item failed', ex); }
+  }
+
+  async function onDeleteItem(itemId) {
+    setItems(prev => prev.filter(i => i.id !== itemId));
+    try { await api('/items/'+itemId, { method:'DELETE' }); }
+    catch(ex) { console.error('Delete item failed', ex); }
+  }
+
+  // ── AI communication generation ────────────────────────────────────────
+  async function onGenerateComm(type, context) {
+    const r = await api('/ai/generate', { method:'POST', body:JSON.stringify({ type, context }) }).then(r=>r.json());
+    if (!r.ok) throw new Error(r.error || 'Generation failed');
+    return r.text;
+  }
+
   const TABS=[
     {id:'programme', label:'📅  Programme'},
     {id:'map',       label:'🗺️  Site Map'},
     {id:'materials', label:'📦  Materials'},
     {id:'stages',    label:'⚙️  Stage Editor'},
+    {id:'comms',     label:'✉️  Comms'},
     {id:'hs',        label:'⛑️  H&S'},
   ];
 
@@ -2567,12 +2972,14 @@ function App() {
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades})
             :tab==='map'
-              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue})
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue,items,trades,onCreateItem,onUpdateItem,onDeleteItem})
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
                 :tab==='stages'
                   ?e(StageEditorTab,{stageDefs,setStageDefs,plots,trades,stageTemplates,onUpdatePlot})
-                  :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
+                  :tab==='comms'
+                    ?e(CommsTab,{plots,items,trades,hsLog,materials,stageDefs,onCreateItem,onUpdateItem,onDeleteItem,onGenerateComm})
+                    :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
     ),
     // Footer
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
