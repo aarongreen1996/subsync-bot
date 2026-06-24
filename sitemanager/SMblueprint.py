@@ -94,7 +94,7 @@ def api_plots():
 @_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date"}}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url"}}
     if not updates:
         return jsonify({"ok": False, "error": "No valid fields"}), 400
     try:
@@ -108,8 +108,20 @@ def api_plot_update(plot_id):
 @smc_bp.route("/api/stage-defs")
 @_require_auth
 def api_stage_defs():
+    template_id = request.args.get("template_id")
+    all_templates = request.args.get("all") == "1"
     try:
-        r = supabase.table("smc_stage_defs").select("*").eq("project_id", SMC_PROJECT_ID).order("stage_order").execute()
+        q = supabase.table("smc_stage_defs").select("*").eq("project_id", SMC_PROJECT_ID)
+        if template_id:
+            q = q.eq("template_id", template_id)
+        elif not all_templates:
+            # Default: only return the House (Standard) template — the primary programme template.
+            # This prevents 178 duplicate stage names appearing in dropdowns and the Gantt.
+            default_tpl = supabase.table("smc_stage_templates") \
+                .select("id").eq("is_default", True).limit(1).execute()
+            if default_tpl.data:
+                q = q.eq("template_id", default_tpl.data[0]["id"])
+        r = q.order("stage_order").execute()
         return jsonify(r.data or [])
     except Exception as e:
         return err(e)
@@ -185,7 +197,7 @@ def api_hs_inspections():
 @_require_auth
 def api_hs_inspection_update(insp_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"last_date", "next_date", "responsible_person"}}
+    updates = {k: v for k, v in data.items() if k in {"last_date", "next_date", "responsible_person", "frequency_editable"}}
     try:
         supabase.table("smc_hs_inspections").update(updates).eq("id", insp_id).execute()
         return ok()
@@ -849,5 +861,34 @@ Format as a clear report with headings. Professional, concise.""",
         )
         text = msg.content[0].text if msg.content else ""
         return jsonify({"ok": True, "text": text})
+    except Exception as e:
+        return err(e)
+
+
+# ── Certificate uploads (CML/CRC) ─────────────────────────────────────────────
+@smc_bp.route("/api/plots/<plot_id>/upload-cert", methods=["POST"])
+@_require_auth
+def api_plot_upload_cert(plot_id):
+    """Upload a CML or CRC certificate PDF/image and store public URL on the plot."""
+    data = request.get_json() or {}
+    cert_type = data.get("cert_type")   # 'cml' or 'crc'
+    image_b64 = data.get("image_b64", "")
+    mime_type = data.get("mime_type", "application/pdf")
+    if not plot_id or not image_b64 or cert_type not in ("cml", "crc"):
+        return jsonify({"ok": False, "error": "plot_id, cert_type (cml/crc), and image_b64 required"}), 400
+    try:
+        import base64, uuid, datetime as dt
+        img_bytes = base64.b64decode(image_b64)
+        ext = "pdf" if "pdf" in mime_type else mime_type.split("/")[-1]
+        ts = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        uid = str(uuid.uuid4())[:8]
+        path = f"certs/{plot_id}/{cert_type}_{ts}_{uid}.{ext}"
+        supabase.storage.from_("smc-photos").upload(
+            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
+        )
+        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
+        field = "cml_cert_url" if cert_type == "cml" else "crc_cert_url"
+        supabase.table("smc_plots").update({field: public_url}).eq("id", plot_id).execute()
+        return jsonify({"ok": True, "url": public_url})
     except Exception as e:
         return err(e)
