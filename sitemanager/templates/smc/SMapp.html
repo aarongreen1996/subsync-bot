@@ -1800,6 +1800,22 @@ function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates
         style:{padding:'5px 12px',background:'#1e40af',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
       },cloning===selectedTemplateId?'Cloning...':'📋 Clone from House'),
       e('button',{
+        onClick: async () => {
+          const name = prompt('Enter programme name (e.g. "3-Bed House", "Townhouse"):');
+          if (!name||!name.trim()) return;
+          try {
+            const r = await api('/stage-templates',{method:'POST',body:JSON.stringify({name:name.trim(),description:'Custom programme',is_default:false})}).then(r=>r.json());
+            if(r.ok&&r.template) {
+              const fresh = await api('/stage-templates').then(r=>r.json());
+              // Note: setStageTemplates not available here directly — reload page
+              alert('Template "'+name.trim()+'" created! The page will refresh to show it.');
+              window.location.reload();
+            }
+          } catch(ex) { alert('Failed: '+ex.message); }
+        },
+        style:{padding:'5px 12px',background:'#6b7280',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
+      },'+ New Programme'),
+      e('button',{
         onClick:()=>{setShowPlots(p=>!p);setAddingStage(false);},
         style:{padding:'5px 12px',background:showPlots?'#7c3aed':'#e5e7eb',border:'1px solid '+(showPlots?'#7c3aed':'#d1d5db'),borderRadius:6,color:showPlots?'#fff':'#374151',fontSize:11,fontWeight:600,cursor:'pointer'}
       },'🏠 Plot Assignments '+(showPlots?'▴':'▾')),
@@ -2212,6 +2228,280 @@ function AddMaterialModal({ stageDefs, onClose, onCreate, onUpdate, editing }) {
 // ══════════════════════════════════════════════════════════════════════════
 // MATERIAL CARD — expandable per-plot status breakdown
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// SUPPLIER EMAIL MODAL
+// ══════════════════════════════════════════════════════════════════════════
+function SupplierEmailModal({ material, plots, schedules, workingDays, orders, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const [includePlots, setIncludePlots] = useState('all'); // 'all' | 'flagged' | 'ordered'
+
+  const rows = useMemo(() => {
+    const today = new Date();
+    return plots
+      .map(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[material.linked_stage_id] : null;
+        const order = orders.find(o => o.material_id===material.id && o.plot_id===plot.id);
+        if (!stageSched) return null;
+        const stageDate = workingDays[stageSched.start];
+        if (!stageDate) return null;
+        const daysUntil = stageSched.start - Math.floor((today - new Date(workingDays[0])) / 86400000 * 5/7);
+        const leadDays = material.lead_time_weeks * 5;
+        let status = 'not_due';
+        if (order?.status === 'delivered') status = 'delivered';
+        else if (order?.status === 'ordered') status = 'ordered';
+        else if (stageSched.start - daysUntil <= leadDays) status = 'flagged';
+        return { plot, stageDate, order, status };
+      })
+      .filter(r => {
+        if (!r) return false;
+        if (includePlots === 'flagged') return r.status === 'flagged';
+        if (includePlots === 'ordered') return r.status === 'ordered';
+        return r.status !== 'delivered'; // exclude already delivered
+      })
+      .sort((a,b) => a.stageDate - b.stageDate);
+  }, [plots, schedules, material, orders, workingDays, includePlots]);
+
+  const suppName = material.supplier_name || '[Supplier Name]';
+  const suppEmail = material.supplier_email || '[supplier@email.com]';
+  const site = 'SS17 Phase 1C — Sandle Park, Fordingbridge';
+
+  const tableRows = rows.map(r =>
+    `| ${r.order?.status === 'ordered' ? r.order.ref_number || material.po_number || '—' : '—'} | Plot ${r.plot.plot_number} | ${r.plot.house_type} | ${r.plot.address} | ${r.stageDate.toLocaleDateString('en-GB')} | ${r.order?.delivery_date || 'TBC'} |`
+  ).join('\n');
+
+  const emailText = `Subject: Delivery Schedule Confirmation — ${material.material_name} — ${site}
+
+Dear ${suppName},
+
+I hope this finds you well. Please find below our upcoming delivery requirements for ${material.material_name} at ${site}.
+
+Could you please review the schedule below and confirm that all delivery dates can be met, or advise of any that cannot be achieved as soon as possible so we can plan accordingly.
+
+Material: ${material.material_name}
+Supplier: ${suppName}
+Lead Time: ${material.lead_time_weeks} week(s)
+${material.po_number ? 'PO Number: ' + material.po_number : ''}
+
+DELIVERY SCHEDULE:
+─────────────────────────────────────────────────────────
+| PO/Ref | Plot | House Type | Address | Stage Due | Delivery Date |
+|--------|------|------------|---------|-----------|---------------|
+${tableRows || '| — | No plots flagged for this filter | | | | |'}
+─────────────────────────────────────────────────────────
+
+Please reply confirming each delivery date or advising of any changes. If you have any queries regarding quantities or specifications, please do not hesitate to contact me.
+
+Many thanks,
+
+Aaron Green
+Site Manager — Pennyfarthing Homes
+SS17 Phase 1C, Sandle Park, Fordingbridge`;
+
+  function copy() {
+    navigator.clipboard.writeText(emailText).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  return e('div', { style:{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }, onClick:onClose },
+    e('div', { style:{ width:700, maxWidth:'95%', maxHeight:'90vh', overflowY:'auto', background:'#fff', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.25)' }, onClick:ev=>ev.stopPropagation() },
+      e('div', { style:{ padding:'16px 20px', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center' } },
+        e('div', null,
+          e('div', { style:{ fontSize:16, fontWeight:700, color:'#111827' } }, '📧 Supplier Email — '+material.material_name),
+          e('div', { style:{ fontSize:11, color:'#9ca3af', marginTop:2 } }, suppEmail)
+        ),
+        e('button', { onClick:onClose, style:{ background:'#e5e7eb', border:'none', borderRadius:'50%', width:28, height:28, cursor:'pointer', color:'#6b7280', fontSize:16 } }, '×')
+      ),
+      e('div', { style:{ padding:'14px 20px 8px', borderBottom:'1px solid #e5e7eb', display:'flex', gap:8, alignItems:'center' } },
+        e('span', { style:{ fontSize:11, color:'#374151', fontWeight:600 } }, 'Show plots:'),
+        ...[ ['all','All (excl. delivered)'], ['flagged','⚠ Flagged only'], ['ordered','Ordered only'] ].map(([v,l]) =>
+          e('button', { key:v, onClick:()=>setIncludePlots(v), style:{ padding:'4px 10px', borderRadius:5, fontSize:11, cursor:'pointer', fontWeight:600,
+            background:includePlots===v?'#f97316':'#e5e7eb', color:includePlots===v?'#fff':'#374151', border:'none' } }, l)
+        ),
+        e('span', { style:{ marginLeft:'auto', fontSize:11, color:'#9ca3af' } }, rows.length + ' rows')
+      ),
+      e('div', { style:{ padding:16 } },
+        e('div', { style:{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'14px 16px', fontFamily:'monospace', fontSize:11, whiteSpace:'pre-wrap', lineHeight:1.7, color:'#374151', maxHeight:400, overflowY:'auto' } }, emailText)
+      ),
+      e('div', { style:{ padding:'12px 20px', borderTop:'1px solid #e5e7eb', display:'flex', gap:8, justifyContent:'flex-end' } },
+        e('button', { onClick:onClose, style:{ padding:'8px 16px', background:'#fff', border:'1px solid #d1d5db', borderRadius:7, color:'#374151', fontSize:13, cursor:'pointer' } }, 'Close'),
+        e('button', { onClick:copy, style:{ padding:'8px 18px', background:copied?'#16a34a':'#111827', border:'none', borderRadius:7, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' } }, copied ? '✓ Copied!' : '📋 Copy Email')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR VIEW
+// ══════════════════════════════════════════════════════════════════════════
+function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx, orders, onSetOrder }) {
+  const [weeks, setWeeks] = useState(6);
+  const [startIdx, setStartIdx] = useState(null);
+  const [supplierModal, setSupplierModal] = useState(null);
+  const scrollRef = useRef(null);
+  const DAY_W = 36;
+  const ROW_H = 36;
+  const HDR_H = 54;
+  const LEFT_W = 220;
+
+  // Snap to Monday of current week
+  const mondayIdx = useMemo(() => {
+    for (let i = todayIdx; i >= 0; i--) {
+      if (workingDays[i] && workingDays[i].getDay() === 1) return i;
+    }
+    return todayIdx;
+  }, [todayIdx, workingDays]);
+
+  useEffect(() => { if (startIdx === null) setStartIdx(mondayIdx); }, [mondayIdx]);
+  useEffect(() => {
+    if (scrollRef.current && todayIdx >= 0) {
+      const daysSinceStart = (startIdx || mondayIdx);
+      scrollRef.current.scrollLeft = Math.max(0, (todayIdx - daysSinceStart) * DAY_W - 100);
+    }
+  }, [startIdx, todayIdx]);
+
+  const start = startIdx ?? mondayIdx;
+  const rangeEnd = start + weeks * 5;
+  const rangeDays = workingDays.slice(start, rangeEnd);
+
+  const monthLabels = useMemo(() => {
+    const out = []; let pm = -1;
+    rangeDays.forEach((d,i) => { if(d.getMonth()!==pm){out.push({i,label:d.toLocaleDateString('en-GB',{month:'short',year:'numeric'})});pm=d.getMonth();} });
+    return out;
+  }, [rangeDays]);
+
+  // For each material, compute which plots need ordering in this window
+  const matRows = useMemo(() => materials.map(mat => {
+    const cells = rangeDays.map((d, i) => {
+      const absIdx = start + i;
+      const plotsThisDay = plots.map(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[mat.linked_stage_id] : null;
+        if (!stageSched) return null;
+        // Show a dot on the day this plot's material should be ordered (stage_start - lead_days)
+        const orderDueIdx = stageSched.start - mat.lead_time_weeks * 5;
+        const stageDueIdx = stageSched.start;
+        const order = orders.find(o=>o.material_id===mat.id&&o.plot_id===plot.id);
+        if (Math.abs(absIdx - orderDueIdx) < 1) return { plot, type:'order_due', order };
+        if (Math.abs(absIdx - stageDueIdx) < 1) return { plot, type:'stage_due', order };
+        return null;
+      }).filter(Boolean);
+      return { dayIdx: absIdx, plots: plotsThisDay };
+    });
+    const allOrders = orders.filter(o=>o.material_id===mat.id);
+    const flaggedCount = plots.filter(plot => {
+      const sc = schedules[plot.id];
+      const stageSched = sc ? sc[mat.linked_stage_id] : null;
+      if (!stageSched) return false;
+      const order = allOrders.find(o=>o.plot_id===plot.id);
+      if (order?.status==='ordered'||order?.status==='delivered') return false;
+      return stageSched.start - todayIdx <= mat.lead_time_weeks * 5;
+    }).length;
+    return { mat, cells, flaggedCount };
+  }), [materials, plots, schedules, orders, rangeDays, start, todayIdx]);
+
+  if (!materials.length) return e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+    e('div',{style:{fontSize:36,marginBottom:8}},'📅'),
+    e('div',{style:{fontSize:14}}, 'No material call-offs set up yet.')
+  );
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%'}},
+
+    // Controls
+    e('div',{style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'8px 14px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
+      e('span',{style:{fontSize:12,fontWeight:700,color:'#374151'}},'Delivery Schedule — '+weeks+' weeks'),
+      e('div',{style:{display:'flex',gap:3}},
+        ...[2,4,6,8,10].map(w=>e('button',{key:w,onClick:()=>setWeeks(w),style:{padding:'3px 8px',borderRadius:5,fontSize:10,fontWeight:600,cursor:'pointer',border:'none',background:weeks===w?'#f97316':'#e5e7eb',color:weeks===w?'#fff':'#374151'}},w+'w'))
+      ),
+      e('div',{style:{flex:1}}),
+      e('span',{style:{fontSize:10,color:'#9ca3af'}},'⬤ = Order due · ◯ = Stage due'),
+      e('button',{onClick:()=>window.print(),style:{padding:'5px 12px',background:'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'🖨 Print')
+    ),
+
+    // Calendar grid
+    e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
+
+      // Left label column
+      e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #d1d5db',display:'flex',flexDirection:'column'}},
+        e('div',{style:{height:HDR_H,background:'#e5e7eb',borderBottom:'1px solid #d1d5db',display:'flex',alignItems:'center',padding:'0 10px',fontSize:10,fontWeight:700,color:'#374151'}},'Material'),
+        e('div',{style:{flex:1,overflowY:'auto'}},
+          ...matRows.map(({mat,flaggedCount})=>
+            e('div',{key:mat.id,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 10px',gap:8,borderBottom:'1px solid #e5e7eb',background:'#f9fafb'}},
+              e('div',{style:{flex:1,minWidth:0}},
+                e('div',{style:{fontSize:11,fontWeight:700,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},mat.material_name),
+                e('div',{style:{fontSize:9,color:'#9ca3af'}},mat.lead_time_weeks+'wk lead · '+(mat.supplier_name||'No supplier'))
+              ),
+              flaggedCount>0 && e('span',{style:{fontSize:9,fontWeight:700,color:'#dc2626',background:'#fee2e2',padding:'1px 5px',borderRadius:8,flexShrink:0}},'⚠'+flaggedCount),
+              e('button',{onClick:()=>setSupplierModal(mat),title:'Generate supplier email',style:{padding:'2px 6px',background:'#e5e7eb',border:'none',borderRadius:4,color:'#374151',fontSize:10,cursor:'pointer',flexShrink:0}},'📧')
+            )
+          )
+        )
+      ),
+
+      // Calendar scroll area
+      e('div',{ref:scrollRef,style:{flex:1,overflow:'auto'}},
+        e('div',{style:{width:rangeDays.length*DAY_W,minWidth:'100%',position:'relative'}},
+
+          // Header
+          e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#fff',height:HDR_H,borderBottom:'1px solid #d1d5db'}},
+            e('div',{style:{height:28,borderBottom:'1px solid #e5e7eb',position:'relative'}},
+              ...monthLabels.map(({i,label})=>e('div',{key:i,style:{position:'absolute',left:i*DAY_W,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#6b7280',whiteSpace:'nowrap'}},label))
+            ),
+            e('div',{style:{height:26,position:'relative',display:'flex'}},
+              ...rangeDays.map((d,i)=>{
+                const absIdx = start+i;
+                const isToday = absIdx===todayIdx;
+                const weekNum = Math.floor(i/5);
+                return e('div',{key:i,style:{width:DAY_W,flexShrink:0,borderRight:'1px solid #f3f4f6',background:isToday?'rgba(249,115,22,0.1)':weekNum%2===0?'#fff':'#f9fafb',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative'}},
+                  e('span',{style:{fontSize:7,fontWeight:isToday?700:400,color:isToday?'#f97316':'#9ca3af'}},d.toLocaleDateString('en-GB',{weekday:'narrow'})),
+                  e('span',{style:{fontSize:8,fontWeight:isToday?700:400,color:isToday?'#f97316':'#374151'}},d.getDate())
+                );
+              }),
+              e('div',{style:{position:'absolute',left:(todayIdx-start)*DAY_W+DAY_W/2,top:0,bottom:0,width:2,background:'#f97316',opacity:0.7}})
+            )
+          ),
+
+          // Material rows
+          e('div',{style:{position:'relative'}},
+            e('div',{style:{position:'absolute',left:(todayIdx-start)*DAY_W+DAY_W/2,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.4,pointerEvents:'none',zIndex:3}}),
+            ...matRows.map(({mat,cells})=>
+              e('div',{key:mat.id,style:{height:ROW_H,position:'relative',borderBottom:'1px solid #e5e7eb',display:'flex'}},
+                ...rangeDays.map((d,i)=>{
+                  const cell = cells[i];
+                  const weekNum = Math.floor(i/5);
+                  const absIdx = start+i;
+                  return e('div',{key:i,style:{width:DAY_W,flexShrink:0,borderRight:'1px solid #f3f4f6',background:weekNum%2===0?'#fff':'#f9fafb',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',flexWrap:'wrap',gap:2,padding:1}},
+                    ...(cell?.plots||[]).map((cp,pi)=>{
+                      const isOrderDue = cp.type==='order_due';
+                      const ordered = cp.order?.status==='ordered'||cp.order?.status==='delivered';
+                      return e('div',{key:pi,title:(isOrderDue?'Order due':'Stage due')+' — Plot '+cp.plot.plot_number,style:{width:14,height:14,borderRadius:'50%',background:ordered?'#16a34a':isOrderDue?'#dc2626':'#2563eb',opacity:0.85,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'},
+                        onClick:()=>onSetOrder(mat.id,cp.plot.id,{status:'ordered',ordered_date:new Date().toISOString().slice(0,10)})},
+                        e('span',{style:{fontSize:7,color:'#fff',fontWeight:700,lineHeight:1}},cp.plot.plot_number)
+                      );
+                    })
+                  );
+                })
+              )
+            )
+          )
+        )
+      )
+    ),
+
+    // Legend
+    e('div',{style:{background:'#f9fafb',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:14,alignItems:'center',fontSize:10,color:'#6b7280',flexShrink:0}},
+      e('div',{style:{display:'flex',alignItems:'center',gap:4}},e('div',{style:{width:10,height:10,borderRadius:'50%',background:'#dc2626'}}), 'Order window (click to mark ordered)'),
+      e('div',{style:{display:'flex',alignItems:'center',gap:4}},e('div',{style:{width:10,height:10,borderRadius:'50%',background:'#2563eb'}}), 'Stage due date'),
+      e('div',{style:{display:'flex',alignItems:'center',gap:4}},e('div',{style:{width:10,height:10,borderRadius:'50%',background:'#16a34a'}}), 'Ordered / delivered'),
+      e('span',{style:{marginLeft:'auto'}},'Plot numbers shown inside dots · Click red dot to mark ordered')
+    ),
+
+    supplierModal && e(SupplierEmailModal,{
+      material:supplierModal, plots, schedules, workingDays,
+      orders, onClose:()=>setSupplierModal(null)
+    })
+  );
+}
+
 function MaterialCard({ material, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onDelete, onEdit }) {
   const [expanded, setExpanded] = useState(false);
   const [filterMode, setFilterMode] = useState('flagged'); // flagged | all | ordered
@@ -2351,6 +2641,7 @@ function MaterialPlotRow({ plot, status, stageStartDate, order, material, onSetO
 function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders, onCreateMaterial, onDeleteMaterial, onUpdateMaterial, onSetOrder }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
+  const [view, setView] = useState('list'); // 'list' | 'calendar'
   const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
   const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
@@ -2374,17 +2665,32 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
     return n;
   }, [materials, plots, schedules, materialOrders, todayIdx]);
 
-  return e('div',{style:{height:'100%',overflowY:'auto',padding:18}},
+  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}},
     // Header
-    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}},
+    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 18px 10px',flexWrap:'wrap',gap:10,flexShrink:0,background:'#fff',borderBottom:'1px solid #e5e7eb'}},
       e('div',null,
-        e('div',{style:{fontSize:22,fontWeight:700,color:'#111827'}},'Material Call Offs'),
+        e('div',{style:{fontSize:18,fontWeight:700,color:'#111827'}},'Material Call Offs'),
         e('div',{style:{fontSize:12,color:'#6b7280',marginTop:2}},'Set up material lead times linked to build stages')
       ),
-      e('button',{onClick:()=>setShowAdd(true),
-        style:{padding:'9px 16px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}
-      },'+ Add Material Call Off')
+      e('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+        e('div',{style:{display:'flex',gap:0,border:'1px solid #d1d5db',borderRadius:7,overflow:'hidden'}},
+          ...[ ['list','📋 List'], ['calendar','📅 Calendar'] ].map(([v,l])=>
+            e('button',{key:v,onClick:()=>setView(v),style:{padding:'6px 14px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',background:view===v?'#f97316':'#fff',color:view===v?'#fff':'#374151'}},l)
+          )
+        ),
+        e('button',{onClick:()=>setShowAdd(true),
+          style:{padding:'7px 14px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:12,fontWeight:700,cursor:'pointer'}
+        },'+ Add Material')
+      )
     ),
+
+    // Calendar view
+    view === 'calendar' && e('div',{style:{flex:1,overflow:'hidden'}},
+      e(MaterialsCalendar,{materials,plots,schedules,workingDays,todayIdx,orders:materialOrders,onSetOrder})
+    ),
+
+    // List view
+    view === 'list' && e('div',{style:{flex:1,overflowY:'auto',padding:18}},
 
     // Info banner
     e('div',{style:{background:'#dbeafe',border:'1px solid #93c5fd',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',gap:10}},
@@ -2416,7 +2722,8 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
               orders:materialOrders, onSetOrder, onDelete:onDeleteMaterial, onEdit:setEditingMaterial
             })
           )
-        ),
+        )
+    ), // end list view div
 
     showAdd && e(AddMaterialModal,{stageDefs,onClose:()=>setShowAdd(false),onCreate:onCreateMaterial}),
     editingMaterial && e(AddMaterialModal,{stageDefs,editing:editingMaterial,onClose:()=>setEditingMaterial(null),onUpdate:onUpdateMaterial})
@@ -2620,6 +2927,8 @@ function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateI
   const [commType, setCommType]   = useState('daily_summary');
   const [tradeSel, setTradeSel]   = useState('');
   const [notes, setNotes]         = useState('');
+  const [areaRef, setAreaRef]     = useState(''); // for trade notices: area/location reference
+  const [signedBy, setSignedBy]   = useState('Aaron Green — Site Manager');
   const [generating, setGenerating] = useState(false);
   const [output, setOutput]       = useState('');
   const [copied, setCopied]       = useState(false);
@@ -2653,6 +2962,8 @@ function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateI
         notes,
         trade_name: tradeSel ? (trades.find(t=>t.id===tradeSel)||{}).name : '',
         notice_content: commType==='trade_notice' ? notes : '',
+        area_reference: areaRef,
+        signed_by: signedBy,
         plot_number_map: plotNumberMap,
       });
       setOutput(text);
@@ -2707,13 +3018,20 @@ function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateI
           e('select',{value:tradeSel,onChange:ev=>setTradeSel(ev.target.value),style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
             e('option',{value:''},'— Select trade —'),
             ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
-          )
+          ),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4,marginTop:10}},'Area / Location Reference'),
+          e('input',{type:'text',value:areaRef,onChange:ev=>setAreaRef(ev.target.value),
+            placeholder:'e.g. Plot 12 scaffold yard, Groundworks compound, Plots 5-10 access road',
+            style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}}),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4,marginTop:10}},'Signed by'),
+          e('input',{type:'text',value:signedBy,onChange:ev=>setSignedBy(ev.target.value),
+            style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}})
         ),
 
         e('div',{style:{marginTop:12}},
-          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:5}},'Additional notes for the AI'),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:5}},commType==='trade_notice'?'Issue Details / Instruction':'Additional notes for the AI'),
           e('textarea',{value:notes,onChange:ev=>setNotes(ev.target.value),rows:4,
-            placeholder:'Any extra context — specific plots to mention, particular issues, tone adjustments...',
+            placeholder:commType==='trade_notice'?'Describe the issue — e.g. scaffold yard left unsecured, mortar not cleared from Plot 12 perimeter...':'Any extra context — specific plots to mention, particular issues, tone adjustments...',
             style:{width:'100%',padding:'7px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827',fontFamily:'inherit',resize:'vertical'}
           })
         ),
