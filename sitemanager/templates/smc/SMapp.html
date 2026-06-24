@@ -46,7 +46,7 @@ const api = (path, opts) => fetch('/smc/api' + path, {
   ...opts
 });
 
-const TODAY = '2026-06-15';
+const TODAY = new Date().toISOString().slice(0,10); // Dynamic — updates every day
 const TEN_COL = {
   'Private':     '#f59e0b',
   '1st Homes':   '#06b6d4',
@@ -92,7 +92,7 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
         const db = dbRows.find(ps => ps.stage_def_id === def.id);
         const dur = db ? db.duration : (def.default_duration || 1);
         backCursor = backCursor - dur;
-        s[plot.id][def.id] = { start: Math.max(0, backCursor), dur, basStart: Math.max(0, backCursor) };
+        s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor }; // allow negative = off-screen left
       });
 
       // Place all stages with higher order working forwards from end of current stage
@@ -237,7 +237,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   // Scroll to today only on initial mount — NOT on every render so dragging doesn't reset position
   const scrollInitialised = useRef(false);
   useEffect(() => {
-    if (!scrollInitialised.current && scrollRef.current && todayIdx > 0) {
+    if (!scrollInitialised.current && scrollRef.current && todayIdx >= 0) {
       scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300);
       scrollInitialised.current = true;
     }
@@ -547,7 +547,10 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                 ),
                 e('td',{style:{padding:'6px 10px',whiteSpace:'nowrap'}},
                   st.crcScheduledDate
-                    ? e('span',{style:{color: st.crcVariance>0?'#dc2626':st.crcVariance<0?'#16a34a':'#6b7280', fontWeight:600}}, st.crcScheduledDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}))
+                    ? e('span',{style:{color: st.crcVariance>0?'#dc2626':st.crcVariance<0?'#16a34a':'#6b7280', fontWeight:600}},
+                        st.crcScheduledDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+
+                        (st.crcVariance>0?' (+'+st.crcVariance+'d)':st.crcVariance<0?' ('+st.crcVariance+'d)':' (On Track)')
+                      )
                     : e('span',{style:{color:'#d1d5db'}},'—')
                 ),
                 e('td',{style:{padding:'6px 10px',textAlign:'center'}},
@@ -940,6 +943,10 @@ function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSe
       onClick:()=>setEditing(true),
       style:{ padding:'4px 10px', background:'#16a34a', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
     }, 'Mark Delivered'),
+    !editing && status === 'ordered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null}),
+      style:{ padding:'4px 8px', background:'#ffffff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, 'Undo'),
     editing && e('div', { style:{ display:'flex', gap:4, alignItems:'center' } },
       e('input', { type:'date', value:dateVal, onChange:ev=>setDateVal(ev.target.value), style:{ fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', borderRadius:5 } }),
       e('button', {
@@ -1150,6 +1157,51 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
         e('div', { style:{ marginBottom:18, borderTop:'1px solid #e5e7eb', marginTop:8, paddingTop:14 } },
           e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4, paddingLeft:0 } }, '📒 Site Logbook'),
           e(PlotLogbook, { plot, items, trades, onCreateItem, onUpdateItem, onDeleteItem })
+        ),
+
+        // CML / CRC Certificates
+        e('div', { style:{ marginBottom:18, borderTop:'1px solid #e5e7eb', marginTop:8, paddingTop:14 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 } }, '📄 Certificates'),
+          e('div', { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 } },
+            ...['cml','crc'].map(ct => {
+              const certUrl = plot[ct+'_cert_url'];
+              return e('div', { key:ct, style:{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px' } },
+                e('div', { style:{ fontSize:11, fontWeight:700, color:'#374151', marginBottom:6 } }, ct.toUpperCase()+' Certificate'),
+                certUrl
+                  ? e('div', { style:{ display:'flex', gap:5, alignItems:'center', flexWrap:'wrap' } },
+                      e('a', { href:certUrl, target:'_blank', style:{ fontSize:11, color:'#2563eb', textDecoration:'underline' } }, '📄 View Certificate'),
+                      e('label', { style:{ fontSize:10, color:'#9ca3af', cursor:'pointer', textDecoration:'underline' } },
+                        'Replace',
+                        e('input', { type:'file', accept:'image/*,application/pdf', style:{display:'none'}, onChange: async ev => {
+                          const file = ev.target.files[0]; ev.target.value='';
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = async e2 => {
+                            const b64 = e2.target.result.split(',')[1];
+                            const r = await api('/plots/'+plot.id+'/upload-cert', {method:'POST',body:JSON.stringify({cert_type:ct,image_b64:b64,mime_type:file.type})}).then(r=>r.json());
+                            if(r.ok) onUpdatePlot(plot.id,{[ct+'_cert_url']:r.url});
+                          };
+                          reader.readAsDataURL(file);
+                        }})
+                      )
+                    )
+                  : e('label', { style:{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:11, color:'#9ca3af', border:'1px dashed #d1d5db', borderRadius:5, padding:'6px 8px' } },
+                      '📁 Upload '+ct.toUpperCase()+' Certificate',
+                      e('input', { type:'file', accept:'image/*,application/pdf', style:{display:'none'}, onChange: async ev => {
+                        const file = ev.target.files[0]; ev.target.value='';
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async e2 => {
+                          const b64 = e2.target.result.split(',')[1];
+                          const r = await api('/plots/'+plot.id+'/upload-cert', {method:'POST',body:JSON.stringify({cert_type:ct,image_b64:b64,mime_type:file.type})}).then(r=>r.json());
+                          if(r.ok) onUpdatePlot(plot.id,{[ct+'_cert_url']:r.url});
+                        };
+                        reader.readAsDataURL(file);
+                      }})
+                    )
+              );
+            })
+          )
         ),
 
         // Coming soon
@@ -1440,8 +1492,8 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
                 const dot=dots[p.id]; if(!dot||!scrollRef.current||!imgRef.current)return;
                 const img=imgRef.current;
                 const scrollEl=scrollRef.current;
-                const dotX=(dot.px/100)*img.scrollWidth;
-                const dotY=(dot.py/100)*img.scrollHeight;
+                const dotX=(dot.px/100)*img.offsetWidth;
+                const dotY=(dot.py/100)*img.offsetHeight;
                 scrollEl.scrollLeft=Math.max(0,dotX-scrollEl.clientWidth/2);
                 scrollEl.scrollTop=Math.max(0,dotY-scrollEl.clientHeight/2);
                 setSelected(p.id);
@@ -1498,7 +1550,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
               const dot=dots[plot.id]; if(!dot)return null;
               const col=TEN_COL[plot.tenure]||'#f59e0b';
               const sel=selected===plot.id;
-              const r=Math.max(6,9/Math.sqrt(zoom));
+              const r=10; // Fixed 9px — does not shrink as zoom increases
               const isBung=plot.plot_type==='Bungalow', isFlat=plot.plot_type==='Flat';
               const cx=dot.px+'%', cy=dot.py+'%';
               return e('g',{key:plot.id,style:{cursor:placeMode?'default':'pointer',pointerEvents:'auto'},onClick:ev=>handleDotClick(ev,plot.id),onMouseDown:ev=>handleDotMouseDown(ev,plot.id)},
@@ -1508,7 +1560,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
                   :isBung
                     ?e('polygon',{key:'d',points:dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%',fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
                     :e('circle',{key:'d',cx,cy,r,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2}),
-                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:Math.max(5,7/Math.sqrt(zoom)),fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},plot.plot_number)
+                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:8,fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},plot.plot_number)
               );
             }).filter(Boolean)
           ),
@@ -1564,6 +1616,7 @@ function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates
 
   // Drag-to-reorder state
   const dragState = useRef(null);
+  const dropIdxRef = useRef(null); // ref to avoid stale closure in onUp
   const [dragIdx, setDragIdx]       = useState(null);
   const [dropIdx, setDropIdx]       = useState(null);
 
@@ -1678,12 +1731,13 @@ function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates
       const ROW = 44; // approx row height px
       const newIdx = Math.max(0, Math.min(templateStages.length-1, dragState.current.idx + Math.round(dy/ROW)));
       setDropIdx(newIdx);
+      dropIdxRef.current = newIdx;
     }
 
     async function onUp() {
       if (!dragState.current) return;
       const from = dragState.current.idx;
-      const to = dropIdx ?? from;
+      const to = dropIdxRef.current ?? from;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       setDragIdx(null);
@@ -1899,12 +1953,13 @@ function InspectionRow({ ins, i, badge, onUpdateInspection }) {
   const [lastDate, setLastDate] = useState(ins.last_date || '');
   const [nextDate, setNextDate] = useState(ins.next_date || '');
   const [responsible, setResponsible] = useState(ins.responsible_person || '');
+  const [freq, setFreq] = useState(ins.frequency_editable || ins.frequency || '');
   const [saving, setSaving] = useState(false);
   const s = badge(ins);
 
   async function save() {
     setSaving(true);
-    await onUpdateInspection(ins.id, { last_date: lastDate, next_date: nextDate, responsible_person: responsible });
+    await onUpdateInspection(ins.id, { last_date: lastDate, next_date: nextDate, responsible_person: responsible, frequency_editable: freq });
     setSaving(false);
     setEditing(false);
   }
@@ -1912,7 +1967,7 @@ function InspectionRow({ ins, i, badge, onUpdateInspection }) {
   if (editing) {
     return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:'#fffbeb' } },
       e('td', { style:{ padding:'6px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
-      e('td', { style:{ padding:'6px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'text', value:freq, onChange:ev=>setFreq(ev.target.value), placeholder:'e.g. Weekly', style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:90 } })),
       e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:lastDate, onChange:ev=>setLastDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
       e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:nextDate, onChange:ev=>setNextDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
       e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
@@ -1926,7 +1981,7 @@ function InspectionRow({ ins, i, badge, onUpdateInspection }) {
 
   return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:i%2===0?'#f9fafb':'#ffffff' } },
     e('td', { style:{ padding:'7px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
-    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency),
+    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency_editable || ins.frequency),
     e('td', { style:{ padding:'7px 9px', color:'#9ca3af', whiteSpace:'nowrap' } }, ins.last_date),
     e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.next_date),
     e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
@@ -2383,7 +2438,8 @@ function PlotLogbook({ plot, items, trades, onCreateItem, onUpdateItem, onDelete
   const [newCost, setNewCost]       = useState('');
   const [newChargeable, setNewChargeable] = useState(false);
   const [saving, setSaving]         = useState(false);
-  const [photos, setPhotos]         = useState([]);
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+
   const [photoLoading, setPhotoLoading] = useState(false);
   const fileRef = useRef(null);
 
@@ -2535,12 +2591,23 @@ function PlotLogbook({ plot, items, trades, onCreateItem, onUpdateItem, onDelete
         ? e('div',{style:{fontSize:11,color:'#9ca3af'}},'No photos yet for this plot.')
         : e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}},
             ...photos.map(ph=>
-              e('div',{key:ph.id,style:{position:'relative'}},
+              e('div',{key:ph.id,style:{position:'relative',cursor:'pointer'},onClick:()=>setLightboxUrl(ph.public_url)},
                 e('img',{src:ph.public_url,alt:ph.caption||'Site photo',style:{width:'100%',height:80,objectFit:'cover',borderRadius:6,border:'1px solid #e5e7eb'}}),
+                e('div',{style:{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0)',borderRadius:6,transition:'background 0.15s'}},
+                  e('span',{style:{fontSize:16,opacity:0.8}},'🔍')
+                ),
                 e('div',{style:{fontSize:8,color:'#9ca3af',textAlign:'center',marginTop:2}},new Date(ph.taken_at).toLocaleDateString('en-GB'))
               )
             )
-          )
+          ),
+    // Lightbox
+    lightboxUrl && e('div',{
+      onClick:()=>setLightboxUrl(null),
+      style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out'}
+    },
+      e('img',{src:lightboxUrl,style:{maxWidth:'92vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8,boxShadow:'0 8px 48px rgba(0,0,0,0.6)'}}),
+      e('button',{onClick:()=>setLightboxUrl(null),style:{position:'absolute',top:16,right:20,background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:20,cursor:'pointer'}}, '×')
+    )
     )
   );
 }
@@ -2745,6 +2812,7 @@ function App() {
   const [materialOrders,setMaterialOrders] = useState([]);
   const [trades,setTrades]               = useState([]);
   const [stageTemplates,setStageTemplates] = useState([]);
+  const [allStageDefs,setAllStageDefs]     = useState([]); // all templates — for Stage Editor only
   const [loading,setLoading]             = useState(true);
   const [loadErr,setLoadErr]       = useState(null);
 
@@ -2787,6 +2855,7 @@ function App() {
       api('/trades').then(r=>r.json()).catch(()=>[]),
       api('/stage-templates').then(r=>r.json()).catch(()=>[]),
       api('/items').then(r=>r.json()).catch(()=>[]),
+      api('/stage-defs?all=1').then(r=>r.json()).catch(()=>[]),
     ]).then(function(res){
       setPlots(Array.isArray(res[0])?res[0]:[]);
       setStageDefs(Array.isArray(res[1])?res[1]:[]);
@@ -2798,6 +2867,7 @@ function App() {
       setTrades(Array.isArray(res[7])?res[7]:[]);
       setStageTemplates(Array.isArray(res[8])?res[8]:[]);
       setItems(Array.isArray(res[9])?res[9]:[]);
+      setAllStageDefs(Array.isArray(res[10])?res[10]:[]); // all templates — for Stage Editor
       setLoading(false);
     }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
   },[]);
@@ -2976,7 +3046,7 @@ function App() {
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
                 :tab==='stages'
-                  ?e(StageEditorTab,{stageDefs,setStageDefs,plots,trades,stageTemplates,onUpdatePlot})
+                  ?e(StageEditorTab,{stageDefs:allStageDefs,setStageDefs:setAllStageDefs,plots,trades,stageTemplates,onUpdatePlot})
                   :tab==='comms'
                     ?e(CommsTab,{plots,items,trades,hsLog,materials,stageDefs,onCreateItem,onUpdateItem,onDeleteItem,onGenerateComm})
                     :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
