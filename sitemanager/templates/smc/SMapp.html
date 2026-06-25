@@ -12,9 +12,12 @@
 body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #111827; height: 100vh; overflow: hidden; }
 #root { height: 100vh; display: flex; flex-direction: column; }
 select, button, input { font-family: inherit; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f9fafb; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+/* Gantt scrollbars — big enough to grab easily */
+::-webkit-scrollbar { width: 12px; height: 14px; }
+::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #e5e7eb; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-corner { background: #e5e7eb; }
 @media print {
   /* Hide everything except the active print target */
   body * { visibility: hidden; }
@@ -142,22 +145,10 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
       // todayIdx is only used for the working-day index conversion; the actual scheduling
       // is entirely deadline-driven.
       const crcDeadlineDate = new Date(plot.crc_deadline_date);
-      // Find CRC deadline as a working-day index. The working days array starts at PROG_START.
-      // We need to find which working-day index corresponds to the CRC deadline date.
-      const PROG_START_DATE = new Date(PROG_START);
-      let wdCount = 0;
-      let crcIdx = 0;
-      {
-        const d = new Date(PROG_START_DATE);
-        const UK_HOL_SET = new Set(['2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28','2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31','2027-08-30','2027-12-27','2027-12-28']);
-        while (d <= crcDeadlineDate) {
-          const w=d.getDay();
-          const iso=d.toISOString().slice(0,10);
-          if(w!==0&&w!==6&&!UK_HOL_SET.has(iso)) wdCount++;
-          d.setDate(d.getDate()+1);
-        }
-        crcIdx = Math.max(0, wdCount - 1);
-      }
+      // Use the pre-computed workingDays array to find the CRC deadline index.
+      // This is reliable, uses the same holiday logic as genWDs, and works across timezones.
+      let crcIdx = workingDays.findIndex(d => d >= crcDeadlineDate);
+      if (crcIdx < 0) crcIdx = workingDays.length - 1; // deadline beyond array = use last day
 
       // Work backwards: start from CRC, place each stage so it ends exactly as the next begins
       let cursor = crcIdx;
@@ -242,7 +233,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     return (def.trade && tradeColorMap[def.trade]) || def.color || '#6b7280';
   }
 
-  const TOTAL_WD=300, LEFT_W=170, ROW_H=34, HDR_H=54;
+  const TOTAL_WD=730, LEFT_W=170, ROW_H=34, HDR_H=54; // 730 WD ≈ Oct 2028 — covers full Sandle Park programme
   const [cellW, setCellW]   = useState(22);
   const [filter, setFilter] = useState('All');
   const [tradeFilter, setTradeFilter] = useState('All');
@@ -264,14 +255,18 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     setSchedules(buildSchedules(plots, stageDefs, plotStages, todayIdx));
   }, [plots, stageDefs, plotStages]);
 
-  // Scroll to today only on initial mount — NOT on every render so dragging doesn't reset position
+  // Scroll to centre today when the Gantt first loads (after schedules are available).
+  // The guard ref ensures we only scroll once — dragging never resets position.
   const scrollInitialised = useRef(false);
   useEffect(() => {
-    if (!scrollInitialised.current && scrollRef.current && todayIdx >= 0) {
-      scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - 300);
+    const hasSchedules = Object.keys(schedules).length > 0;
+    if (!scrollInitialised.current && scrollRef.current && todayIdx > 0 && hasSchedules) {
+      // Centre today in the viewport with a small left offset so you can see a bit of history
+      const viewW = scrollRef.current.clientWidth || 800;
+      scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - Math.floor(viewW * 0.35));
       scrollInitialised.current = true;
     }
-  }, [todayIdx, cellW, schedules]); // re-check when schedules load, but guard prevents re-firing
+  }, [schedules, todayIdx, cellW]);
 
   const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
   const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
@@ -1006,7 +1001,7 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
   const [hsSubmitted, setHsSubmitted] = useState(false);
   const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>a.stage_order-b.stage_order), [stageDefs]);
   const currentStage = stageDefs.find(s => s.id === plot.current_stage_id);
-  const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
 
   // Materials relevant to this plot — only show flagged (order now), already
@@ -1262,7 +1257,7 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
 function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
-  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,730); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
   const [nextId,     setNextId]     = useState(null);
@@ -2856,9 +2851,9 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
   const [showAdd, setShowAdd] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [view, setView] = useState('list'); // 'list' | 'calendar'
-  const workingDays = useMemo(() => genWDs(PROG_START, 320), []);
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
-  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,320); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,730); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
 
   // Overall flagged count across all materials, for the header banner
