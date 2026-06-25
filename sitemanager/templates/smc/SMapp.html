@@ -74,7 +74,9 @@ const api = (path, opts) => fetch('/smc/api' + path, {
   ...opts
 });
 
-const TODAY = new Date().toISOString().slice(0,10); // Dynamic — updates every day
+// Use local date (not UTC) so UK BST timezone doesn't push the date forward by 1 day
+const _td = new Date();
+const TODAY = _td.getFullYear()+'-'+String(_td.getMonth()+1).padStart(2,'0')+'-'+String(_td.getDate()).padStart(2,'0');
 const TEN_COL = {
   'Private':     '#f59e0b',
   '1st Homes':   '#06b6d4',
@@ -2377,104 +2379,122 @@ function SupplierEmailModal({ material, plots, schedules, workingDays, todayIdx,
 // Dot colour: red=order now, amber=ordered, green=delivered, grey=not due.
 // Click any red dot to instantly mark ordered.
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR — standalone delivery schedule view
+//
+// Layout: columns = working days, rows = delivery events stacked per day.
+// Each bar shows "Plot N — Material Name" in the trade's colour.
+// No sidebar — the bars themselves carry all the information.
+// Multiple deliveries on the same day stack vertically.
+// Click a red bar to mark ordered; click amber to mark delivered.
+// ══════════════════════════════════════════════════════════════════════════
 function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onUpdateMaterial }) {
-  const [weeks, setWeeks] = useState(4);
+  const [weeks, setWeeks] = useState(2);
   const [startIdx, setStartIdx] = useState(null);
   const [supplierModal, setSupplierModal] = useState(null);
-  const [editingOffset, setEditingOffset] = useState(null); // material id being edited
+  const [editingMat, setEditingMat] = useState(null);
   const [offsetDraft, setOffsetDraft] = useState('');
   const [weekdayDraft, setWeekdayDraft] = useState('');
   const scrollRef = useRef(null);
 
-  const sortedPlots = useMemo(()=>[...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)),[plots]);
+  const sortedPlots = useMemo(() =>
+    [...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
 
-  const mondayIdx = useMemo(()=>{
-    for(let i=todayIdx;i>=0;i--){if(workingDays[i]?.getDay()===1)return i;}
-    return todayIdx;
-  },[todayIdx,workingDays]);
-
-  useEffect(()=>{if(startIdx===null)setStartIdx(mondayIdx);},[mondayIdx]);
-  useEffect(()=>{
-    if(scrollRef.current&&startIdx!==null){
-      scrollRef.current.scrollLeft=Math.max(0,(todayIdx-start)*DAY_W-60);
+  // Monday of current week
+  const mondayIdx = useMemo(() => {
+    for (let i=todayIdx; i>=0; i--) {
+      if (workingDays[i]?.getDay()===1) return i;
     }
-  },[startIdx,todayIdx]);
+    return todayIdx;
+  }, [todayIdx, workingDays]);
 
-  const start = startIdx??mondayIdx;
-  const rangeEnd = start+weeks*5;
+  useEffect(() => { if (startIdx===null) setStartIdx(mondayIdx); }, [mondayIdx]);
+
+  const start = startIdx ?? mondayIdx;
+  const totalDays = weeks * 5;
+  const rangeEnd = start + totalDays;
   const rangeDays = workingDays.slice(start, rangeEnd);
 
-  // DAY_W scales so the chart fills ~100% of available width for the selected week count
-  // Base: 1 week = 5 columns. We'll use a fixed minimum but the actual render uses inline style.
-  const DAY_W = Math.max(42, Math.min(90, Math.floor(800/Math.max(5,weeks*5))));
-  const LEFT_W = 230;
-  const CHIP_H = 20;  // height per plot chip
-  const ROW_PAD = 6;  // top/bottom padding per row
+  // Column width scales so selected weeks fill a reasonable width
+  const COL_W = Math.max(100, Math.min(220, Math.floor(1100 / Math.max(5, totalDays))));
+  const BAR_H = 36;
+  const BAR_GAP = 4;
+  const HDR_H = 56;
 
-  const monthLabels = useMemo(()=>{
-    const out=[]; let pm=-1;
-    rangeDays.forEach((d,i)=>{if(d.getMonth()!==pm){out.push({i,label:d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})});pm=d.getMonth();}});
-    return out;
-  },[rangeDays]);
-
-  // For a material, compute each plot's delivery day index
-  function plotDeliveryIdx(mat, stageIdx) {
-    const offset = mat.delivery_offset_days ?? mat.lead_time_weeks*5;
+  // Compute delivery day for a material+plot combination
+  function deliveryIdx(mat, stageIdx) {
+    const offset = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
     let di = stageIdx - offset;
-    if (mat.preferred_weekday) {
+    if (mat.preferred_weekday && di >= 0) {
       let tries = 0;
-      while (di>=0 && workingDays[di]?.getDay()!==mat.preferred_weekday && tries<10) { di--; tries++; }
-      if (di<0) di = stageIdx - offset;
+      while (di >= 0 && workingDays[di]?.getDay() !== mat.preferred_weekday && tries < 10) {
+        di--; tries++;
+      }
+      if (di < 0) di = stageIdx - offset;
     }
     return Math.max(0, di);
   }
 
-  // Per-day, per-material: list of plot chips to show
-  const matRows = useMemo(() => materials.map(mat => {
-    // For each day in range, collect plots whose delivery falls on that day
-    const dayMap = {}; // dayIdx→ [{plot,status,order}]
-    const leadDays = mat.delivery_offset_days ?? mat.lead_time_weeks*5;
-
-    sortedPlots.forEach(plot => {
-      const sc = schedules[plot.id];
-      const stageSched = sc ? sc[mat.linked_stage_id] : null;
-      if (!stageSched) return;
-      const dIdx = plotDeliveryIdx(mat, stageSched.start);
-      if (dIdx < start || dIdx >= rangeEnd) return; // outside range
-      const order = orders.find(o=>o.material_id===mat.id&&o.plot_id===plot.id);
-      const daysUntilStage = stageSched.start - todayIdx;
-      let status;
-      if (order?.status==='delivered') status='delivered';
-      else if (order?.status==='ordered') status='ordered';
-      else if (daysUntilStage<=leadDays&&daysUntilStage>=0) status='flagged';
-      else status='not_due';
-      const key = dIdx-start;
-      if (!dayMap[key]) dayMap[key]=[];
-      dayMap[key].push({plot,status,order,stageIdx:stageSched.start});
+  // Build all delivery events in range, grouped by day offset
+  const eventsByDay = useMemo(() => {
+    const map = {}; // dayOffset (0..totalDays-1) → [{mat,plot,status,order}]
+    materials.forEach(mat => {
+      const leadDays = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
+      sortedPlots.forEach(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[mat.linked_stage_id] : null;
+        if (!stageSched) return;
+        const dIdx = deliveryIdx(mat, stageSched.start);
+        const offset = dIdx - start;
+        if (offset < 0 || offset >= totalDays) return;
+        const order = orders.find(o => o.material_id===mat.id && o.plot_id===plot.id);
+        const daysUntilStage = stageSched.start - todayIdx;
+        let status;
+        if (order?.status==='delivered') status='delivered';
+        else if (order?.status==='ordered') status='ordered';
+        else if (daysUntilStage>=0 && daysUntilStage<=leadDays) status='flagged';
+        else status='not_due';
+        if (!map[offset]) map[offset] = [];
+        map[offset].push({ mat, plot, status, order });
+      });
     });
+    return map;
+  }, [materials, sortedPlots, schedules, orders, start, totalDays, todayIdx]);
 
-    const maxStack = Math.max(1,...Object.values(dayMap).map(arr=>arr.length));
-    const rowH = maxStack*CHIP_H + ROW_PAD*2;
-    const flagged = Object.values(dayMap).flat().filter(x=>x.status==='flagged').length;
-    const todayDeliveries = dayMap[todayIdx-start]||[];
-    return {mat, dayMap, maxStack, rowH, flagged, todayDeliveries};
-  }), [materials, sortedPlots, schedules, orders, start, rangeEnd, todayIdx]);
+  // Max deliveries on any day — determines row height of chart
+  const maxStack = useMemo(() =>
+    Math.max(1, ...Object.values(eventsByDay).map(arr => arr.length)),
+    [eventsByDay]);
 
-  // Today's delivery summary across all materials
-  const todayAll = useMemo(()=>{
-    const out=[];
-    matRows.forEach(({mat,dayMap})=>{
-      const chips=dayMap[todayIdx-start]||[];
-      chips.forEach(chip=>out.push({mat,chip}));
+  const chartH = maxStack * (BAR_H + BAR_GAP) + BAR_GAP;
+
+  // Today's deliveries for summary bar
+  const todayOffset = todayIdx - start;
+  const todayEvents = todayOffset >= 0 && todayOffset < totalDays ? (eventsByDay[todayOffset]||[]) : [];
+
+  const monthLabels = useMemo(() => {
+    const out=[]; let pm=-1;
+    rangeDays.forEach((d,i) => {
+      if (d.getMonth()!==pm) { out.push({i, label:d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}); pm=d.getMonth(); }
     });
     return out;
-  },[matRows,todayIdx,start]);
+  }, [rangeDays]);
 
-  function chipColor(status) {
-    return {flagged:'#dc2626',ordered:'#d97706',delivered:'#16a34a',not_due:'#9ca3af'}[status]||'#9ca3af';
+  function barBg(status) {
+    return {flagged:'#dc2626', ordered:'#d97706', delivered:'#16a34a', not_due:'#94a3b8'}[status];
+  }
+  function barBorder(status) {
+    return {flagged:'#991b1b', ordered:'#b45309', delivered:'#166534', not_due:'#64748b'}[status];
   }
 
-  function handlePrint() { window.print(); }
+  function handleMark(ev, item) {
+    ev.stopPropagation();
+    if (item.status==='flagged') {
+      onSetOrder(item.mat.id, item.plot.id, {status:'ordered', ordered_date:new Date().toISOString().slice(0,10)});
+    } else if (item.status==='ordered') {
+      onSetOrder(item.mat.id, item.plot.id, {status:'delivered', delivery_date:new Date().toISOString().slice(0,10)});
+    }
+  }
 
   if (!materials.length) return e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
     e('div',{style:{fontSize:36,marginBottom:8}},'📅'),
@@ -2483,163 +2503,215 @@ function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx,
 
   return e('div',{id:'mat-print-content',style:{display:'flex',flexDirection:'column',height:'100%',background:'#fff'}},
 
-    // Controls (no-print)
-    e('div',{className:'no-print',style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'8px 14px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
+    // Controls bar
+    e('div',{className:'no-print',style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'8px 16px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
       e('div',null,
-        e('span',{style:{fontSize:12,fontWeight:700,color:'#374151'}},'Delivery Calendar'),
-        e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:1}},'Working days only · Click red chip to mark ordered')
+        e('span',{style:{fontSize:13,fontWeight:700,color:'#111827'}},'Delivery Calendar'),
+        e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8}},'SS17 Sandle Park — '+weeks+' week'+(weeks>1?'s':''))
       ),
-      e('div',{style:{display:'flex',gap:3}},
-        ...[1,2,3,4,6,8,10].map(w=>e('button',{key:w,onClick:()=>setWeeks(w),style:{padding:'4px 8px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',border:'1px solid',background:weeks===w?'#f97316':'#fff',color:weeks===w?'#fff':'#374151',borderColor:weeks===w?'#f97316':'#d1d5db'}},w+'w'))
+      // Week selector
+      e('div',{style:{display:'flex',gap:3,border:'1px solid #d1d5db',borderRadius:7,overflow:'hidden'}},
+        ...[1,2,3,4,6,8].map(w=>e('button',{key:w,onClick:()=>setWeeks(w),style:{padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',background:weeks===w?'#f97316':'#fff',color:weeks===w?'#fff':'#374151'}},w+'w'))
       ),
+      // Start date nav
+      e('button',{onClick:()=>setStartIdx(Math.max(0,start-5)),style:{padding:'4px 8px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#374151',cursor:'pointer',fontSize:11}},'‹ Prev'),
+      e('button',{onClick:()=>setStartIdx(mondayIdx),style:{padding:'4px 10px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#374151',cursor:'pointer',fontSize:11,fontWeight:600}},'Today'),
+      e('button',{onClick:()=>setStartIdx(start+5),style:{padding:'4px 8px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#374151',cursor:'pointer',fontSize:11}},'Next ›'),
       e('div',{style:{flex:1}}),
-      e('div',{style:{display:'flex',gap:6,fontSize:10,alignItems:'center'}},
-        ...[['#dc2626','⚠ Order Now'],['#d97706','Ordered'],['#16a34a','Delivered'],['#9ca3af','Not Due']].map(([col,l])=>
+      // Legend
+      e('div',{style:{display:'flex',gap:8,fontSize:10,alignItems:'center'}},
+        ...[['#dc2626','⚠ Order Now (click)'],['#d97706','Ordered (click=delivered)'],['#16a34a','Delivered'],['#94a3b8','Not Due']].map(([c,l])=>
           e('div',{key:l,style:{display:'flex',alignItems:'center',gap:3}},
-            e('div',{style:{width:10,height:10,borderRadius:3,background:col}}),
+            e('div',{style:{width:10,height:10,borderRadius:2,background:c}}),
             e('span',{style:{color:'#6b7280'}},l)
           )
         )
       ),
-      e('button',{onClick:handlePrint,style:{padding:'6px 12px',background:'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'🖨 Print')
+      e('button',{onClick:()=>window.print(),style:{padding:'5px 12px',background:'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'🖨 Print')
     ),
 
-    // TODAY summary
-    todayAll.length>0 && e('div',{style:{background:'#fffbeb',borderBottom:'2px solid #fcd34d',padding:'8px 14px',flexShrink:0}},
-      e('div',{style:{fontSize:11,fontWeight:700,color:'#d97706',marginBottom:6}},'📦 Deliveries Due TODAY — '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})),
-      e('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
-        ...todayAll.map(({mat,chip},i)=>{
-          const alreadyOrdered = chip.order?.status==='ordered'||chip.order?.status==='delivered';
-          return e('div',{key:i,style:{display:'flex',alignItems:'center',gap:4,background:alreadyOrdered?'#dcfce7':'#fee2e2',border:'1px solid '+(alreadyOrdered?'#86efac':'#fca5a5'),borderRadius:6,padding:'4px 8px',cursor:alreadyOrdered?'default':'pointer'},
-            onClick:()=>{if(!alreadyOrdered)onSetOrder(mat.id,chip.plot.id,{status:'delivered',delivery_date:new Date().toISOString().slice(0,10)});},
-            title:alreadyOrdered?'Already confirmed':'Click to mark as delivered today'
-          },
-            e('span',{style:{fontSize:11,fontWeight:700,color:'#111827'}},'P'+chip.plot.plot_number),
-            e('span',{style:{fontSize:10,color:'#6b7280'}},mat.material_name),
-            alreadyOrdered
-              ? e('span',{style:{fontSize:9,color:'#16a34a',fontWeight:700}},'✓')
-              : e('span',{style:{fontSize:9,color:'#dc2626',fontWeight:700}},'Confirm →')
-          );
-        })
+    // Today summary
+    todayEvents.length>0 && e('div',{className:'no-print',style:{background:'#fffbeb',borderBottom:'2px solid #fcd34d',padding:'8px 16px',flexShrink:0,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+      e('span',{style:{fontSize:11,fontWeight:700,color:'#d97706',flexShrink:0}},'📦 TODAY:'),
+      ...todayEvents.map((ev,i)=>
+        e('div',{key:i,
+          onClick:e2=>handleMark(e2,ev),
+          style:{display:'flex',alignItems:'center',gap:5,background:barBg(ev.status)+'20',border:'1px solid '+barBg(ev.status)+'50',borderRadius:5,padding:'3px 8px',cursor:ev.status==='delivered'?'default':'pointer',fontSize:11}
+        },
+          e('div',{style:{width:8,height:8,borderRadius:2,background:barBg(ev.status)}}),
+          e('span',{style:{fontWeight:700,color:'#111827'}},'P'+ev.plot.plot_number),
+          e('span',{style:{color:'#6b7280'}},ev.mat.material_name),
+          ev.status!=='delivered'&&e('span',{style:{fontSize:9,color:barBg(ev.status),fontWeight:700}},ev.status==='flagged'?'→ Confirm Order':'→ Mark Delivered')
+        )
       )
     ),
 
-    // Print header (print-only)
+    // Print header
     e('div',{className:'print-only',style:{padding:'6px 10px 2px',display:'none'}},
-      e('div',{style:{fontSize:14,fontWeight:700}},'Material Delivery Schedule — SS17 Phase 1C, Sandle Park'),
-      e('div',{style:{fontSize:9,color:'#6b7280'}},'Generated: '+new Date().toLocaleDateString('en-GB')+' · Period: '+
-        (rangeDays[0]?rangeDays[0].toLocaleDateString('en-GB'):'')+' to '+(rangeDays[rangeDays.length-1]?rangeDays[rangeDays.length-1].toLocaleDateString('en-GB'):''))
+      e('div',{style:{fontSize:14,fontWeight:700}},'Material Delivery Schedule — SS17 Phase 1C, Sandle Park, Fordingbridge'),
+      e('div',{style:{fontSize:9,color:'#6b7280'}},'Generated: '+new Date().toLocaleDateString('en-GB')+
+        '   Period: '+(rangeDays[0]?rangeDays[0].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'')
+        +' – '+(rangeDays[rangeDays.length-1]?rangeDays[rangeDays.length-1].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'')+
+        '   '+weeks+' week'+(weeks>1?'s':'')+' view'
+      )
     ),
 
-    // Grid
-    e('div',{style:{flex:1,display:'flex',overflow:'hidden'}},
+    // Calendar grid
+    e('div',{ref:scrollRef,style:{flex:1,overflow:'auto'}},
+      e('div',{style:{minWidth:rangeDays.length*COL_W+1,background:'#fff'}},
 
-      // Left label column (fixed)
-      e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'2px solid #d1d5db',display:'flex',flexDirection:'column',background:'#f9fafb'}},
-        e('div',{style:{height:54,borderBottom:'2px solid #d1d5db',background:'#e5e7eb',display:'flex',alignItems:'center',padding:'0 10px',fontSize:10,fontWeight:700,color:'#374151'}},'MATERIAL'),
-        e('div',{style:{flex:1,overflowY:'auto'},id:'cal-left'},
-          ...matRows.map(({mat,rowH,flagged,todayDeliveries})=>
-            e('div',{key:mat.id,style:{height:rowH,borderBottom:'1px solid #e5e7eb',background:'#f9fafb',padding:'4px 8px 4px 10px',display:'flex',flexDirection:'column',justifyContent:'center',gap:2}},
-              e('div',{style:{display:'flex',alignItems:'center',gap:6}},
-                e('div',{style:{flex:1,minWidth:0}},
-                  e('div',{style:{fontSize:11,fontWeight:700,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},mat.material_name),
-                  e('div',{style:{fontSize:9,color:'#9ca3af',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},(mat.supplier_name||'No supplier'))
+        // Header — month
+        e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#fff',borderBottom:'2px solid #1e293b'}},
+          e('div',{style:{height:28,borderBottom:'1px solid #e5e7eb',position:'relative',background:'#f1f5f9',display:'flex'}},
+            ...rangeDays.map((_,i)=>{
+              if (!monthLabels.some(m=>m.i===i)) return e('div',{key:i,style:{width:COL_W,flexShrink:0,borderRight:'1px solid #e5e7eb'}});
+              const lbl=monthLabels.find(m=>m.i===i);
+              return e('div',{key:i,style:{width:COL_W,flexShrink:0,borderRight:'1px solid #e5e7eb',display:'flex',alignItems:'center',paddingLeft:8,fontSize:11,fontWeight:700,color:'#374151'}},lbl.label);
+            })
+          ),
+          // Day headers
+          e('div',{style:{height:28,display:'flex'}},
+            ...rangeDays.map((d,i)=>{
+              const isToday=start+i===todayIdx;
+              const isWkEnd=d.getDay()===6||d.getDay()===0; // should never happen (working days only)
+              const wkNum=Math.floor(i/5);
+              return e('div',{key:i,style:{
+                width:COL_W,flexShrink:0,
+                borderRight:'1px solid '+(isToday?'#f97316':'#e5e7eb'),
+                background:isToday?'rgba(249,115,22,0.08)':wkNum%2===0?'#fff':'#f8fafc',
+                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                borderBottom:isToday?'2px solid #f97316':'none'
+              }},
+                e('span',{style:{fontSize:10,fontWeight:700,color:isToday?'#f97316':'#6b7280',lineHeight:1.2}},
+                  d.toLocaleDateString('en-GB',{weekday:'short'})
                 ),
-                flagged>0&&e('span',{style:{fontSize:8,fontWeight:700,color:'#dc2626',background:'#fee2e2',padding:'1px 5px',borderRadius:6,flexShrink:0}},'⚠'+flagged),
-                e('button',{onClick:()=>setSupplierModal(mat),title:'Supplier email',style:{padding:'2px 5px',background:'#e5e7eb',border:'none',borderRadius:3,color:'#374151',fontSize:9,cursor:'pointer',flexShrink:0}},'📧')
-              ),
-              // Delivery timing controls
-              editingOffset===mat.id
-                ? e('div',{style:{display:'flex',gap:3,alignItems:'center',marginTop:2}},
-                    e('input',{type:'number',min:1,max:60,value:offsetDraft,onChange:ev=>setOffsetDraft(ev.target.value),
-                      style:{width:36,fontSize:9,padding:'2px',border:'1px solid #d1d5db',borderRadius:3},placeholder:'days'}),
-                    e('span',{style:{fontSize:8,color:'#9ca3af'}},'d before'),
-                    e('select',{value:weekdayDraft,onChange:ev=>setWeekdayDraft(ev.target.value),
-                      style:{fontSize:9,padding:'2px',border:'1px solid #d1d5db',borderRadius:3}},
-                      e('option',{value:''},'any day'),
-                      ...[['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri']].map(([v,l])=>e('option',{key:v,value:v},l))
-                    ),
-                    e('button',{onClick:async()=>{
-                      const fields={delivery_offset_days:parseInt(offsetDraft)||mat.lead_time_weeks*5,preferred_weekday:weekdayDraft?parseInt(weekdayDraft):null};
-                      await onUpdateMaterial(mat.id,fields);setEditingOffset(null);
-                    },style:{padding:'2px 5px',background:'#16a34a',border:'none',borderRadius:3,color:'#fff',fontSize:9,cursor:'pointer'}},'✓'),
-                    e('button',{onClick:()=>setEditingOffset(null),style:{padding:'2px 5px',background:'#e5e7eb',border:'none',borderRadius:3,color:'#6b7280',fontSize:9,cursor:'pointer'}},'×')
-                  )
-                : e('div',{style:{display:'flex',alignItems:'center',gap:4,marginTop:1}},
-                    e('span',{style:{fontSize:9,color:'#9ca3af'}},(mat.delivery_offset_days||mat.lead_time_weeks*5)+'d before'+(mat.preferred_weekday?[,'Mon','Tue','Wed','Thu','Fri'][mat.preferred_weekday]||'':'')),
-                    e('button',{onClick:()=>{setEditingOffset(mat.id);setOffsetDraft(String(mat.delivery_offset_days||mat.lead_time_weeks*5));setWeekdayDraft(mat.preferred_weekday?String(mat.preferred_weekday):'');},
-                      style:{padding:'1px 4px',background:'transparent',border:'none',color:'#9ca3af',fontSize:8,cursor:'pointer'}},'✎')
-                  )
-            )
+                e('span',{style:{fontSize:13,fontWeight:isToday?800:600,color:isToday?'#f97316':'#111827',lineHeight:1.2}},
+                  d.getDate()
+                )
+              );
+            })
           )
-        )
-      ),
+        ),
 
-      // Right — scrollable calendar
-      e('div',{ref:scrollRef,style:{flex:1,overflow:'auto'},onScroll:ev=>{const l=document.getElementById('cal-left');if(l)l.scrollTop=ev.target.scrollTop;}},
-        e('div',{style:{width:Math.max(rangeDays.length*DAY_W,300),minWidth:'100%',position:'relative'}},
-
-          // Header rows
-          e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#fff',height:54,borderBottom:'2px solid #d1d5db'}},
-            e('div',{style:{height:26,borderBottom:'1px solid #e5e7eb',position:'relative',background:'#f3f4f6'}},
-              ...monthLabels.map(({i,label})=>e('div',{key:i,style:{position:'absolute',left:i*DAY_W,top:0,height:26,display:'flex',alignItems:'center',paddingLeft:8,fontSize:11,fontWeight:700,color:'#374151',whiteSpace:'nowrap'}},label))
-            ),
-            e('div',{style:{height:28,display:'flex'}},
-              ...rangeDays.map((d,i)=>{
-                const isToday=start+i===todayIdx;
-                const wk=Math.floor(i/5);
-                return e('div',{key:i,style:{width:DAY_W,flexShrink:0,borderRight:'1px solid #e5e7eb',background:isToday?'#fff7ed':wk%2===0?'#fff':'#f9fafb',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
-                  e('span',{style:{fontSize:9,fontWeight:700,color:isToday?'#f97316':'#9ca3af',lineHeight:1.1}},d.toLocaleDateString('en-GB',{weekday:'short'})),
-                  e('span',{style:{fontSize:11,fontWeight:isToday?800:500,color:isToday?'#f97316':'#374151',lineHeight:1.1}},d.getDate())
-                );
-              })
-            )
+        // Chart area
+        e('div',{style:{position:'relative',height:chartH+32,background:'#fff'}},
+          // Column backgrounds
+          e('div',{style:{position:'absolute',inset:0,display:'flex',pointerEvents:'none'}},
+            ...rangeDays.map((d,i)=>{
+              const isToday=start+i===todayIdx;
+              const wkNum=Math.floor(i/5);
+              return e('div',{key:i,style:{width:COL_W,flexShrink:0,height:'100%',borderRight:'1px solid '+(isToday?'#f97316':'#e5e7eb'),
+                background:isToday?'rgba(249,115,22,0.04)':wkNum%2===0?'#fff':'#f8fafc'}});
+            })
           ),
 
-          // Data rows
-          e('div',{style:{position:'relative'}},
-            todayIdx>=start&&todayIdx<rangeEnd&&e('div',{style:{position:'absolute',left:(todayIdx-start)*DAY_W+DAY_W/2,top:0,bottom:0,width:2,background:'#f97316',opacity:0.5,zIndex:3,pointerEvents:'none'}}),
+          // Delivery bars stacked per column
+          ...Object.entries(eventsByDay).map(([dayOffsetStr, events]) => {
+            const dayOffset = parseInt(dayOffsetStr);
+            return events.map((ev, stackIdx) => {
+              const left = dayOffset * COL_W + 4;
+              const top = BAR_GAP + stackIdx * (BAR_H + BAR_GAP);
+              const bg = barBg(ev.status);
+              const border = barBorder(ev.status);
+              const matColor = ev.mat.color || '#64748b';
+              const canClick = ev.status==='flagged'||ev.status==='ordered';
 
-            ...matRows.map(({mat,dayMap,rowH})=>
-              e('div',{key:mat.id,style:{height:rowH,position:'relative',borderBottom:'1px solid #e5e7eb',display:'flex'}},
-                // Week shading
-                ...rangeDays.map((_,i)=>e('div',{key:'bg'+i,style:{width:DAY_W,flexShrink:0,height:rowH,borderRight:'1px solid #f3f4f6',background:Math.floor(i/5)%2===0?'#fff':'#fafafa'}})),
+              return e('div',{
+                key:ev.mat.id+'-'+ev.plot.plot_number,
+                onClick:e2=>handleMark(e2,ev),
+                title:[
+                  'Plot '+ev.plot.plot_number+' — '+ev.plot.house_type,
+                  'Material: '+ev.mat.material_name,
+                  ev.status==='flagged'?'⚠ ORDER NOW — click to mark ordered':
+                  ev.status==='ordered'?'✓ Ordered'+(ev.order?.ordered_date?' '+ev.order.ordered_date:'')+'  Click to mark delivered':
+                  ev.status==='delivered'?'✓ Delivered'+(ev.order?.delivery_date?' '+ev.order.delivery_date:''):'Not due yet',
+                  ev.mat.supplier_name?'Supplier: '+ev.mat.supplier_name:'',
+                ].filter(Boolean).join('\n'),
+                style:{
+                  position:'absolute',
+                  left,
+                  top,
+                  width:COL_W-8,
+                  height:BAR_H,
+                  background:bg,
+                  border:'1.5px solid '+border,
+                  borderRadius:6,
+                  cursor:canClick?'pointer':'default',
+                  display:'flex',
+                  alignItems:'center',
+                  gap:6,
+                  padding:'0 8px',
+                  overflow:'hidden',
+                  zIndex:2,
+                  boxShadow:ev.status==='flagged'?'0 2px 8px rgba(220,38,38,0.25)':'none',
+                  transition:'opacity 0.15s',
+                }
+              },
+                // Left colour stripe = material type identifier
+                e('div',{style:{width:3,height:BAR_H-8,borderRadius:2,background:'rgba(255,255,255,0.6)',flexShrink:0}}),
+                e('div',{style:{flex:1,minWidth:0}},
+                  e('div',{style:{fontSize:11,fontWeight:800,color:'#fff',lineHeight:1.2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+                    'P'+ev.plot.plot_number+' — '+ev.mat.material_name
+                  ),
+                  e('div',{style:{fontSize:9,color:'rgba(255,255,255,0.8)',lineHeight:1.2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+                    ev.plot.house_type+(ev.mat.supplier_name?' · '+ev.mat.supplier_name:'')
+                  )
+                ),
+                ev.status==='flagged'&&e('span',{style:{fontSize:9,color:'#fff',fontWeight:700,flexShrink:0}},'⚠'),
+                ev.status==='ordered'&&e('span',{style:{fontSize:9,color:'rgba(255,255,255,0.9)',fontWeight:700,flexShrink:0}},'✓'),
+                ev.status==='delivered'&&e('span',{style:{fontSize:9,color:'rgba(255,255,255,0.9)',flexShrink:0}},'✓✓')
+              );
+            });
+          }).flat(),
 
-                // Plot chips stacked on their delivery day
-                ...Object.entries(dayMap).map(([dayOffset,chips])=>{
-                  const di=parseInt(dayOffset);
-                  return chips.map((chip,ci)=>{
-                    const col=chipColor(chip.status);
-                    return e('div',{
-                      key:chip.plot.plot_number+'_'+ci,
-                      onClick:chip.status==='flagged'?()=>onSetOrder(mat.id,chip.plot.id,{status:'ordered',ordered_date:new Date().toISOString().slice(0,10)}):undefined,
-                      title:`Plot ${chip.plot.plot_number} — ${chip.plot.house_type}\n${chip.status==='flagged'?'⚠ ORDER NOW — click to mark ordered':chip.status==='ordered'?'Ordered'+(chip.order?.ordered_date?' '+chip.order.ordered_date:''):chip.status==='delivered'?'✓ Delivered':'Not due yet'}`,
-                      style:{
-                        position:'absolute',
-                        left:di*DAY_W+2,
-                        top:ROW_PAD+ci*CHIP_H,
-                        width:DAY_W-4,
-                        height:CHIP_H-2,
-                        background:col,
-                        borderRadius:4,
-                        display:'flex',alignItems:'center',justifyContent:'center',
-                        cursor:chip.status==='flagged'?'pointer':'default',
-                        border:chip.status==='flagged'?'1.5px solid #991b1b':'1px solid rgba(0,0,0,0.15)',
-                        zIndex:2,
-                      }
-                    }, e('span',{style:{fontSize:9,fontWeight:700,color:'#fff',lineHeight:1}},'P'+chip.plot.plot_number+(chip.status==='ordered'?' ✓':chip.status==='delivered'?' ✓':'')));
-                  });
-                }).flat()
-              )
-            )
+          // Today vertical line
+          todayOffset>=0&&todayOffset<totalDays&&e('div',{style:{position:'absolute',left:todayOffset*COL_W+COL_W/2,top:0,bottom:0,width:2,background:'#f97316',opacity:0.4,pointerEvents:'none',zIndex:1}})
+        ),
+
+        // Material offset settings panel
+        e('div',{className:'no-print',style:{borderTop:'2px solid #e5e7eb',padding:'10px 16px',background:'#f9fafb'}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:8}},'Delivery Timing Settings — click ✎ to adjust when each material should be delivered relative to its stage'),
+          e('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+            ...materials.map(mat=>{
+              const isEditing=editingMat===mat.id;
+              const offset=mat.delivery_offset_days??(mat.lead_time_weeks*5);
+              const wd=mat.preferred_weekday;
+              const wdLabel=[,'Mon','Tue','Wed','Thu','Fri'][wd]||'any';
+              return e('div',{key:mat.id,style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:7,padding:'6px 10px',minWidth:180}},
+                e('div',{style:{fontSize:11,fontWeight:700,color:'#111827',marginBottom:3}},mat.material_name),
+                isEditing
+                  ? e('div',{style:{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap'}},
+                      e('input',{type:'number',min:1,max:60,value:offsetDraft,onChange:ev=>setOffsetDraft(ev.target.value),
+                        style:{width:40,fontSize:10,padding:'2px 4px',border:'1px solid #d1d5db',borderRadius:4}}),
+                      e('span',{style:{fontSize:9,color:'#6b7280'}},'days before, on'),
+                      e('select',{value:weekdayDraft,onChange:ev=>setWeekdayDraft(ev.target.value),
+                        style:{fontSize:9,padding:'2px',border:'1px solid #d1d5db',borderRadius:4}},
+                        e('option',{value:''},'any day'),
+                        ...[['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri']].map(([v,l])=>e('option',{key:v,value:v},l))
+                      ),
+                      e('button',{onClick:async()=>{
+                        const fields={delivery_offset_days:parseInt(offsetDraft)||offset,preferred_weekday:weekdayDraft?parseInt(weekdayDraft):null};
+                        await onUpdateMaterial(mat.id,fields);setEditingMat(null);
+                      },style:{padding:'2px 6px',background:'#16a34a',border:'none',borderRadius:4,color:'#fff',fontSize:9,fontWeight:700,cursor:'pointer'}},'✓'),
+                      e('button',{onClick:()=>setEditingMat(null),style:{padding:'2px 5px',background:'#e5e7eb',border:'none',borderRadius:4,color:'#6b7280',fontSize:9,cursor:'pointer'}},'×')
+                    )
+                  : e('div',{style:{display:'flex',alignItems:'center',gap:5}},
+                      e('span',{style:{fontSize:10,color:'#6b7280'}},offset+'d before'+( wd?' on '+wdLabel:'')),
+                      e('button',{onClick:()=>{setEditingMat(mat.id);setOffsetDraft(String(offset));setWeekdayDraft(wd?String(wd):'');},
+                        style:{padding:'1px 5px',background:'#e5e7eb',border:'none',borderRadius:3,color:'#6b7280',fontSize:9,cursor:'pointer'}},'✎'),
+                      e('button',{onClick:()=>setSupplierModal(mat),title:'Supplier email',
+                        style:{padding:'1px 5px',background:'#e5e7eb',border:'none',borderRadius:3,color:'#374151',fontSize:9,cursor:'pointer'}},'📧')
+                    )
+              );
+            })
           )
         )
       )
     ),
 
     supplierModal && e(SupplierEmailModal,{
-      material:supplierModal,plots:sortedPlots,schedules,workingDays,todayIdx,
-      orders,onClose:()=>setSupplierModal(null)
+      material:supplierModal, plots:sortedPlots, schedules, workingDays, todayIdx,
+      orders, onClose:()=>setSupplierModal(null)
     })
   );
 }
