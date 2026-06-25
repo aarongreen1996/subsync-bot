@@ -125,19 +125,41 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
     //   • Gaps between stages stay the same size
     //   • Reordered stages stay reordered
     // Only the overall position in time shifts (not the shape of the programme).
-    // Stages without a saved row are filled in sequentially between neighbours.
+    //
+    // For unsaved stages (not yet dragged), we fill them in sequentially.
+    // Crucially: unsaved stages that appear BEFORE the first saved stage are
+    // back-computed from the first saved stage's position (not placed at day 0).
     const hasCustom = dbRows.length > 0;
 
     function applyWithDelta(delta) {
-      let cursor = 0; // used to fill in unsaved stages sequentially
+      // Build a map of shifted positions for all saved stages
+      const shiftedMap = {};
+      dbRows.forEach(row => {
+        shiftedMap[row.stage_def_id] = { start: row.start_day + delta, dur: row.duration };
+      });
+
+      // Find the first saved stage in programme order so we can back-compute
+      // where unsaved stages before it should go (not day 0).
+      const firstSavedIdx = sortedDefs.findIndex(d => shiftedMap[d.id]);
+      let cursor = 0;
+      if (firstSavedIdx > 0 && shiftedMap[sortedDefs[firstSavedIdx].id]) {
+        // Start at the first saved stage and work backwards through unsaved predecessors
+        cursor = shiftedMap[sortedDefs[firstSavedIdx].id].start;
+        for (let i = firstSavedIdx - 1; i >= 0; i--) {
+          cursor -= (sortedDefs[i].default_duration || 1);
+        }
+      } else if (firstSavedIdx === 0 && shiftedMap[sortedDefs[0].id]) {
+        cursor = shiftedMap[sortedDefs[0].id].start;
+      }
+
+      // Place all stages in sequence order
       sortedDefs.forEach(def => {
-        const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        if (db) {
-          const shifted = db.start_day + delta;
-          s[plot.id][def.id] = { start: shifted, dur: db.duration, basStart: shifted };
-          cursor = shifted + db.duration; // advance cursor past this stage
+        if (shiftedMap[def.id]) {
+          const sh = shiftedMap[def.id];
+          s[plot.id][def.id] = { start: sh.start, dur: sh.dur, basStart: sh.start };
+          cursor = sh.start + sh.dur; // advance cursor past this saved stage
         } else {
-          // Stage has no saved position — insert sequentially after previous
+          // Not saved — fill sequentially from cursor
           const dur = def.default_duration || 1;
           s[plot.id][def.id] = { start: cursor, dur, basStart: cursor };
           cursor += dur;
