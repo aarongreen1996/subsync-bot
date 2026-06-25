@@ -106,67 +106,145 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
   const defMap = {}; stageDefs.forEach(d=>{ defMap[d.id]=d; });
   const today = todayIdx || 0;
 
-  // Pre-compute working days for CRC backwards scheduling.
-  // Must be generated here (not taken from component state) so buildSchedules
-  // is self-contained and callable from any context.
+  // Pre-computed working days for CRC index lookup — self-contained so buildSchedules
+  // can be called from any context (not just inside a component with workingDays state).
   const _schedWDs = genWDs(PROG_START, 730);
+
+  // Find the CRC stage def once (used in CRC-mode anchor logic below)
+  const crcStageDef = sortedDefs[sortedDefs.length - 1]; // CRC is the last stage
 
   plots.forEach(plot => {
     s[plot.id] = {};
     const dbRows = (plotStages||[]).filter(ps => ps.plot_id === plot.id);
 
-    if (plot.current_stage_id && defMap[plot.current_stage_id]) {
-      // Anchor mode: place the current stage at today, build outward
-      const curDef = defMap[plot.current_stage_id];
-      const curOrder = curDef.stage_order || 0;
-      const curDb = dbRows.find(ps => ps.stage_def_id === plot.current_stage_id);
-      const curDur = curDb ? curDb.duration : (curDef.default_duration || 1);
-      s[plot.id][plot.current_stage_id] = { start: today, dur: curDur, basStart: today };
+    // ── Saved-position helper ──────────────────────────────────────────────
+    // If this plot has manually-saved stage positions (from bar drags), we
+    // preserve the sequence exactly by computing a single shift delta and
+    // applying it to all saved positions. This means:
+    //   • Overlapping stages stay overlapping
+    //   • Gaps between stages stay the same size
+    //   • Reordered stages stay reordered
+    // Only the overall position in time shifts (not the shape of the programme).
+    // Stages without a saved row are filled in sequentially between neighbours.
+    const hasCustom = dbRows.length > 0;
 
-      // Place all stages with lower order working backwards from today
-      let backCursor = today;
-      [...sortedDefs].reverse().forEach(def => {
-        if ((def.stage_order||0) >= curOrder) return; // skip current + future, handled below
-        const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        const dur = db ? db.duration : (def.default_duration || 1);
-        backCursor = backCursor - dur;
-        s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor }; // allow negative = off-screen left
-      });
-
-      // Place all stages with higher order working forwards from end of current stage
-      let fwdCursor = today + curDur;
+    function applyWithDelta(delta) {
+      let cursor = 0; // used to fill in unsaved stages sequentially
       sortedDefs.forEach(def => {
-        if ((def.stage_order||0) <= curOrder) return; // already handled
         const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        const dur = db ? db.duration : (def.default_duration || 1);
-        s[plot.id][def.id] = { start: fwdCursor, dur, basStart: fwdCursor };
-        fwdCursor += dur;
+        if (db) {
+          const shifted = db.start_day + delta;
+          s[plot.id][def.id] = { start: shifted, dur: db.duration, basStart: shifted };
+          cursor = shifted + db.duration; // advance cursor past this stage
+        } else {
+          // Stage has no saved position — insert sequentially after previous
+          const dur = def.default_duration || 1;
+          s[plot.id][def.id] = { start: cursor, dur, basStart: cursor };
+          cursor += dur;
+        }
       });
+    }
 
+    // ── Mode 1: Current stage confirmed → anchor it at today ──────────────
+    if (plot.current_stage_id && defMap[plot.current_stage_id]) {
+
+      if (hasCustom) {
+        // Has manually-saved positions: shift the whole sequence so the
+        // confirmed current stage starts at today. All relative offsets preserved.
+        const curRow = dbRows.find(ps => ps.stage_def_id === plot.current_stage_id);
+        if (curRow) {
+          applyWithDelta(today - curRow.start_day);
+        } else {
+          // Current stage not yet saved individually — use the earliest saved
+          // stage as the reference and try to position the current stage at today.
+          // Fall back: place at today and cascade from saved positions.
+          const curDef = defMap[plot.current_stage_id];
+          const curOrder = curDef.stage_order || 0;
+          // Estimate where today is relative to saved stages
+          const nearestSaved = dbRows.reduce((best, row) => {
+            const def = defMap[row.stage_def_id];
+            if (!def) return best;
+            const dist = Math.abs((def.stage_order||0) - curOrder);
+            return (!best || dist < best.dist) ? {row, def, dist} : best;
+          }, null);
+          if (nearestSaved) {
+            const nearOrder = nearestSaved.def.stage_order || 0;
+            const orderDiff = curOrder - nearOrder;
+            // Estimate position of current stage from nearest saved stage
+            const estimatedStart = nearestSaved.row.start_day +
+              sortedDefs.filter(d=>(d.stage_order||0)>nearOrder && (d.stage_order||0)<=curOrder)
+                .reduce((sum,d)=>sum+(d.default_duration||1),0) * (orderDiff>0?1:-1);
+            applyWithDelta(today - estimatedStart);
+          } else {
+            applyWithDelta(0);
+          }
+        }
+
+      } else {
+        // No saved positions — standard anchor mode (original behaviour)
+        const curDef = defMap[plot.current_stage_id];
+        const curOrder = curDef.stage_order || 0;
+        const curDur = curDef.default_duration || 1;
+        s[plot.id][plot.current_stage_id] = { start: today, dur: curDur, basStart: today };
+
+        let backCursor = today;
+        [...sortedDefs].reverse().forEach(def => {
+          if ((def.stage_order||0) >= curOrder) return;
+          const dur = def.default_duration || 1;
+          backCursor -= dur;
+          s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor };
+        });
+
+        let fwdCursor = today + curDur;
+        sortedDefs.forEach(def => {
+          if ((def.stage_order||0) <= curOrder) return;
+          const dur = def.default_duration || 1;
+          s[plot.id][def.id] = { start: fwdCursor, dur, basStart: fwdCursor };
+          fwdCursor += dur;
+        });
+      }
+
+    // ── Mode 2: CRC deadline set → schedule backwards from deadline ────────
     } else if (plot.crc_deadline_date) {
-      // CRC backwards scheduling mode: no confirmed current stage, but a target CRC deadline is set.
-      // Calculate the LATEST start date for each stage working backwards from CRC so the Gantt
-      // shows "if we need CRC by [date], each stage must START no later than [date]".
-      // todayIdx is only used for the working-day index conversion; the actual scheduling
-      // is entirely deadline-driven.
       const crcDeadlineDate = new Date(plot.crc_deadline_date);
-      // Use the pre-computed workingDays array to find the CRC deadline index.
-      // This is reliable, uses the same holiday logic as genWDs, and works across timezones.
       let crcIdx = _schedWDs.findIndex(d => d >= crcDeadlineDate);
-      if (crcIdx < 0) crcIdx = _schedWDs.length - 1; // deadline beyond array = use last day
+      if (crcIdx < 0) crcIdx = _schedWDs.length - 1;
 
-      // Work backwards: start from CRC, place each stage so it ends exactly as the next begins
-      let cursor = crcIdx;
-      [...sortedDefs].reverse().forEach(def => {
-        const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        const dur = db ? db.duration : (def.default_duration || 1);
-        const startDay = Math.max(0, cursor - dur);
-        s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
-        cursor = startDay;
-      });
+      if (hasCustom && crcStageDef) {
+        // Has manually-saved positions: shift so the CRC stage (last stage)
+        // lands exactly on the CRC deadline. All relative spacing preserved.
+        const crcRow = dbRows.find(ps => ps.stage_def_id === crcStageDef.id);
+        if (crcRow) {
+          applyWithDelta(crcIdx - crcRow.start_day);
+        } else {
+          // CRC stage not individually saved — anchor on the last saved stage
+          const lastSaved = [...dbRows].sort((a,b) => {
+            const oa = defMap[a.stage_def_id]?.stage_order || 0;
+            const ob = defMap[b.stage_def_id]?.stage_order || 0;
+            return ob - oa;
+          })[0];
+          if (lastSaved) {
+            const lastEnd = lastSaved.start_day + lastSaved.duration;
+            applyWithDelta(crcIdx - lastEnd);
+          } else {
+            applyWithDelta(0);
+          }
+        }
 
+      } else {
+        // No saved positions — standard backwards scheduling from CRC deadline
+        let cursor = crcIdx;
+        [...sortedDefs].reverse().forEach(def => {
+          const db = dbRows.find(ps => ps.stage_def_id === def.id);
+          const dur = db ? db.duration : (def.default_duration || 1);
+          const startDay = cursor - dur;
+          s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
+          cursor = startDay;
+        });
+      }
+
+    // ── Mode 3: Standard sequential (no anchor, no CRC deadline) ──────────
     } else {
-      // Standard sequential mode — no confirmed stage, no CRC deadline
       let cum = parseInt(plot.programme_start_day) || 0;
       sortedDefs.forEach(def => {
         const db = dbRows.find(ps => ps.stage_def_id === def.id);
