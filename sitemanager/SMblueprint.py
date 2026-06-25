@@ -446,7 +446,7 @@ def api_material_create():
 def api_material_update(material_id):
     data = request.get_json() or {}
     updates = {k: v for k, v in data.items() if k in
-               {"material_name", "linked_stage_id", "lead_time_weeks", "supplier_name", "supplier_email", "po_number", "description"}}
+               {"material_name", "linked_stage_id", "lead_time_weeks", "supplier_name", "supplier_email", "po_number", "description", "delivery_offset_days", "preferred_weekday"}}
     try:
         supabase.table("smc_materials").update(updates).eq("id", material_id).execute()
         return ok()
