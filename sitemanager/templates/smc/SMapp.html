@@ -792,8 +792,8 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     }
 
     function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
       dragRef.current = null;
 
       if (!moved) {
@@ -1910,9 +1910,9 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
     }
     function onUp() {
       if (moved) { lsSet('smc_dots_v4', dotsRef.current); }
-      else { setSelected(id); } // treat as a click if it didn't actually move
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      else { setSelected(id); }
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -1920,14 +1920,15 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
 
   // ── Click-and-drag panning of the whole drawing ───────────────────────────
   function handleWrapperMouseDown(ev) {
-    if (placeMode) return;                 // placing takes priority — no pan
-    if (ev.target !== imgRef.current) return; // only pan when starting on the image itself
+    if (placeMode) return;
+    if (ev.target !== imgRef.current) return;
     if (!scrollRef.current) return;
+    ev.preventDefault(); // prevent browser scroll-hijack on touch
     const startX = ev.clientX, startY = ev.clientY;
     const startScrollLeft = scrollRef.current.scrollLeft;
     const startScrollTop  = scrollRef.current.scrollTop;
     let moved = false;
-    panRef.current = { moved:false };
+    panRef.current = { moved: false };
     function onMove(me) {
       const dx = me.clientX - startX, dy = me.clientY - startY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { moved = true; setIsPanning(true); }
@@ -1937,11 +1938,12 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       }
     }
     function onUp() {
-      if (moved) suppressClickRef.current = true; // stop the click handler from firing select/place logic
+      if (moved) suppressClickRef.current = true;
       setIsPanning(false);
       panRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      // Must match the event types that were added — pointermove/pointerup
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -2298,8 +2300,8 @@ function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates
       if (!dragState.current) return;
       const from = dragState.current.idx;
       const to = dropIdxRef.current ?? from;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
       setDragIdx(null);
       setDropIdx(null);
       dragState.current = null;
