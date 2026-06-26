@@ -653,8 +653,8 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
       });
     }
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   const monthLabels = useMemo(() => {
@@ -831,7 +831,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
 
       // Fully editable plot schedule table
       e('div',{style:{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots (editable)'),
-      e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',maxWidth:'100%'}},
+      e('div',{className:'overview-table-wrap',style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',maxWidth:'100%',WebkitOverflowScrolling:'touch'}},
         e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:1100}},
           e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
             ...['Plot','House Type','Tenure','Status','Current Stage','Next Stage','Next Due','CRC Deadline','Scheduled CRC','CML Signed Off','CRC Signed Off'].map(h=>
@@ -979,7 +979,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
                   const behind = s.start > s.basStart;
                   const w = Math.max(s.dur*cellW-2,6);
                   return e('div',{key:def.id,
-                    onMouseDown: ev => onBarMouseDown(ev, p, def.id),
+                    onPointerDown: ev => onBarMouseDown(ev, p, def.id),
                     title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':''),
                     style:{position:'absolute',left:s.start*cellW+1,top:2+lane*LANE_H,width:w,height:LANE_H-4,borderRadius:3,cursor:'pointer',
                       background:isDone?'#d1d5db':stageColor(def),
@@ -1278,7 +1278,11 @@ function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSe
     !editing && status === 'ordered' && e('button', {
       onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null}),
       style:{ padding:'4px 8px', background:'#ffffff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
-    }, 'Undo'),
+    }, '↩ Undo Order'),
+    !editing && status === 'delivered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'ordered', delivery_date:null}),
+      style:{ padding:'4px 8px', background:'#ffffff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Undo Delivery'),
     editing && e('div', { style:{ display:'flex', gap:4, alignItems:'center' } },
       e('input', { type:'date', value:dateVal, onChange:ev=>setDateVal(ev.target.value), style:{ fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', borderRadius:5 } }),
       e('button', {
@@ -1692,8 +1696,8 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   // ── Click-and-drag panning of the whole drawing ───────────────────────────
@@ -1721,8 +1725,8 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   // ── Background click (outside image) clears selection ─────────────────────
@@ -1872,7 +1876,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
             height: renderH ? renderH+'px' : 'auto',
             cursor: placeMode ? 'crosshair' : (isPanning ? 'grabbing' : 'grab')
           },
-          onMouseDown: handleWrapperMouseDown,
+          onPointerDown: handleWrapperMouseDown,
           onClick: handleMapAreaClick
         },
           e('img',{
@@ -2099,8 +2103,8 @@ function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates
       );
     }
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   // ── Plot assignment ────────────────────────────────────────────────────────
@@ -2821,17 +2825,25 @@ function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx,
             : anyFlagged   ? '2.5px solid #dc2626'
             : anyOrdered   ? '2.5px solid #f97316'
             :                '1px solid rgba(0,0,0,0.15)',
-      opacity: notDue ? 0.55 : 1,  // only not_due items are faded; flagged/ordered always full opacity
-      cursor: (anyFlagged||anyOrdered) ? 'pointer' : 'default',
+      opacity: notDue ? 0.5 : 1,
+      cursor: (anyFlagged||anyOrdered||allDelivered) ? 'pointer' : 'default',
     };
   }
 
   function handleClick(mat, items) {
-    const flagged = items.filter(i=>i.status==='flagged');
-    const ordered = items.filter(i=>i.status==='ordered');
-    const today   = new Date().toISOString().slice(0,10);
-    if (flagged.length)  flagged.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'ordered',   ordered_date:today}));
+    const flagged   = items.filter(i=>i.status==='flagged');
+    const ordered   = items.filter(i=>i.status==='ordered');
+    const delivered = items.filter(i=>i.status==='delivered');
+    const today = new Date().toISOString().slice(0,10);
+    if (flagged.length)      flagged.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'ordered',ordered_date:today}));
     else if (ordered.length) ordered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'delivered',delivery_date:today}));
+    // Long-press or double-tap effectively handled via the per-item undo in list view.
+  }
+  function handleUndo(mat, items) {
+    const delivered = items.filter(i=>i.status==='delivered');
+    const ordered   = items.filter(i=>i.status==='ordered');
+    if (delivered.length) delivered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'ordered',delivery_date:null}));
+    else if (ordered.length) ordered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'pending',ordered_date:null}));
   }
 
   function nav(delta) { setStartIdx(s => Math.max(0, (s??mondayIdx)+delta)); }
@@ -2968,7 +2980,7 @@ function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx,
                     const plotNums    =items.map(x=>'P'+x.plot.plot_number).join('  ');
                     return e('div',{
                       key:mat.id,
-                      onClick:()=>handleClick(mat,items),
+                      onClick:()=>{ if(items.every(x=>x.status==='delivered')) handleUndo(mat,items); else handleClick(mat,items); },
                       title:[
                         mat.material_name,
                         'Plots: '+items.map(x=>'P'+x.plot.plot_number).join(', '),
@@ -2991,7 +3003,7 @@ function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx,
                       e('div',{style:{display:'flex',alignItems:'center',gap:3,minWidth:0}},
                         e('span',{style:{fontSize:10,fontWeight:800,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,lineHeight:1.2}},
                           mat.material_name),
-                        allDelivered&&e('span',{style:{fontSize:10,flexShrink:0,color:'rgba(255,255,255,0.9)'}},'✓'),
+                        allDelivered&&e('span',{style:{fontSize:10,flexShrink:0,color:'rgba(255,255,255,0.9)',cursor:'pointer'}},'✓ ↩'),
                         anyFlagged&&e('span',{style:{fontSize:10,flexShrink:0,color:'#fff',fontWeight:700}},'⚠'),
                         anyOrdered&&e('span',{style:{fontSize:10,flexShrink:0,color:'rgba(255,255,255,0.85)'}}, '✓')
                       ),
@@ -3239,7 +3251,7 @@ function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders,
     ),
 
     // Calendar view
-    view === 'calendar' && e('div',{style:{flex:1,overflow:'hidden'}},
+    view === 'calendar' && e('div',{style:{flex:1,overflow:'hidden',minHeight:0,display:'flex',flexDirection:'column'}},
       e(MaterialsCalendar,{materials,plots,schedules,workingDays,todayIdx,orders:materialOrders,onSetOrder,onUpdateMaterial,stageDefs})
     ),
 
@@ -3747,19 +3759,43 @@ function App() {
   // Supabase (smc_map_image) rather than localStorage, because a 3x-resolution
   // PDF render can easily exceed the browser's localStorage quota (~5-10MB),
   // which was failing silently and causing the "doesn't save" bug.
-  const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB on mount
+  const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB or server on mount
   const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  // Load drawing from IndexedDB on mount (replaces Supabase text column which
-  // silently rejects payloads above ~256KB — a 3x PDF render can be 10-20MB)
+  // Load drawing: IndexedDB first (fast, local), then server URL (cross-device)
   useEffect(() => {
-    idbGet('map_drawing').then(img => { if (img) setBgImageRaw(img); });
+    idbGet('map_drawing').then(img => {
+      if (img) { setBgImageRaw(img); return; }
+      // Not in local IndexedDB — try to load from server (e.g. different device)
+      api('/map-image').then(r=>r.json()).then(data => {
+        if (data.image_url) {
+          setBgImageRaw(data.image_url);
+          // Cache locally for next time
+          idbSet('map_drawing', data.image_url).catch(()=>{});
+        }
+      }).catch(()=>{});
+    }).catch(()=>{});
   }, []);
 
   function setBgImage(v) {
     setBgImageRaw(v);
+    // Save to IndexedDB immediately (fast, local)
     idbSet('map_drawing', v).catch(ex => console.error('Save drawing to IndexedDB failed:', ex));
-    // Also clear any old localStorage cache that might confuse things
+    // Also save to server as JPEG for cross-device access.
+    // Compress: convert data URL to a JPEG canvas to reduce 5-15MB PNG → ~500KB JPEG
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const jpeg = canvas.toDataURL('image/jpeg', 0.75);
+        const b64 = jpeg.split(',')[1];
+        api('/map-image', { method:'POST', body:JSON.stringify({ image_b64:b64, mime_type:'image/jpeg' }) })
+          .catch(ex => console.warn('Map drawing server save failed (offline?):', ex));
+      };
+      img.src = v;
+    } catch(_) {}
     try { localStorage.removeItem('smc_bgimage_v2'); } catch(_) {}
   }
   function setMapDots(fn) {
