@@ -921,3 +921,95 @@ def api_plot_upload_cert(plot_id):
         return jsonify({"ok": True, "url": public_url})
     except Exception as e:
         return err(e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PWA — Service Worker + Web App Manifest
+# Served from /smc/ so the SW scope covers the whole SMC app.
+# ══════════════════════════════════════════════════════════════════════════
+
+@smc_bp.route("/sw.js")
+def service_worker():
+    """Service Worker: caches the app shell for offline use."""
+    sw_js = r"""
+const CACHE = 'smc-shell-v3';
+const SHELL = ['/smc/', '/smc/app'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // API calls — always try network; never cache
+  if (url.pathname.startsWith('/smc/api/')) {
+    e.respondWith(
+      fetch(e.request).catch(() =>
+        new Response(JSON.stringify({ok:false,error:'offline'}),
+          {status:503, headers:{'Content-Type':'application/json'}})
+      )
+    );
+    return;
+  }
+
+  // App shell — network first, fall back to cache
+  if (url.pathname === '/smc/' || url.pathname === '/smc/app') {
+    e.respondWith(
+      fetch(e.request)
+        .then(r => {
+          const clone = r.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return r;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Everything else — network with cache fallback
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request))
+  );
+});
+"""
+    from flask import Response
+    resp = Response(sw_js, mimetype='application/javascript')
+    resp.headers['Service-Worker-Allowed'] = '/smc/'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
+@smc_bp.route("/manifest.json")
+def pwa_manifest():
+    """Web App Manifest for PWA install on iOS/Android home screen."""
+    import json
+    from flask import Response
+    manifest = {
+        "name": "Site Command Centre — SS17",
+        "short_name": "SMC",
+        "description": "Site Manager Command Centre — Sandle Park, Fordingbridge",
+        "start_url": "/smc/",
+        "display": "standalone",
+        "background_color": "#111827",
+        "theme_color": "#f97316",
+        "orientation": "any",
+        "icons": [
+            {"src": "/smc/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/smc/icon-512.png", "sizes": "512x512", "type": "image/png"}
+        ],
+        "categories": ["productivity", "business"]
+    }
+    return Response(json.dumps(manifest), mimetype='application/manifest+json')
