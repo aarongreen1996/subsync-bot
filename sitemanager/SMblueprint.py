@@ -14,6 +14,9 @@ supabase = create_client(_url, _key) if _url and _key else None
 
 SMC_PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 SMC_PASSWORD   = os.environ.get("SMC_PASSWORD", "sandle2026")
+
+# Allow up to 25MB request bodies for map drawing uploads (JPEG ~500KB, PNG can be 15-20MB)
+smc_bp.after_request(lambda r: r)  # placeholder — limit set on the Flask app in main.py if needed
 COOKIE_NAME    = "smc_auth"
 
 
@@ -254,10 +257,13 @@ def api_hs_log_update(log_id):
 @smc_bp.route("/api/map-image", methods=["GET"])
 @_require_auth
 def api_map_image_get():
+    """Return the public URL of the stored map drawing from Supabase Storage."""
     try:
-        r = supabase.table("smc_map_image").select("*") \
+        r = supabase.table("smc_map_image").select("image_url") \
             .eq("project_id", SMC_PROJECT_ID).limit(1).execute()
-        return jsonify(r.data[0] if r.data else {})
+        if r.data and r.data[0].get("image_url"):
+            return jsonify({"image_url": r.data[0]["image_url"]})
+        return jsonify({"image_url": None})
     except Exception as e:
         return err(e)
 
@@ -265,17 +271,30 @@ def api_map_image_get():
 @smc_bp.route("/api/map-image", methods=["POST"])
 @_require_auth
 def api_map_image_set():
-    image_url = (request.get_json() or {}).get("image_url", "")
+    """Upload the site map drawing to Supabase Storage for cross-device access."""
+    data = request.get_json() or {}
+    image_b64 = data.get("image_b64", "")
+    mime_type = data.get("mime_type", "image/jpeg")
+    if not image_b64:
+        return jsonify({"ok": False, "error": "image_b64 required"}), 400
     try:
+        import base64
+        img_bytes = base64.b64decode(image_b64)
+        ext = "jpg" if "jpeg" in mime_type else "png"
+        path = f"maps/{SMC_PROJECT_ID}/site_drawing.{ext}"
+        supabase.storage.from_("smc-photos").upload(
+            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
+        )
+        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
         ex = supabase.table("smc_map_image").select("id").eq("project_id", SMC_PROJECT_ID).execute()
         if ex.data:
-            supabase.table("smc_map_image").update({"image_url": image_url}) \
+            supabase.table("smc_map_image").update({"image_url": public_url}) \
                 .eq("project_id", SMC_PROJECT_ID).execute()
         else:
             supabase.table("smc_map_image").insert(
-                {"project_id": SMC_PROJECT_ID, "image_url": image_url}
+                {"project_id": SMC_PROJECT_ID, "image_url": public_url}
             ).execute()
-        return ok()
+        return jsonify({"ok": True, "image_url": public_url})
     except Exception as e:
         return err(e)
 
