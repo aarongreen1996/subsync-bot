@@ -517,6 +517,156 @@ async function idbSet(key,value) {
 // ══════════════════════════════════════════════════════════════════════════
 // PROGRAMME TAB — Overview dashboard + Gantt chart
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// RESOURCE SUMMARY PANEL
+// Sits below the Gantt chart and shows, for each trade, how many plots
+// are being worked on each day. Scrolls in perfect sync with the Gantt.
+//
+// Logic: for every plot's schedule, every stage that is "active" on a day
+// (start ≤ day < start+duration) increments that trade's count for that day.
+// ══════════════════════════════════════════════════════════════════════════
+function ResourceSummaryPanel({ sortedDefs, schedules, visPlots, workingDays, todayIdx, cellW, LEFT_W, tradeFilter, stageColor, rsScrollRef, onScroll }) {
+  const TOTAL_DAYS = workingDays.length;
+  const ROW_H = 28;
+  const LEFT = LEFT_W;
+
+  // All unique trades (respect the active trade filter)
+  const trades = useMemo(() => {
+    const all = [...new Set(sortedDefs.map(d=>d.trade).filter(Boolean))].sort();
+    return tradeFilter === 'All' ? all : all.filter(t=>t===tradeFilter);
+  }, [sortedDefs, tradeFilter]);
+
+  // Which stage defs belong to each trade
+  const tradeDefsMap = useMemo(() => {
+    const m = {};
+    trades.forEach(t => { m[t] = sortedDefs.filter(d=>d.trade===t); });
+    return m;
+  }, [trades, sortedDefs]);
+
+  // Build sparse demand map: { trade → { dayIdx → plotCount } }
+  // For each plot, for each of its active stages, increment the relevant day cells.
+  const demandMap = useMemo(() => {
+    const map = {};
+    trades.forEach(t => { map[t] = {}; });
+
+    visPlots.forEach(plot => {
+      const sc = schedules[plot.id];
+      if (!sc) return;
+      trades.forEach(trade => {
+        const defs = tradeDefsMap[trade];
+        defs.forEach(def => {
+          const s = sc[def.id];
+          if (!s) return;
+          for (let day = s.start; day < s.start + s.dur && day < TOTAL_DAYS; day++) {
+            if (day < 0) continue;
+            map[trade][day] = (map[trade][day] || 0) + 1;
+          }
+        });
+      });
+    });
+    return map;
+  }, [trades, tradeDefsMap, visPlots, schedules, TOTAL_DAYS]);
+
+  // Max demand across all trades and days (for colour scaling)
+  const globalMax = useMemo(() => {
+    let m = 1;
+    Object.values(demandMap).forEach(dm => {
+      Object.values(dm).forEach(c => { if (c > m) m = c; });
+    });
+    return m;
+  }, [demandMap]);
+
+  // Find the first stage def for a trade (for its colour)
+  const tradeColorDef = useMemo(() => {
+    const m = {};
+    trades.forEach(t => {
+      const def = sortedDefs.find(d=>d.trade===t);
+      m[t] = def || null;
+    });
+    return m;
+  }, [trades, sortedDefs]);
+
+  function cellBg(count) {
+    if (!count) return null; // transparent
+    const pct = count / globalMax;
+    if (pct >= 0.75) return '#dc2626'; // high demand — red
+    if (pct >= 0.4)  return '#f97316'; // medium — orange
+    if (pct >= 0.15) return '#d97706'; // light — amber
+    return '#16a34a';                  // low — green
+  }
+
+  if (!trades.length) return null;
+
+  return e('div',{style:{display:'flex',flexDirection:'column',background:'#fff',borderTop:'2px solid #1e293b',flexShrink:0,maxHeight:'40vh',overflow:'hidden'}},
+
+    // Header
+    e('div',{style:{display:'flex',alignItems:'center',padding:'4px 8px',background:'#1e293b',flexShrink:0,gap:8}},
+      e('div',{style:{width:LEFT,flexShrink:0,fontSize:11,fontWeight:700,color:'#f97316'}},
+        '📊 Resource Demand'),
+      e('div',{style:{flex:1,fontSize:10,color:'#94a3b8'}},'Plots active per trade per day · scroll synced with Gantt'),
+      e('div',{style:{display:'flex',gap:8,alignItems:'center',marginLeft:'auto',fontSize:9}},
+        ...[['#16a34a','Low'],['#d97706','Light'],['#f97316','Medium'],['#dc2626','High']].map(([c,l])=>
+          e('div',{key:l,style:{display:'flex',alignItems:'center',gap:3,color:'#94a3b8'}},
+            e('div',{style:{width:8,height:8,borderRadius:2,background:c}}), l)
+        )
+      )
+    ),
+
+    // Table body
+    e('div',{style:{display:'flex',flex:1,overflow:'hidden',minHeight:0}},
+
+      // Fixed left column — trade names
+      e('div',{style:{width:LEFT,flexShrink:0,borderRight:'2px solid #1e293b',overflowY:'auto',background:'#f8fafc'},id:'rs-left'},
+        ...trades.map(trade => {
+          const def = tradeColorDef[trade];
+          const col = def ? stageColor(def) : '#64748b';
+          const peakCount = Math.max(0, ...Object.values(demandMap[trade]||{}));
+          return e('div',{key:trade,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:6,borderBottom:'1px solid #e5e7eb'}},
+            e('div',{style:{width:8,height:8,borderRadius:2,background:col,flexShrink:0}}),
+            e('div',{style:{flex:1,fontSize:10,fontWeight:600,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},trade),
+            peakCount>0 && e('div',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},'↑'+peakCount)
+          );
+        })
+      ),
+
+      // Scrollable cells — synced with Gantt
+      e('div',{ref:rsScrollRef,style:{flex:1,overflowX:'scroll',overflowY:'auto'},
+        onScroll:onScroll},
+        e('div',{style:{width:TOTAL_DAYS*cellW,display:'flex',flexDirection:'column'}},
+          ...trades.map(trade => {
+            const dm = demandMap[trade] || {};
+            const def = tradeColorDef[trade];
+            const tradeCol = def ? stageColor(def) : '#64748b';
+            return e('div',{key:trade,style:{height:ROW_H,display:'flex',borderBottom:'1px solid #e5e7eb',position:'relative'}},
+              // Today line
+              e('div',{style:{position:'absolute',left:todayIdx*cellW+cellW/2,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.4,pointerEvents:'none',zIndex:2}}),
+              ...workingDays.map((d,i)=>{
+                const count = dm[i] || 0;
+                const bg = cellBg(count);
+                const isToday = i===todayIdx;
+                const wk = Math.floor(i/5);
+                return e('div',{key:i,style:{
+                  width:cellW,flexShrink:0,height:ROW_H,
+                  borderRight:'1px solid '+(isToday?'rgba(249,115,22,0.4)':'#f1f5f9'),
+                  background:bg||( wk%2===0?'#fff':'#f9fafb'),
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  position:'relative',
+                }},
+                  count>0 && e('span',{style:{
+                    fontSize:Math.min(9,cellW*0.38),fontWeight:700,
+                    color:'#fff',lineHeight:1,
+                    textShadow:'0 1px 2px rgba(0,0,0,0.4)',
+                  }},count)
+                );
+              })
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
 function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages, trades }) {
   // Trade → colour map: each trade has one canonical colour; all its stages share it.
   // Falls back to the stage's own .color field for backwards compatibility.
@@ -542,8 +692,10 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
   const [tradeFilter, setTradeFilter] = useState('All');
   const [view, setView]     = useState('gantt'); // 'overview' or 'gantt'
   const [showPrint, setShowPrint] = useState(false);
-  const scrollRef = useRef(null);
-  const dragRef   = useRef(null);
+  const [showResources, setShowResources] = useState(false); // Resource summary panel
+  const scrollRef  = useRef(null);  // Gantt horizontal scroll
+  const rsScrollRef= useRef(null);  // Resource summary horizontal scroll (synced)
+  const dragRef    = useRef(null);
 
   const workingDays = useMemo(() => genWDs(PROG_START, TOTAL_WD), []);
   const todayIdx = useMemo(() => {
@@ -773,6 +925,7 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
       ),
       view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'− Day'),
       view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'+ Day'),
+      e('button',{onClick:()=>setShowResources(r=>!r),style:{padding:'4px 12px',background:showResources?'#2563eb':'#e5e7eb',border:'none',borderRadius:5,color:showResources?'#fff':'#374151',cursor:'pointer',fontSize:10,fontWeight:700}},'📊 Resources'),
       e('button',{onClick:()=>setShowPrint(true),style:{padding:'4px 12px',background:'#111827',border:'none',borderRadius:5,color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}},'🖨 Print Programme')
     ),
 
@@ -897,7 +1050,8 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     ),
 
     // ── GANTT VIEW ────────────────────────────────────────────────────────
-    view === 'gantt' && e('div',{style:{display:'flex',flex:1,overflow:'hidden'}},
+    view === 'gantt' && e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}},
+      e('div',{style:{display:'flex',flex:1,overflow:'hidden',minHeight:0}},
       e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #d1d5db',display:'flex',flexDirection:'column'}},
         e('div',{style:{height:HDR_H,background:'#ffffff',borderBottom:'1px solid #d1d5db',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
         e('div',{style:{flex:1,overflowY:'scroll'},id:'g-left'},
@@ -919,7 +1073,10 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
           })
         )
       ),
-      e('div',{ref:scrollRef,className:'gantt-scroll',style:{flex:1,overflow:'scroll'},onScroll:ev=>{const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;}},
+      e('div',{ref:scrollRef,className:'gantt-scroll',style:{flex:1,overflow:'scroll'},onScroll:ev=>{
+        const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;
+        if(rsScrollRef.current) rsScrollRef.current.scrollLeft=ev.target.scrollLeft;
+      }},
         e('div',{style:{width:workingDays.length*cellW,position:'relative',minHeight:'100%'}},
           e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#ffffff',height:HDR_H,borderBottom:'1px solid #d1d5db'}},
             e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #e5e7eb'}},
@@ -995,7 +1152,16 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
           )
         )
       )
-    ),
+    ),  // end inner Gantt flex row
+
+    // ── RESOURCE SUMMARY PANEL ──────────────────────────────────────────────
+    showResources && e(ResourceSummaryPanel, {
+      sortedDefs, schedules, visPlots, workingDays, todayIdx, cellW,
+      LEFT_W, tradeFilter, stageColor, rsScrollRef,
+      onScroll: ev => { if (scrollRef.current) scrollRef.current.scrollLeft = ev.target.scrollLeft; }
+    })
+
+  ), // end outer column wrapper
 
     // Stage legend
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto',alignItems:'center'}},
