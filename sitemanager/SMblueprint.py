@@ -97,7 +97,7 @@ def api_plots():
 @_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url", "is_core_block", "exclude_external_stages"}}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url", "is_core_block", "exclude_external_stages", "snag_report_url", "pre_crc_notes"}}
     if not updates:
         return jsonify({"ok": False, "error": "No valid fields"}), 400
     try:
@@ -946,6 +946,30 @@ def api_plot_upload_cert(plot_id):
 # PWA — Service Worker + Web App Manifest
 # Served from /smc/ so the SW scope covers the whole SMC app.
 # ══════════════════════════════════════════════════════════════════════════
+
+
+@smc_bp.route("/api/plots/<plot_id>/upload-snag-report", methods=["POST"])
+@_require_auth
+def api_upload_snag_report(plot_id):
+    """Upload a snag report PDF or image to Supabase Storage."""
+    try:
+        import base64, mimetypes
+        data     = request.get_json() or {}
+        file_b64 = data.get("file_b64","")
+        filename = data.get("filename","snag_report.pdf")
+        mime     = data.get("mime_type","application/pdf")
+        if not file_b64:
+            return jsonify({"ok":False,"error":"file_b64 required"}),400
+        file_bytes = base64.b64decode(file_b64)
+        path = f"certs/{plot_id}/snag_report_{filename}"
+        supabase.storage.from_("smc-photos").upload(
+            path, file_bytes, {"content-type": mime, "upsert":"true"}
+        )
+        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
+        supabase.table("smc_plots").update({"snag_report_url": public_url})            .eq("id", plot_id).execute()
+        return jsonify({"ok":True,"url":public_url})
+    except Exception as e:
+        return err(e)
 
 @smc_bp.route("/sw.js")
 def service_worker():
