@@ -814,26 +814,47 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
         return;
       }
 
-      // Was dragged — cascade every later stage to follow immediately after
-      // (no gaps, no overlaps) and persist the whole chain in one call.
+      // Was dragged — cascade every later stage to follow immediately after the
+      // dragged stage, then save a COMPLETE snapshot of ALL stage positions.
+      // Saving all stages (not just from dragged onwards) ensures that
+      // buildSchedules can always find any reference stage (current stage,
+      // CRC stage) in smc_plot_stages, so applyWithDelta works correctly
+      // when the user comes back to the page.
+      let stagesToSave = null;
+
       setSchedules(prev => {
         const plotSched = Object.assign({}, prev[plot.id]);
         const draggedOrder = (defMap[defId]||{}).stage_order || 0;
-        const changed = [{ stage_def_id: defId, start_day: plotSched[defId].start, duration: plotSched[defId].dur, baseline_start: plotSched[defId].basStart }];
+
+        // Cascade: move all later stages to follow immediately after the dragged one
         let cursor = plotSched[defId].start + plotSched[defId].dur;
         sortedDefs.forEach(def => {
           if ((def.stage_order||0) <= draggedOrder) return;
           const cur = plotSched[def.id];
           if (!cur) return;
           plotSched[def.id] = Object.assign({}, cur, { start: cursor });
-          changed.push({ stage_def_id: def.id, start_day: cursor, duration: cur.dur, baseline_start: cur.basStart });
           cursor += cur.dur;
         });
-        onSaveStages(plot.id, changed);
+
+        // Build complete snapshot of ALL stages for this plot
+        stagesToSave = sortedDefs.map(def => {
+          const s = plotSched[def.id];
+          if (!s) return null;
+          return { stage_def_id: def.id, start_day: s.start, duration: s.dur, baseline_start: s.basStart ?? s.start };
+        }).filter(Boolean);
+
         const next = Object.assign({}, prev);
         next[plot.id] = plotSched;
         return next;
       });
+
+      // Save OUTSIDE setSchedules (not a side-effect in a state updater).
+      // setTimeout(0) ensures React has processed the state update first.
+      setTimeout(() => {
+        if (stagesToSave && stagesToSave.length > 0) {
+          onSaveStages(plot.id, stagesToSave);
+        }
+      }, 0);
     }
 
     window.addEventListener('pointermove', onMove);
