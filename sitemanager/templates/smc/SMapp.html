@@ -1519,22 +1519,31 @@ function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSe
       e('div', { style:{ fontSize:10, color:'#9ca3af' } }, 'Stage due '+dateStr+(material.supplier_name?' · '+material.supplier_name:''))
     ),
     e('span', { style:{ padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700, background:badge.bg, color:badge.col, whiteSpace:'nowrap' } }, badge.label),
-    !editing && status !== 'ordered' && e('button', {
+    // Mark Ordered — only for pending/flagged, NOT for delivered
+    !editing && (status === 'pending' || status === 'flagged') && e('button', {
       onClick:()=>setEditing(true),
       style:{ padding:'4px 10px', background:'#f97316', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
     }, 'Mark Ordered'),
+    // Mark Delivered — only when ordered
     !editing && status === 'ordered' && e('button', {
       onClick:()=>setEditing(true),
       style:{ padding:'4px 10px', background:'#16a34a', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
     }, 'Mark Delivered'),
+    // Undo Order (ordered → pending)
     !editing && status === 'ordered' && e('button', {
       onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null}),
-      style:{ padding:'4px 8px', background:'#ffffff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
-    }, '↩ Undo Order'),
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Undo'),
+    // Undo Delivery (delivered → ordered)
     !editing && status === 'delivered' && e('button', {
       onClick:()=>onSetOrder(material.id, plotId, {status:'ordered', delivery_date:null}),
-      style:{ padding:'4px 8px', background:'#ffffff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
     }, '↩ Undo Delivery'),
+    // Reset to Pending (delivered → pending in one tap)
+    !editing && status === 'delivered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null, delivery_date:null}),
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Reset'),
     editing && e('div', { style:{ display:'flex', gap:4, alignItems:'center' } },
       e('input', { type:'date', value:dateVal, onChange:ev=>setDateVal(ev.target.value), style:{ fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', borderRadius:5 } }),
       e('button', {
@@ -4798,35 +4807,8 @@ function App() {
   const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB or server on mount
   const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  // Load drawing: IndexedDB first (fast, no network), then server (cross-device)
-  useEffect(() => {
-    idbGet('map_drawing').then(img => {
-      if (img) { setBgImageRaw(img); return; }
-      // Not cached locally — fetch from server (works on any logged-in device)
-      api('/map-image').then(r=>r.json()).then(data => {
-        const src = data.image_data || (data.image_url || null);
-        if (src) {
-          setBgImageRaw(src);
-          // Cache locally so next load is instant
-          idbSet('map_drawing', src).catch(()=>{});
-        }
-      }).catch(()=>{});
-    }).catch(()=>{
-      // IndexedDB unavailable — try server directly
-      api('/map-image').then(r=>r.json()).then(data => {
-        const src = data.image_data || data.image_url || null;
-        if (src) setBgImageRaw(src);
-      }).catch(()=>{});
-    });
-  }, []);
-
-  function setBgImage(v) {
-    setBgImageRaw(v);
-    // Cache in IndexedDB for instant local loads
-    idbSet('map_drawing', v).catch(()=>{});
-    // Compress and save to server for cross-device access.
-    // Scale to max 1024px wide → JPEG 0.7 quality → ~100-300KB data URL.
-    // Stored directly in DB (no Supabase Storage) for maximum reliability.
+  // Shared compression + server-save helper (used by setBgImage and the load migration)
+  function _saveToServer(v) {
     try {
       const img = new Image();
       img.onload = () => {
@@ -4841,11 +4823,51 @@ function App() {
           method: 'POST',
           body: JSON.stringify({ image_data: compressed })
         }).then(r=>r.json()).then(d=>{
-          if(d.ok) console.log('[SMC] Site map saved to server — available on all devices ✓');
+          if(d.ok) console.log('[SMC] Site map saved to server ✓ — now available on all devices');
+          else console.warn('[SMC] Server save returned not-ok:', d);
         }).catch(ex => console.warn('[SMC] Site map server save failed:', ex));
       };
       img.src = v;
     } catch(_) {}
+  }
+
+  // Load drawing: IndexedDB first (fast, no network), then server (cross-device).
+  // If we find it in IndexedDB but the server is empty, push it to the server now
+  // (one-time migration for drawings uploaded before server-save was implemented).
+  useEffect(() => {
+    idbGet('map_drawing').then(img => {
+      if (img) {
+        setBgImageRaw(img);
+        // Check server — if empty, push drawing there so other devices can load it
+        api('/map-image').then(r=>r.json()).then(data => {
+          if (!data.image_data && !data.image_url) {
+            console.log('[SMC] Server has no map drawing — syncing from local cache...');
+            _saveToServer(img);
+          }
+        }).catch(()=>{});
+        return;
+      }
+      // Not in local cache — fetch from server (e.g. different device, cleared storage)
+      api('/map-image').then(r=>r.json()).then(data => {
+        const src = data.image_data || data.image_url || null;
+        if (src) {
+          setBgImageRaw(src);
+          idbSet('map_drawing', src).catch(()=>{});
+        }
+      }).catch(()=>{});
+    }).catch(()=>{
+      // IndexedDB unavailable (some private browsers) — try server directly
+      api('/map-image').then(r=>r.json()).then(data => {
+        const src = data.image_data || data.image_url || null;
+        if (src) setBgImageRaw(src);
+      }).catch(()=>{});
+    });
+  }, []);
+
+  function setBgImage(v) {
+    setBgImageRaw(v);
+    idbSet('map_drawing', v).catch(()=>{});
+    _saveToServer(v);
     try { localStorage.removeItem('smc_bgimage_v2'); } catch(_) {}
   }
   function setMapDots(fn) {
