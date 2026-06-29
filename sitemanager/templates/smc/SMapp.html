@@ -351,20 +351,19 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
 
       // Find the first saved stage in programme order so we can back-compute
       // where unsaved stages before it should go (not day 0).
-      const firstSavedIdx = sortedDefs.findIndex(d => shiftedMap[d.id]);
+      const firstSavedIdx = plotSortedDefs.findIndex(d => shiftedMap[d.id]);
       let cursor = 0;
-      if (firstSavedIdx > 0 && shiftedMap[sortedDefs[firstSavedIdx].id]) {
-        // Start at the first saved stage and work backwards through unsaved predecessors
-        cursor = shiftedMap[sortedDefs[firstSavedIdx].id].start;
+      if (firstSavedIdx > 0 && shiftedMap[plotSortedDefs[firstSavedIdx].id]) {
+        cursor = shiftedMap[plotSortedDefs[firstSavedIdx].id].start;
         for (let i = firstSavedIdx - 1; i >= 0; i--) {
-          cursor -= (sortedDefs[i].default_duration || 1);
+          cursor -= (plotSortedDefs[i].default_duration || 1);
         }
-      } else if (firstSavedIdx === 0 && shiftedMap[sortedDefs[0].id]) {
-        cursor = shiftedMap[sortedDefs[0].id].start;
+      } else if (firstSavedIdx === 0 && shiftedMap[plotSortedDefs[0].id]) {
+        cursor = shiftedMap[plotSortedDefs[0].id].start;
       }
 
-      // Place all stages in sequence order
-      sortedDefs.forEach(def => {
+      // Place all stages in sequence order — use plotSortedDefs (respects core/unit flags)
+      plotSortedDefs.forEach(def => {
         if (shiftedMap[def.id]) {
           const sh = shiftedMap[def.id];
           s[plot.id][def.id] = { start: sh.start, dur: sh.dur, basStart: sh.start };
@@ -773,6 +772,10 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
     ev.preventDefault();
     ev.stopPropagation();
     const sc = schedules[plot.id]; if(!sc||!sc[defId]) return;
+    // Completed stages are greyed and locked — cannot be dragged
+    const _curDef = plot.current_stage_id ? (stageDefs.find(d=>d.id===plot.current_stage_id)) : null;
+    const _thisDef = stageDefs.find(d=>d.id===defId);
+    if (_curDef && _thisDef && (_thisDef.stage_order||0) < (_curDef.stage_order||0)) return;
     const orig = sc[defId].start;
     const startX = ev.clientX;
     let moved = false;
@@ -1755,10 +1758,61 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
           )
         ),
 
-        // Coming soon
-        e('div', { style:{ background:'#f9fafb', border:'1px dashed #e5e7eb', borderRadius:8, padding:'10px 12px' } },
-          e('div', { style:{ fontSize:10, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 } }, 'Coming Soon'),
-          e('div', { style:{ fontSize:11, color:'#9ca3af' } }, '📅 Asta programme vs live comparison')
+        // Snag Report upload
+        e('div',{style:{marginBottom:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'🔍 Snag Report'),
+          e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+            e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px'}},
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:6}},'Snag Report Document'),
+              plot.snag_report_url
+                ? e('div',{style:{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}},
+                    e('a',{href:plot.snag_report_url,target:'_blank',style:{fontSize:11,color:'#2563eb',textDecoration:'underline'}},'📄 View Snag Report'),
+                    e('label',{style:{fontSize:10,color:'#9ca3af',cursor:'pointer',textDecoration:'underline'}},
+                      'Replace',
+                      e('input',{type:'file',accept:'image/*,application/pdf',style:{display:'none'},onChange:async ev=>{
+                        const file=ev.target.files[0]; ev.target.value='';
+                        if(!file) return;
+                        const reader=new FileReader();
+                        reader.onload=async e2=>{
+                          const b64=e2.target.result.split(',')[1];
+                          const r=await api('/plots/'+plot.id+'/upload-snag-report',{method:'POST',body:JSON.stringify({file_b64:b64,filename:file.name,mime_type:file.type})}).then(r=>r.json());
+                          if(r.ok) onUpdatePlot(plot.id,{snag_report_url:r.url});
+                        };
+                        reader.readAsDataURL(file);
+                      }})
+                    )
+                  )
+                : e('label',{style:{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11,color:'#9ca3af',border:'1px dashed #d1d5db',borderRadius:5,padding:'6px 8px'}},
+                    '📁 Upload Snag Report',
+                    e('input',{type:'file',accept:'image/*,application/pdf',style:{display:'none'},onChange:async ev=>{
+                      const file=ev.target.files[0]; ev.target.value='';
+                      if(!file) return;
+                      const reader=new FileReader();
+                      reader.onload=async e2=>{
+                        const b64=e2.target.result.split(',')[1];
+                        const r=await api('/plots/'+plot.id+'/upload-snag-report',{method:'POST',body:JSON.stringify({file_b64:b64,filename:file.name,mime_type:file.type})}).then(r=>r.json());
+                        if(r.ok) onUpdatePlot(plot.id,{snag_report_url:r.url});
+                      };
+                      reader.readAsDataURL(file);
+                    }})
+                  )
+            ),
+            // Pre-CRC Notes
+            e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px'}},
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:6}},'Pre-CRC Snag Notes'),
+              e('textarea',{
+                defaultValue:plot.pre_crc_notes||'',
+                rows:3,
+                placeholder:'Record pre-CRC snag items here for reference...',
+                style:{width:'100%',fontSize:10,border:'1px solid #d1d5db',borderRadius:5,padding:'5px 7px',resize:'vertical',boxSizing:'border-box'},
+                onBlur: async ev => {
+                  const val = ev.target.value;
+                  await api('/plots/'+plot.id,{method:'PATCH',body:JSON.stringify({pre_crc_notes:val})});
+                  onUpdatePlot(plot.id,{pre_crc_notes:val});
+                }
+              })
+            )
+          )
         )
       ),
 
@@ -3968,6 +4022,485 @@ function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateI
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// REPORTS TAB — Weekly Site Report & Team Brief
+//
+// Two AI-powered reports generated from live schedule data:
+//  • Site Report  — formal management overview, printable PDF
+//  • Team Brief   — punchy actionable brief for direct team
+//
+// Both use Claude API for a narrative paragraph; all tables are data-driven.
+// ══════════════════════════════════════════════════════════════════════════
+function ReportsTab({ plots, stageDefs, plotStages, trades, materials, items, hsLog }) {
+  const [mode, setMode]           = useState(null);     // null | 'site' | 'team'
+  const [generating, setGenerating] = useState(false);
+  const [reportHtml, setReportHtml] = useState('');
+  const [matOrders, setMatOrders] = useState([]);
+  const printRef = useRef(null);
+
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
+  const todayIdx    = useMemo(() => {
+    const t = new Date(TODAY);
+    const i = workingDays.findIndex(d => d >= t);
+    return i < 0 ? 0 : i;
+  }, [workingDays]);
+
+  const schedules = useMemo(() =>
+    buildSchedules(plots, stageDefs, plotStages, todayIdx),
+    [plots, stageDefs, plotStages, todayIdx]
+  );
+
+  const sortedPlots = useMemo(() =>
+    [...plots].filter(p=>!p.is_core_block).sort((a,b)=>(parseInt(a.plot_number)||0)-(parseInt(b.plot_number)||0)),
+    [plots]
+  );
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>m[d.id]=d); return m; }, [stageDefs]);
+
+  // Week window: today..today+4 (Mon-Fri)
+  const weekStart = todayIdx;
+  const weekEnd   = todayIdx + 4;
+  const fmtDate   = d => d ? d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}) : '';
+  const weekLabel = workingDays[weekStart] ? fmtDate(workingDays[weekStart]) : '';
+
+  function scheduledCRCDay(plot) {
+    const sc = schedules[plot.id]; if (!sc) return null;
+    const crcDef = stageDefs.find(d=>d.name==='CRC'||(d.name||'').toLowerCase()==='crc');
+    if (!crcDef) return null;
+    const s = sc[crcDef.id]; if (!s) return null;
+    return workingDays[s.start] || null;
+  }
+
+  function varianceDays(plot) {
+    const schDate = scheduledCRCDay(plot);
+    if (!schDate || !plot.crc_deadline_date) return null;
+    const deadline = new Date(plot.crc_deadline_date);
+    return Math.round((deadline - schDate) / (1000*60*60*24));
+  }
+
+  function plotCurrentStage(plot) {
+    if (!plot.current_stage_id) return '—';
+    return defMap[plot.current_stage_id]?.name || '—';
+  }
+
+  function plotNextStage(plot) {
+    const cur = defMap[plot.current_stage_id];
+    if (!cur) return stageDefs[0]?.name || '—';
+    const curOrder = cur.stage_order || 0;
+    const next = stageDefs.filter(d=>(d.stage_order||0)>curOrder).sort((a,b)=>a.stage_order-b.stage_order)[0];
+    return next?.name || 'Complete';
+  }
+
+  // Plots active this week (current stage falls within weekStart..weekEnd)
+  const activeThisWeek = useMemo(() => {
+    return sortedPlots.filter(p => {
+      const sc = schedules[p.id]; if (!sc) return false;
+      const id = p.current_stage_id; if (!id) return false;
+      const s = sc[id]; if (!s) return false;
+      return s.start <= weekEnd && (s.start + s.dur) >= weekStart;
+    });
+  }, [sortedPlots, schedules, weekStart, weekEnd]);
+
+  // Plots behind CRC schedule
+  const behindPlots = useMemo(() =>
+    sortedPlots.filter(p => { const v=varianceDays(p); return v!==null && v<0; }),
+    [sortedPlots, schedules]
+  );
+
+  // Materials flagged this week (delivery due weekStart..weekEnd)
+  const matsDueThisWeek = useMemo(() => {
+    const rows = [];
+    materials.forEach(mat => {
+      const leadDays = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
+      sortedPlots.forEach(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[mat.linked_stage_id] : null;
+        if (!stageSched) return;
+        const dIdx = Math.max(0, stageSched.start - leadDays);
+        if (dIdx >= weekStart && dIdx <= weekEnd) {
+          const order = matOrders.find(o=>o.material_id===mat.id&&o.plot_id===plot.id);
+          rows.push({ mat, plot, dIdx, status: order?.status||'not_ordered' });
+        }
+      });
+    });
+    return rows;
+  }, [materials, sortedPlots, schedules, matOrders, weekStart, weekEnd]);
+
+  // Outstanding items (cleanup_notice, outstanding_work)
+  const outstandingItems = useMemo(() =>
+    items.filter(i => i.item_type === 'cleanup_notice' || i.item_type === 'outstanding_work'),
+    [items]
+  );
+
+  // Stages active this week by trade (for Team Brief)
+  const tradeSchedule = useMemo(() => {
+    const byTrade = {};
+    sortedPlots.forEach(p => {
+      const sc = schedules[p.id]; if(!sc) return;
+      stageDefs.forEach(def => {
+        const s = sc[def.id]; if(!s) return;
+        if (s.start > weekEnd || (s.start+s.dur) < weekStart) return;
+        const trade = def.trade||'Other';
+        if (!byTrade[trade]) byTrade[trade] = [];
+        byTrade[trade].push({ plot:p, def, s });
+      });
+    });
+    return byTrade;
+  }, [sortedPlots, stageDefs, schedules, weekStart, weekEnd]);
+
+  async function generate(type) {
+    setMode(type);
+    setGenerating(true);
+    setReportHtml('');
+    // Fetch material orders fresh
+    try {
+      const ordsR = await api('/material-orders').then(r=>r.json());
+      setMatOrders(ordsR||[]);
+    } catch(_){}
+
+    // Build data summary for Claude
+    const behindSummary = behindPlots.map(p=>`P${p.plot_number} (${plotCurrentStage(p)}, ${varianceDays(p)}d variance)`).join(', ');
+    const activeCount = activeThisWeek.length;
+    const matUrgent = matsDueThisWeek.filter(m=>m.status==='not_ordered').map(m=>`${m.mat.material_name} (P${m.plot.plot_number})`).join(', ');
+    const hsOpen = hsLog.filter(h=>!h.closed).length;
+
+    const prompt = type==='site'
+      ? `You are writing a professional site manager's weekly progress report for Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge (74 plots).
+Week commencing: ${weekLabel}
+Active plots this week: ${activeCount}
+Plots behind CRC schedule: ${behindPlots.length}${behindSummary ? ' — '+behindSummary : ''}
+Materials urgently needing ordering: ${matUrgent||'None'}
+Open H&S items: ${hsOpen}
+Write a professional 3-sentence executive summary paragraph for this report. Be direct and factual. Do not use markdown. Start with "This week".`
+      : `You are writing a punchy team brief for the site team at Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge.
+Week commencing: ${weekLabel}
+Active plots: ${activeCount}
+Behind schedule: ${behindPlots.length} plots${behindSummary ? ' — '+behindSummary : ''}
+Urgent material orders needed: ${matUrgent||'None'}
+Open H&S actions: ${hsOpen}
+Write 3 bullet-pointed top priorities for the team this week. Each bullet should be an actionable instruction. No markdown formatting. Use plain dashes. Be direct and practical.`;
+
+    let aiText = '';
+    try {
+      const aiR = await fetch('/api/anthropic/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-6', max_tokens:300,
+          messages:[{role:'user',content:prompt}]
+        })
+      }).then(r=>r.json());
+      aiText = aiR.content?.[0]?.text || '';
+    } catch(_) { aiText = 'Unable to generate AI summary — check connection.'; }
+
+    // Generate HTML report
+    const html = type === 'site'
+      ? generateSiteReport(aiText)
+      : generateTeamBrief(aiText);
+
+    setReportHtml(html);
+    setGenerating(false);
+  }
+
+  function generateSiteReport(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const rows = sortedPlots.map(p => {
+      const curStage = plotCurrentStage(p);
+      const nextStage = plotNextStage(p);
+      const variance = varianceDays(p);
+      const schDate = scheduledCRCDay(p);
+      const status = !variance ? '—'
+        : variance >= 0 ? `<span style="color:#16a34a;font-weight:700">✓ On track (+${variance}d)</span>`
+        : `<span style="color:#dc2626;font-weight:700">⚠ Behind (${variance}d)</span>`;
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.house_type||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.tenure||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${curStage}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#6b7280">${nextStage}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${status}</td>
+      </tr>`;
+    }).join('');
+
+    const matsRows = matsDueThisWeek.map(m => {
+      const dueDate = workingDays[m.dIdx] ? workingDays[m.dIdx].toLocaleDateString('en-GB') : '—';
+      const statusBadge = m.status==='delivered'?'<span style="color:#16a34a">✓ Delivered</span>'
+        : m.status==='ordered'?'<span style="color:#d97706">Ordered</span>'
+        : '<span style="color:#dc2626;font-weight:700">⚠ NOT ORDERED</span>';
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px">${m.mat.material_name}</td>
+        <td style="padding:5px 8px">P${m.plot.plot_number}</td>
+        <td style="padding:5px 8px">${dueDate}</td>
+        <td style="padding:5px 8px">${statusBadge}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No deliveries due this week</td></tr>';
+
+    const outRows = outstandingItems.slice(0,15).map(i => {
+      const p = plots.find(pl=>pl.id===i.plot_id);
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px">${p?'P'+p.plot_number:'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${i.item_type.replace(/_/g,' ')}</td>
+        <td style="padding:5px 8px;font-size:11px">${(i.description||'').substring(0,60)}${(i.description||'').length>60?'…':''}</td>
+        <td style="padding:5px 8px;font-size:11px">${i.status||'—'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No outstanding items</td></tr>';
+
+    return `
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #f97316;
+       border-bottom: 2px solid #f97316; padding-bottom: 4px; margin: 20px 0 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #1e293b; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 10px 14px; margin: 8px 0 16px 0;
+            font-style: italic; font-size: 12px; line-height: 1.6; }
+  .kpi { display: inline-block; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+         padding: 8px 16px; margin: 0 8px 8px 0; text-align: center; }
+  .kpi-num { font-size: 24px; font-weight: 800; color: #111827; display: block; }
+  .kpi-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; }
+</style>
+<div style="padding:20px;max-width:1100px">
+  <div style="border-bottom:3px solid #111827;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em">Pennyfarthing Homes</div>
+      <h1>SS17 Phase 1C — Sandle Park, Fordingbridge</h1>
+      <div style="font-size:13px;font-weight:700;color:#374151">Site Manager's Weekly Progress Report</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:3px">Week commencing ${weekLabel}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9ca3af">
+      Generated: ${today}<br>
+      Prepared by: Site Manager
+    </div>
+  </div>
+
+  <h2>Site KPIs</h2>
+  <div>
+    <div class="kpi"><span class="kpi-num">${sortedPlots.length}</span><span class="kpi-lbl">Total Plots</span></div>
+    <div class="kpi"><span class="kpi-num">${activeThisWeek.length}</span><span class="kpi-lbl">Active This Week</span></div>
+    <div class="kpi" style="border-color:${behindPlots.length>0?'#dc2626':'#16a34a'}">
+      <span class="kpi-num" style="color:${behindPlots.length>0?'#dc2626':'#16a34a'}">${behindPlots.length}</span>
+      <span class="kpi-lbl">Behind Schedule</span></div>
+    <div class="kpi"><span class="kpi-num">${matsDueThisWeek.filter(m=>m.status==='not_ordered').length}</span><span class="kpi-lbl">Urgent Orders</span></div>
+    <div class="kpi"><span class="kpi-num">${hsLog.filter(h=>!h.closed).length}</span><span class="kpi-lbl">H&S Open Items</span></div>
+  </div>
+
+  <h2>Executive Summary</h2>
+  <div class="ai-box">${aiText.replace(/\n/g,'<br>')}</div>
+
+  <h2>Build Programme Status — All Plots</h2>
+  <table>
+    <thead><tr>
+      <th>Plot</th><th>Type</th><th>Tenure</th><th>Current Stage</th><th>Next Stage</th>
+      <th>CRC Deadline</th><th>Scheduled CRC</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  ${behindPlots.length>0?`<h2 style="color:#dc2626;border-color:#dc2626">⚠ Behind Schedule — Action Required</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th></tr></thead>
+    <tbody>${behindPlots.map(p=>{
+      const v=varianceDays(p); const schDate=scheduledCRCDay(p);
+      return `<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.house_type||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${plotCurrentStage(p)}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#dc2626;font-weight:700">${v}d</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`:''}
+
+  <h2>Materials Due This Week</h2>
+  <table>
+    <thead><tr><th>Material</th><th>Plot</th><th>Due Date</th><th>Status</th></tr></thead>
+    <tbody>${matsRows}</tbody>
+  </table>
+
+  <h2>Outstanding Works &amp; Clean-Up Notices</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Type</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>${outRows}</tbody>
+  </table>
+
+  <div style="margin-top:30px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between">
+    <span>SS17 Phase 1C — Sandle Park, Fordingbridge | Pennyfarthing Homes</span>
+    <span>Generated by SMC on ${today}</span>
+  </div>
+</div>`;
+  }
+
+  function generateTeamBrief(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+    const tradeRows = Object.entries(tradeSchedule).sort((a,b)=>b[1].length-a[1].length).map(([trade,items])=>{
+      const plotList = [...new Set(items.map(x=>'P'+x.plot.plot_number))].join(', ');
+      const stageList = [...new Set(items.map(x=>x.def.name))].join(' · ');
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:6px 10px;font-weight:700">${trade}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#dc2626;font-weight:700">${items.length} plot${items.length>1?'s':''}</td>
+        <td style="padding:6px 10px;font-size:11px">${plotList}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#6b7280">${stageList}</td>
+      </tr>`;
+    }).join('');
+
+    const urgentMats = matsDueThisWeek.filter(m=>m.status==='not_ordered');
+    const matRows = urgentMats.map(m=>{
+      const dueDate = workingDays[m.dIdx]?workingDays[m.dIdx].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'—';
+      return `<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb">
+        <td style="padding:6px 10px;font-weight:700;color:#dc2626">⚠</td>
+        <td style="padding:6px 10px;font-weight:700">${m.mat.material_name}</td>
+        <td style="padding:6px 10px">P${m.plot.plot_number}</td>
+        <td style="padding:6px 10px;font-size:11px">${dueDate}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#dc2626;font-weight:700">ORDER NOW</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="padding:8px;color:#9ca3af;text-align:center">No urgent orders — all materials on track ✓</td></tr>';
+
+    const cleanItems = outstandingItems.slice(0,10);
+    const cleanRows = cleanItems.map(i=>{
+      const p = plots.find(pl=>pl.id===i.plot_id);
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">${p?'P'+p.plot_number:'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${(i.description||'').substring(0,70)}${(i.description||'').length>70?'…':''}</td>
+        <td style="padding:5px 8px;font-size:11px;color:${i.status==='completed'?'#16a34a':'#d97706'}">${i.status||'Pending'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No outstanding items ✓</td></tr>';
+
+    const hsRows = hsLog.filter(h=>!h.closed).slice(0,5).map(h=>`
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700;color:${h.severity==='red'?'#dc2626':h.severity==='amber'?'#d97706':'#16a34a'}">${h.severity?.toUpperCase()||'?'}</td>
+        <td style="padding:5px 8px;font-size:11px">${(h.description||'').substring(0,60)}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#6b7280">${h.raised_date?new Date(h.raised_date).toLocaleDateString('en-GB'):'—'}</td>
+      </tr>`).join('') || '<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No open H&S issues ✓</td></tr>';
+
+    return `
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 16px; margin: 0 0 4px 0; letter-spacing: -0.02em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #fff;
+       background: #1e293b; padding: 6px 12px; margin: 20px 0 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #374151; color: #fff; padding: 6px 10px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #fff7ed; border-left: 4px solid #f97316; padding: 10px 14px; margin: 8px 0 0 0;
+            font-size: 12px; line-height: 1.7; white-space: pre-line; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+</style>
+<div style="padding:16px;max-width:900px">
+  <div style="background:#111827;color:#fff;padding:14px 18px;border-radius:6px;margin-bottom:0">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#9ca3af">Pennyfarthing Homes · SS17 Phase 1C</div>
+    <h1 style="color:#f97316;margin:3px 0">TEAM BRIEF — Week commencing ${weekLabel}</h1>
+    <div style="font-size:10px;color:#9ca3af">Sandle Park, Fordingbridge · Generated ${today}</div>
+  </div>
+
+  <h2>🎯 Top Priorities This Week</h2>
+  <div class="ai-box">${aiText.replace(/\n/g,'<br>').replace(/^-\s/gm,'• ')}</div>
+
+  <h2>👷 Trade Call-Out Schedule</h2>
+  <table>
+    <thead><tr><th>Trade</th><th>Plots Required</th><th>Plot Numbers</th><th>Stage(s)</th></tr></thead>
+    <tbody>${tradeRows||'<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody>
+  </table>
+
+  <h2>📦 Materials to Chase Urgently</h2>
+  <table>
+    <thead><tr><th>!</th><th>Material</th><th>Plot</th><th>Due</th><th>Action</th></tr></thead>
+    <tbody>${matRows}</tbody>
+  </table>
+
+  <h2>🧹 Outstanding Works / Clean-Ups</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>${cleanRows}</tbody>
+  </table>
+
+  <h2>⛑️ H&S Actions</h2>
+  <table>
+    <thead><tr><th>Level</th><th>Issue</th><th>Raised</th></tr></thead>
+    <tbody>${hsRows}</tbody>
+  </table>
+
+  <div style="margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;margin-bottom:4px">Next CRC Deadlines</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${sortedPlots.filter(p=>p.crc_deadline_date).sort((a,b)=>new Date(a.crc_deadline_date)-new Date(b.crc_deadline_date)).slice(0,8).map(p=>{
+        const d = new Date(p.crc_deadline_date);
+        const wks = Math.round((d-new Date())/(1000*60*60*24*7));
+        return `<span class="pill" style="background:${wks<12?'#fee2e2':wks<26?'#fff7ed':'#f0fdf4'};color:${wks<12?'#dc2626':wks<26?'#d97706':'#16a34a'}">P${p.plot_number} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})} (${wks}w)</span>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center">
+    SS17 Phase 1C — Sandle Park, Fordingbridge | Pennyfarthing Homes | Generated by SMC
+  </div>
+</div>`;
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────
+  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',background:'#f9fafb'}},
+
+    // Header
+    e('div',{style:{padding:'12px 18px',borderBottom:'1px solid #e5e7eb',background:'#fff',flexShrink:0}},
+      e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:6}},'📋 Weekly Reports'),
+      e('div',{style:{fontSize:11,color:'#6b7280',marginBottom:12}},
+        'Generate a live report from your current Gantt schedule, materials, H&S log, and outstanding works. '+
+        'AI narrative generated by Claude from your live site data.'
+      ),
+      e('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
+        e('button',{
+          onClick:()=>generate('site'),
+          disabled:generating,
+          style:{padding:'10px 20px',background:'#1e293b',border:'none',borderRadius:8,color:'#fff',
+            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'📊 Site Progress Report'),
+        e('button',{
+          onClick:()=>generate('team'),
+          disabled:generating,
+          style:{padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#fff',
+            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'👷 Team Weekly Brief'),
+        reportHtml&&e('button',{
+          onClick:()=>{
+            const w=window.open('','_blank');
+            w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+
+              (mode==='site'?'Site Report':'Team Brief')+' — SS17</title></head><body>'+reportHtml+'</body></html>');
+            w.document.close(); w.print();
+          },
+          style:{padding:'10px 16px',background:'#e5e7eb',border:'none',borderRadius:8,color:'#374151',
+            fontSize:12,fontWeight:700,cursor:'pointer'}
+        },'🖨 Print / Save PDF')
+      )
+    ),
+
+    // Status / Report area
+    e('div',{style:{flex:1,overflow:'auto'}},
+      generating && e('div',{style:{padding:40,textAlign:'center',color:'#6b7280'}},
+        e('div',{style:{fontSize:32,marginBottom:12}},'⏳'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},'Generating report...'),
+        e('div',{style:{fontSize:11}},'Analysing schedule, calculating variances, generating AI summary.')
+      ),
+      !generating && !reportHtml && e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+        e('div',{style:{fontSize:40,marginBottom:12}},'📋'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:6,color:'#374151'}},'Choose a report type above'),
+        e('div',{style:{fontSize:12,maxWidth:400,margin:'0 auto',lineHeight:1.6}},
+          e('b',null,'Site Progress Report'),
+          ' — formal management overview with plot status table, CRC variances, materials, H&S and outstanding works.',
+          e('br'),e('br'),
+          e('b',null,'Team Weekly Brief'),
+          ' — punchy team brief with trade call-out schedule, urgent material orders, clean-up list, and this week\'s priorities.'
+        )
+      ),
+      reportHtml && e('div',{
+        ref:printRef,
+        dangerouslySetInnerHTML:{__html:reportHtml},
+        style:{background:'#fff',minHeight:'100%'}
+      })
+    )
+  );
+}
+
 function App() {
   const [tab,setTab]               = useState('programme');
   const [plots,setPlots]           = useState([]);
@@ -4193,6 +4726,7 @@ function App() {
     {id:'stages',    label:'⚙️  Stage Editor'},
     {id:'comms',     label:'✉️  Comms'},
     {id:'hs',        label:'⛑️  H&S'},
+    {id:'reports',   label:'📋 Reports'},
   ];
 
   const privateCt = plots.filter(p=>p.tenure==='Private').length;
@@ -4241,7 +4775,9 @@ function App() {
                   ?e(StageEditorTab,{stageDefs:allStageDefs,setStageDefs:setAllStageDefs,plots,trades,stageTemplates,onUpdatePlot})
                   :tab==='comms'
                     ?e(CommsTab,{plots,items,trades,hsLog,materials,stageDefs,onCreateItem,onUpdateItem,onDeleteItem,onGenerateComm})
-                    :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
+                    :tab==='reports'
+                      ?e(ReportsTab,{plots,stageDefs,plotStages,trades,materials,items,hsLog})
+                      :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
     ),
     // Footer
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
