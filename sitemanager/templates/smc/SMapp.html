@@ -4516,273 +4516,240 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
   .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
 </style>
 <div style="padding:16px;max-width:900px">
-// ══════════════════════════════════════════════════════════════════════════
-// PERFECT DELIVERY TAB — Overview & quick-access panel
-//
-// Keeps Perfect Delivery visible from SMC without duplicating data.
-// Shows an embedded view + summary stats pulled from the PD portal.
-// Does NOT affect the Gantt chart.
-// ══════════════════════════════════════════════════════════════════════════
-function PDTab({ plots, stageDefs, plotStages, hsLog }) {
-  const [pdUrl, setPdUrl] = useState('');
-  const [showFrame, setShowFrame] = useState(false);
-  const [frameError, setFrameError] = useState(false);
-
-  // Derive which plots might need H&S alerts before PD sign-off
-  const openHsPlots = useMemo(() => {
-    return (hsLog||[]).filter(h=>!h.closed && h.severity==='red').map(h=>h.plot_id);
-  }, [hsLog]);
-
-  // Quick stats from SMC data as a proxy for PD status
-  const signedOff = plots.filter(p=>p.crc_signed_off||p.cml_signed_off);
-  const cmlDone   = plots.filter(p=>p.cml_signed_off);
-  const crcDone   = plots.filter(p=>p.crc_signed_off);
-
-  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',background:'#f9fafb',overflow:'hidden'}},
-
-    // Header
-    e('div',{style:{padding:'16px 20px',background:'#fff',borderBottom:'1px solid #e5e7eb',flexShrink:0}},
-      e('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:10}},
-        e('div',{style:{width:36,height:36,background:'#111827',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}},'🏠'),
-        e('div',null,
-          e('div',{style:{fontSize:14,fontWeight:800,color:'#111827'}},'Perfect Delivery'),
-          e('div',{style:{fontSize:11,color:'#6b7280'}},'QR-based stage sign-off platform — SS17 Phase 1C')
-        )
-      ),
-      // KPI strip from SMC data
-      e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        ...[
-          ['📋','Total Plots',plots.filter(p=>!p.is_core_block).length,'#374151'],
-          ['✅','CML Achieved',cmlDone.length,'#16a34a'],
-          ['🏁','CRC Achieved',crcDone.length,'#0891b2'],
-          ['⚠️','Open H&S (Red)',openHsPlots.length,'#dc2626'],
-        ].map(([icon,label,val,col])=>
-          e('div',{key:label,style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:100}},
-            e('div',{style:{fontSize:20,fontWeight:800,color:col}},val),
-            e('div',{style:{fontSize:9,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}},[icon,' ',label])
-          )
-        )
-      )
-    ),
-
-    // H&S alert banner if any red issues
-    openHsPlots.length>0 && e('div',{style:{background:'#fef2f2',borderBottom:'2px solid #dc2626',padding:'8px 20px',flexShrink:0,display:'flex',gap:8,alignItems:'center'}},
-      e('span',{style:{fontSize:13,fontWeight:800,color:'#dc2626'}},'⚠ SAFETY ALERT'),
-      e('span',{style:{fontSize:11,color:'#374151'}},'Open red H&S issues on '+openHsPlots.length+' plot(s) — subcontractors must not commence work until resolved.'),
-      e('span',{style:{fontSize:11,color:'#dc2626',fontWeight:700}},'Check H&S tab for details.')
-    ),
-
-    // Main content
-    e('div',{style:{flex:1,overflow:'auto',padding:20}},
-
-      // URL input + open button
-      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,padding:'16px',marginBottom:16}},
-        e('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}},'Perfect Delivery URL'),
-        e('div',{style:{display:'flex',gap:8,alignItems:'center'}},
-          e('input',{
-            type:'url',
-            value:pdUrl,
-            onChange:ev=>setPdUrl(ev.target.value),
-            placeholder:'https://note2quote.co.uk/pd/ or your PD portal URL',
-            style:{flex:1,fontSize:12,border:'1px solid #d1d5db',borderRadius:7,padding:'8px 12px',color:'#111827'}
-          }),
-          e('button',{
-            onClick:()=>{ if(pdUrl) { setShowFrame(true); setFrameError(false); } },
-            disabled:!pdUrl,
-            style:{padding:'8px 16px',background:'#f97316',border:'none',borderRadius:7,color:'#fff',fontSize:12,fontWeight:700,cursor:pdUrl?'pointer':'default'}
-          },'Open →'),
-          e('a',{
-            href:pdUrl||'#',target:'_blank',
-            style:{padding:'8px 12px',background:'#e5e7eb',border:'none',borderRadius:7,color:'#374151',fontSize:12,fontWeight:600,textDecoration:'none',display:pdUrl?'block':'none'}
-          },'↗ New Tab')
-        ),
-        e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:6}},'Enter your Perfect Delivery portal URL to embed it here. Your URL is saved in browser storage.')
-      ),
-
-      // Embedded frame
-      showFrame && !frameError && e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden',marginBottom:16,height:600}},
-        e('div',{style:{background:'#111827',padding:'8px 14px',display:'flex',alignItems:'center',gap:8}},
-          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#ef4444'}}),
-          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#fbbf24'}}),
-          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#34d399'}}),
-          e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},pdUrl),
-          e('button',{onClick:()=>setShowFrame(false),style:{background:'none',border:'none',color:'#6b7280',cursor:'pointer',fontSize:12}},'✕')
-        ),
-        e('iframe',{
-          src:pdUrl,
-          style:{width:'100%',height:560,border:'none'},
-          title:'Perfect Delivery Portal',
-          onError:()=>setFrameError(true)
-        })
-      ),
-
-      frameError && e('div',{style:{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:16,marginBottom:16}},
-        e('div',{style:{fontWeight:700,color:'#dc2626',marginBottom:4}},'Unable to embed'),
-        e('div',{style:{fontSize:11,color:'#374151'}},'The Perfect Delivery portal cannot be embedded here (X-Frame-Options restriction). Use the "↗ New Tab" button to open it instead.')
-      ),
-
-      // Plot sign-off status from SMC data
-      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}},
-        e('div',{style:{padding:'10px 16px',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
-          e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Plot Sign-Off Status (CML / CRC)'),
-          e('span',{style:{fontSize:10,color:'#9ca3af'}},'From SMC certificate records')
-        ),
-        e('div',{style:{overflowX:'auto'}},
-          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
-            e('thead',null,e('tr',{style:{background:'#f1f5f9'}},
-              ...['Plot','Type','CML Cert','CRC Cert','H&S'].map(h=>
-                e('th',{key:h,style:{padding:'6px 10px',textAlign:'left',color:'#6b7280',fontWeight:700,fontSize:10,textTransform:'uppercase'}},h)
-              )
-            )),
-            e('tbody',null,
-              ...plots.filter(p=>!p.is_core_block).sort((a,b)=>(parseInt(a.plot_number)||0)-(parseInt(b.plot_number)||0)).map(p=>
-                e('tr',{key:p.id,style:{borderBottom:'1px solid #f1f5f9'}},
-                  e('td',{style:{padding:'5px 10px',fontWeight:700}},'P'+p.plot_number),
-                  e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.house_type||'—'),
-                  e('td',{style:{padding:'5px 10px'}},
-                    p.cml_cert_url
-                      ? e('a',{href:p.cml_cert_url,target:'_blank',style:{color:'#16a34a',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
-                      : p.cml_signed_off
-                        ? e('span',{style:{color:'#16a34a',fontSize:10}},'✓ Signed')
-                        : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
-                  ),
-                  e('td',{style:{padding:'5px 10px'}},
-                    p.crc_cert_url
-                      ? e('a',{href:p.crc_cert_url,target:'_blank',style:{color:'#0891b2',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
-                      : p.crc_signed_off
-                        ? e('span',{style:{color:'#0891b2',fontSize:10}},'✓ Signed')
-                        : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
-                  ),
-                  e('td',{style:{padding:'5px 10px'}},
-                    openHsPlots.includes(p.id)
-                      ? e('span',{style:{color:'#dc2626',fontWeight:700,fontSize:10}},'⚠ OPEN')
-                      : e('span',{style:{color:'#16a34a',fontSize:10}},'✓')
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  );
-}
-
   <div style="background:#111827;color:#fff;padding:14px 18px;border-radius:6px;margin-bottom:0">
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#9ca3af">Pennyfarthing Homes · SS17 Phase 1C</div>
     <h1 style="color:#f97316;margin:3px 0">TEAM BRIEF — Week commencing ${weekLabel}</h1>
     <div style="font-size:10px;color:#9ca3af">Sandle Park, Fordingbridge · Generated ${today}</div>
   </div>
-
   <h2>🎯 Top Priorities This Week</h2>
-  <div class="ai-box">${aiText.replace(/\n/g,'<br>').replace(/^-\s/gm,'• ')}</div>
-
+  <div class="ai-box">${aiText.replace(/\\n/g,'<br>').replace(/^-\s/gm,'• ')}</div>
   <h2>👷 Trade Call-Out Schedule</h2>
-  <table>
-    <thead><tr><th>Trade</th><th>Plots Required</th><th>Plot Numbers</th><th>Stage(s)</th></tr></thead>
-    <tbody>${tradeRows||'<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody>
-  </table>
-
+  <table><thead><tr><th>Trade</th><th>Plots Required</th><th>Plot Numbers</th><th>Stage(s)</th></tr></thead>
+  <tbody>${tradeRows||'<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody></table>
   <h2>📦 Materials to Chase Urgently</h2>
-  <table>
-    <thead><tr><th>!</th><th>Material</th><th>Plot</th><th>Due</th><th>Action</th></tr></thead>
-    <tbody>${matRows}</tbody>
-  </table>
-
+  <table><thead><tr><th>!</th><th>Material</th><th>Plot</th><th>Due</th><th>Action</th></tr></thead>
+  <tbody>${matRows}</tbody></table>
   <h2>🧹 Outstanding Works / Clean-Ups</h2>
-  <table>
-    <thead><tr><th>Plot</th><th>Description</th><th>Status</th></tr></thead>
-    <tbody>${cleanRows}</tbody>
-  </table>
-
-  <h2>⛑️ H&S Actions</h2>
-  <table>
-    <thead><tr><th>Level</th><th>Issue</th><th>Raised</th></tr></thead>
-    <tbody>${hsRows}</tbody>
-  </table>
-
+  <table><thead><tr><th>Plot</th><th>Description</th><th>Status</th></tr></thead>
+  <tbody>${cleanRows}</tbody></table>
+  <h2>⛑️ H&amp;S Actions</h2>
+  <table><thead><tr><th>Level</th><th>Issue</th><th>Raised</th></tr></thead>
+  <tbody>${hsRows}</tbody></table>
   <div style="margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px">
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;margin-bottom:4px">Next CRC Deadlines</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      ${sortedPlots.filter(p=>p.crc_deadline_date).sort((a,b)=>new Date(a.crc_deadline_date)-new Date(b.crc_deadline_date)).slice(0,8).map(p=>{
-        const d = new Date(p.crc_deadline_date);
-        const wks = Math.round((d-new Date())/(1000*60*60*24*7));
-        return `<span class="pill" style="background:${wks<12?'#fee2e2':wks<26?'#fff7ed':'#f0fdf4'};color:${wks<12?'#dc2626':wks<26?'#d97706':'#16a34a'}">P${p.plot_number} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})} (${wks}w)</span>`;
-      }).join('')}
-    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${sortedPlots.filter(p=>p.crc_deadline_date).sort((a,b)=>new Date(a.crc_deadline_date)-new Date(b.crc_deadline_date)).slice(0,8).map(p=>{const d=new Date(p.crc_deadline_date);const wks=Math.round((d-new Date())/(1000*60*60*24*7));return '<span class="pill" style="background:'+(wks<12?'#fee2e2':wks<26?'#fff7ed':'#f0fdf4')+';color:'+(wks<12?'#dc2626':wks<26?'#d97706':'#16a34a')+'">P'+p.plot_number+' &mdash; '+d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+' ('+wks+'w)</span>';}).join('')}</div>
   </div>
-
   <div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center">
-    SS17 Phase 1C — Sandle Park, Fordingbridge | Pennyfarthing Homes | Generated by SMC
+    SS17 Phase 1C &mdash; Sandle Park, Fordingbridge | Pennyfarthing Homes | Generated by SMC
   </div>
 </div>`;
   }
-
-  // ── Render ─────────────────────────────────────────────────────────────
-  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',background:'#f9fafb'}},
-
-    // Header
+  // ── Render ───────────────────────────────────────────────────────────────
+  return e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden',minHeight:0,background:'#f9fafb'}},
     e('div',{style:{padding:'12px 18px',borderBottom:'1px solid #e5e7eb',background:'#fff',flexShrink:0}},
-      e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:6}},'📋 Weekly Reports'),
+      e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:6}},'\u{1F4CB} Weekly Reports'),
       e('div',{style:{fontSize:11,color:'#6b7280',marginBottom:12}},
         'Generate a live report from your current Gantt schedule, materials, H&S log, and outstanding works. '+
         'AI narrative generated by Claude from your live site data.'
       ),
       e('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
-        e('button',{
-          onClick:()=>generate('site'),
-          disabled:generating,
-          style:{padding:'10px 20px',background:'#1e293b',border:'none',borderRadius:8,color:'#fff',
-            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
-        },'📊 Site Progress Report'),
-        e('button',{
-          onClick:()=>generate('team'),
-          disabled:generating,
-          style:{padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#fff',
-            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
-        },'👷 Team Weekly Brief'),
-        e('button',{
-          onClick:()=>generate('analysis'),
-          disabled:generating,
-          style:{padding:'10px 20px',background:'#7c3aed',border:'none',borderRadius:8,color:'#fff',
-            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
-        },'🤖 AI Predictive Analysis'),
+        e('button',{onClick:()=>generate('site'),disabled:generating,
+          style:{padding:'10px 20px',background:'#1e293b',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F4CA} Site Progress Report'),
+        e('button',{onClick:()=>generate('team'),disabled:generating,
+          style:{padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F477} Team Weekly Brief'),
+        e('button',{onClick:()=>generate('analysis'),disabled:generating,
+          style:{padding:'10px 20px',background:'#7c3aed',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F916} AI Predictive Analysis'),
         reportHtml&&e('button',{
-          onClick:()=>{
-            const w=window.open('','_blank');
-            w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+
-              (mode==='site'?'Site Report':'Team Brief')+' — SS17</title></head><body>'+reportHtml+'</body></html>');
-            w.document.close(); w.print();
-          },
-          style:{padding:'10px 16px',background:'#e5e7eb',border:'none',borderRadius:8,color:'#374151',
-            fontSize:12,fontWeight:700,cursor:'pointer'}
-        },'🖨 Print / Save PDF')
+          onClick:()=>{const w=window.open('','_blank');w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Report</title></head><body>'+reportHtml+'</body></html>');w.document.close();w.print();},
+          style:{padding:'10px 16px',background:'#e5e7eb',border:'none',borderRadius:8,color:'#374151',fontSize:12,fontWeight:700,cursor:'pointer'}
+        },'\u{1F5A8} Print / Save PDF')
+      )
+    ),
+    e('div',{style:{flex:1,overflow:'auto',minHeight:0}},
+      generating&&e('div',{style:{padding:40,textAlign:'center',color:'#6b7280'}},
+        e('div',{style:{fontSize:32,marginBottom:12}},'\u23F3'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},'Generating report...'),
+        e('div',{style:{fontSize:11}},'Analysing schedule, generating AI summary.')
+      ),
+      !generating&&!reportHtml&&e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+        e('div',{style:{fontSize:40,marginBottom:12}},'\u{1F4CB}'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:6,color:'#374151'}},'Choose a report type above'),
+        e('div',{style:{fontSize:12,maxWidth:400,margin:'0 auto',lineHeight:1.6}},
+          e('b',null,'Site Progress Report'),' \u2014 formal management overview.',
+          e('br'),e('br'),
+          e('b',null,'Team Weekly Brief'),' \u2014 punchy brief with trade schedule.',
+          e('br'),e('br'),
+          e('b',null,'AI Predictive Analysis'),' \u2014 schedule risks and 4-week outlook.'
+        )
+      ),
+      reportHtml&&e('div',{dangerouslySetInnerHTML:{__html:reportHtml},style:{background:'#fff',minHeight:'100%'}})
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PERFECT DELIVERY TAB
+//
+function PDTab({ plots, stageDefs, plotStages, hsLog }) {
+  const [pdUrl, setPdUrl]       = useState(() => { try { return localStorage.getItem('smc_pd_url')||''; } catch(_){return '';} });
+  const [showFrame, setShowFrame] = useState(false);
+  const [frameError, setFrameError] = useState(false);
+
+  // Safe arrays
+  const safePlots  = Array.isArray(plots)  ? plots  : [];
+  const safeHsLog  = Array.isArray(hsLog)  ? hsLog  : [];
+
+  const activePlots = safePlots.filter(p => !p.is_core_block);
+  const cmlDone     = activePlots.filter(p => p.cml_signed_off).length;
+  const crcDone     = activePlots.filter(p => p.crc_signed_off).length;
+  const openRedHs   = safeHsLog.filter(h => !h.closed && h.severity === 'red');
+  const openRedPlotIds = new Set(openRedHs.map(h => h.plot_id));
+
+  function saveUrl(url) {
+    setPdUrl(url);
+    try { localStorage.setItem('smc_pd_url', url); } catch(_){}
+  }
+
+  return e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden',minHeight:0,background:'#f9fafb'}},
+
+    // ── Header card ──────────────────────────────────────────────────────
+    e('div',{style:{padding:'14px 20px',background:'#fff',borderBottom:'1px solid #e5e7eb',flexShrink:0}},
+      e('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:12}},
+        e('div',{style:{width:40,height:40,background:'#111827',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}},'🏠'),
+        e('div',null,
+          e('div',{style:{fontSize:15,fontWeight:800,color:'#111827'}},'Perfect Delivery'),
+          e('div',{style:{fontSize:11,color:'#6b7280'}},'QR-based stage sign-off — SS17 Phase 1C, Sandle Park')
+        )
+      ),
+      // KPIs
+      e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        ...[
+          ['Total Plots', activePlots.length, '#374151'],
+          ['CML Achieved', cmlDone, '#16a34a'],
+          ['CRC Achieved', crcDone, '#0891b2'],
+          ['Open H&S (Red)', openRedHs.length, openRedHs.length > 0 ? '#dc2626' : '#16a34a'],
+        ].map(([label,val,col]) =>
+          e('div',{key:label,style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'8px 16px',textAlign:'center',minWidth:90}},
+            e('div',{style:{fontSize:22,fontWeight:800,color:col}}, String(val)),
+            e('div',{style:{fontSize:9,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}}, label)
+          )
+        )
       )
     ),
 
-    // Status / Report area
-    e('div',{style:{flex:1,overflow:'auto'}},
-      generating && e('div',{style:{padding:40,textAlign:'center',color:'#6b7280'}},
-        e('div',{style:{fontSize:32,marginBottom:12}},'⏳'),
-        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},'Generating report...'),
-        e('div',{style:{fontSize:11}},'Analysing schedule, calculating variances, generating AI summary.')
+    // ── H&S alert banner ─────────────────────────────────────────────────
+    openRedHs.length > 0 && e('div',{style:{background:'#fef2f2',borderBottom:'2px solid #dc2626',padding:'8px 20px',flexShrink:0,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+      e('span',{style:{fontSize:13,fontWeight:800,color:'#dc2626',flexShrink:0}},'⚠ SAFETY ALERT'),
+      e('span',{style:{fontSize:11,color:'#374151'}},
+        'Open red H&S issues on '+openRedHs.length+' plot'+(openRedHs.length>1?'s':'')+' — subcontractors must not start work until resolved.'),
+      e('span',{style:{fontSize:11,color:'#dc2626',fontWeight:700}},'→ Check H&S tab.')
+    ),
+
+    // ── Scrollable content ────────────────────────────────────────────────
+    e('div',{style:{flex:1,overflow:'auto',padding:20,minHeight:0}},
+
+      // PD portal link
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,padding:16,marginBottom:16}},
+        e('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10}},'Perfect Delivery Portal'),
+        e('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+          e('input',{
+            type:'url',
+            value:pdUrl,
+            onChange: ev => saveUrl(ev.target.value),
+            placeholder:'https://note2quote.co.uk/pd/ — paste your PD portal URL',
+            style:{flex:1,minWidth:200,fontSize:12,border:'1px solid #d1d5db',borderRadius:7,padding:'9px 12px',color:'#111827'}
+          }),
+          e('button',{
+            onClick:()=>{ if(pdUrl){ setShowFrame(true); setFrameError(false); } },
+            disabled:!pdUrl,
+            style:{padding:'9px 18px',background:pdUrl?'#f97316':'#e5e7eb',border:'none',borderRadius:7,
+              color:pdUrl?'#fff':'#9ca3af',fontSize:12,fontWeight:700,cursor:pdUrl?'pointer':'not-allowed'}
+          },'Embed'),
+          pdUrl && e('a',{href:pdUrl, target:'_blank', rel:'noopener noreferrer',
+            style:{padding:'9px 14px',background:'#1e293b',borderRadius:7,color:'#fff',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap'}
+          },'↗ Open in New Tab')
+        ),
+        e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:6}},'URL is saved in your browser. Use "↗ Open in New Tab" if embed is blocked by the site.')
       ),
-      !generating && !reportHtml && e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
-        e('div',{style:{fontSize:40,marginBottom:12}},'📋'),
-        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:6,color:'#374151'}},'Choose a report type above'),
-        e('div',{style:{fontSize:12,maxWidth:400,margin:'0 auto',lineHeight:1.6}},
-          e('b',null,'Site Progress Report'),
-          ' — formal management overview with plot status table, CRC variances, materials, H&S and outstanding works.',
-          e('br'),e('br'),
-          e('b',null,'Team Weekly Brief'),
-          ' — punchy team brief with trade call-out schedule, urgent material orders, clean-up list, and this week\'s priorities.'
+
+      // Embedded frame
+      showFrame && !frameError && e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden',marginBottom:16}},
+        e('div',{style:{background:'#1e293b',padding:'7px 14px',display:'flex',alignItems:'center',gap:8}},
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#ef4444'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#fbbf24'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#34d399'}}),
+          e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},pdUrl),
+          e('button',{onClick:()=>setShowFrame(false),style:{background:'none',border:'none',color:'#6b7280',cursor:'pointer',fontSize:14,lineHeight:1}},'✕')
+        ),
+        e('iframe',{
+          src:pdUrl,
+          width:'100%',
+          height:520,
+          style:{border:'none',display:'block'},
+          title:'Perfect Delivery Portal',
+          onError:()=>setFrameError(true)
+        })
+      ),
+
+      frameError && e('div',{style:{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:14,marginBottom:16}},
+        e('div',{style:{fontWeight:700,color:'#dc2626',marginBottom:4}},'Cannot embed this page'),
+        e('div',{style:{fontSize:11,color:'#374151'}},'The PD portal has blocked embedding (X-Frame-Options). Use "↗ Open in New Tab" instead.')
+      ),
+
+      // Plot sign-off status table
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}},
+        e('div',{style:{padding:'10px 16px',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+          e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Plot Sign-Off Status (CML / CRC)'),
+          e('span',{style:{fontSize:10,color:'#9ca3af'}},cmlDone+' CML · '+crcDone+' CRC achieved')
+        ),
+        e('div',{style:{overflowX:'auto',WebkitOverflowScrolling:'touch'}},
+          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:480}},
+            e('thead',null,
+              e('tr',{style:{background:'#f1f5f9'}},
+                ['Plot','Type','Tenure','CML Cert','CRC Cert','H&S'].map(h=>
+                  e('th',{key:h,style:{padding:'7px 10px',textAlign:'left',color:'#6b7280',fontWeight:700,fontSize:10,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+                )
+              )
+            ),
+            e('tbody',null,
+              activePlots.length === 0
+                ? e('tr',null, e('td',{colSpan:6,style:{padding:16,textAlign:'center',color:'#9ca3af'}},'Loading plots...'))
+                : activePlots
+                    .sort((a,b) => (parseInt(a.plot_number)||0) - (parseInt(b.plot_number)||0))
+                    .map(p =>
+                      e('tr',{key:p.id, style:{borderBottom:'1px solid #f1f5f9', background: openRedPlotIds.has(p.id) ? '#fef2f2' : 'inherit'}},
+                        e('td',{style:{padding:'5px 10px',fontWeight:700}},'P'+p.plot_number),
+                        e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.house_type||'—'),
+                        e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.tenure||'—'),
+                        e('td',{style:{padding:'5px 10px'}},
+                          p.cml_cert_url
+                            ? e('a',{href:p.cml_cert_url,target:'_blank',style:{color:'#16a34a',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                            : p.cml_signed_off
+                              ? e('span',{style:{color:'#16a34a',fontSize:10,fontWeight:600}},'✓ Signed')
+                              : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                        ),
+                        e('td',{style:{padding:'5px 10px'}},
+                          p.crc_cert_url
+                            ? e('a',{href:p.crc_cert_url,target:'_blank',style:{color:'#0891b2',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                            : p.crc_signed_off
+                              ? e('span',{style:{color:'#0891b2',fontSize:10,fontWeight:600}},'✓ Signed')
+                              : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                        ),
+                        e('td',{style:{padding:'5px 10px'}},
+                          openRedPlotIds.has(p.id)
+                            ? e('span',{style:{color:'#dc2626',fontWeight:700,fontSize:10}},'⚠ OPEN')
+                            : e('span',{style:{color:'#16a34a',fontSize:10}},'✓ Clear')
+                        )
+                      )
+                    )
+            )
+          )
         )
-      ),
-      reportHtml && e('div',{
-        ref:printRef,
-        dangerouslySetInnerHTML:{__html:reportHtml},
-        style:{background:'#fff',minHeight:'100%'}
-      })
+      )
     )
   );
 }
