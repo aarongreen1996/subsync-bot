@@ -2058,8 +2058,8 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       }, pdfLoading?'⏳ Rendering...' : bgImage?'📁 Replace Drawing':'📁 Upload P101/P102'),
       e('input',{ref:fileRef,type:'file',accept:'image/*,.pdf,application/pdf',style:{display:'none'},onChange:handleUpload}),
       bgImage
-        ? e('div',{style:{fontSize:9,color:'#16a34a'}},'✓ Drawing loaded')
-        : e('div',{style:{fontSize:9,color:'#9ca3af',lineHeight:1.4}},'Accepts PNG, JPG, or PDF. PDF renders at 3× resolution for sharp zoom.')
+        ? e('div',{style:{fontSize:9,color:'#16a34a'}},'✓ Drawing loaded · syncs to all devices automatically')
+        : e('div',{style:{fontSize:9,color:'#9ca3af',lineHeight:1.4}},'Upload once on any device — automatically available on all others.')
     ),
 
     bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
@@ -4777,37 +4777,51 @@ function App() {
   const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB or server on mount
   const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  // Load drawing: IndexedDB first (fast, local), then server URL (cross-device)
+  // Load drawing: IndexedDB first (fast, no network), then server (cross-device)
   useEffect(() => {
     idbGet('map_drawing').then(img => {
       if (img) { setBgImageRaw(img); return; }
-      // Not in local IndexedDB — try to load from server (e.g. different device)
+      // Not cached locally — fetch from server (works on any logged-in device)
       api('/map-image').then(r=>r.json()).then(data => {
-        if (data.image_url) {
-          setBgImageRaw(data.image_url);
-          // Cache locally for next time
-          idbSet('map_drawing', data.image_url).catch(()=>{});
+        const src = data.image_data || (data.image_url || null);
+        if (src) {
+          setBgImageRaw(src);
+          // Cache locally so next load is instant
+          idbSet('map_drawing', src).catch(()=>{});
         }
       }).catch(()=>{});
-    }).catch(()=>{});
+    }).catch(()=>{
+      // IndexedDB unavailable — try server directly
+      api('/map-image').then(r=>r.json()).then(data => {
+        const src = data.image_data || data.image_url || null;
+        if (src) setBgImageRaw(src);
+      }).catch(()=>{});
+    });
   }, []);
 
   function setBgImage(v) {
     setBgImageRaw(v);
-    // Save to IndexedDB immediately (fast, local)
-    idbSet('map_drawing', v).catch(ex => console.error('Save drawing to IndexedDB failed:', ex));
-    // Also save to server as JPEG for cross-device access.
-    // Compress: convert data URL to a JPEG canvas to reduce 5-15MB PNG → ~500KB JPEG
+    // Cache in IndexedDB for instant local loads
+    idbSet('map_drawing', v).catch(()=>{});
+    // Compress and save to server for cross-device access.
+    // Scale to max 1024px wide → JPEG 0.7 quality → ~100-300KB data URL.
+    // Stored directly in DB (no Supabase Storage) for maximum reliability.
     try {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        const jpeg = canvas.toDataURL('image/jpeg', 0.75);
-        const b64 = jpeg.split(',')[1];
-        api('/map-image', { method:'POST', body:JSON.stringify({ image_b64:b64, mime_type:'image/jpeg' }) })
-          .catch(ex => console.warn('Map drawing server save failed (offline?):', ex));
+        const MAX = 1024;
+        const scale = img.naturalWidth > MAX ? MAX / img.naturalWidth : 1;
+        canvas.width  = Math.round(img.naturalWidth  * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        api('/map-image', {
+          method: 'POST',
+          body: JSON.stringify({ image_data: compressed })
+        }).then(r=>r.json()).then(d=>{
+          if(d.ok) console.log('[SMC] Site map saved to server — available on all devices ✓');
+        }).catch(ex => console.warn('[SMC] Site map server save failed:', ex));
       };
       img.src = v;
     } catch(_) {}
