@@ -1572,8 +1572,8 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
   const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
   const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
 
-  // Materials relevant to this plot — only show flagged (order now), already
-  // ordered/awaiting delivery, or due within the next 4 working weeks as a heads-up
+  // Materials relevant to this plot — show flagged, ordered, due soon, AND delivered
+  // (delivered shown so user can undo from the plot panel on a site walk)
   const plotMaterials = useMemo(() => {
     const rows = [];
     (materials||[]).forEach(material => {
@@ -1584,16 +1584,15 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
       const leadDays = material.lead_time_weeks * 5;
       const stageDate = workingDays[stageSched.start];
       let status;
-      if (order && order.status === 'delivered') return; // delivered — don't clutter the plot card
+      if (order && order.status === 'delivered') status = 'delivered';
       else if (order && order.status === 'ordered') status = 'ordered';
       else if (daysUntilStage <= leadDays) status = 'flagged';
-      else if (daysUntilStage <= 20) status = 'due_soon'; // within ~4 working weeks
+      else if (daysUntilStage <= 20) status = 'due_soon';
       else return; // not relevant yet — omit
       rows.push({ material, status, stageDate, order });
     });
-    // Flagged first, then due soon, then ordered
-    const order = { flagged:0, due_soon:1, ordered:2 };
-    rows.sort((a,b) => order[a.status]-order[b.status]);
+    const orderRank = { flagged:0, due_soon:1, ordered:2, delivered:3 };
+    rows.sort((a,b) => (orderRank[a.status]||99)-(orderRank[b.status]||99));
     return rows;
   }, [materials, materialOrders, plotSchedule, todayIdx, workingDays, plot.id]);
 
@@ -1726,14 +1725,17 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 
         // Materials for this plot
         plotMaterials.length > 0 && e('div', { style:{ marginBottom:18 } },
-          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '📦 Materials Needed'),
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } },
+            '📦 Materials ('+(plotMaterials.filter(m=>m.status!=='delivered').length)+' active · '+plotMaterials.filter(m=>m.status==='delivered').length+' delivered)'
+          ),
           e('div', { style:{ display:'flex', flexDirection:'column', gap:6 } },
             ...plotMaterials.map(({material,status,stageDate,order}) => {
               const badge = {
                 flagged:  { label:'⚠ Order Now', bg:'#fee2e2', col:'#dc2626' },
                 due_soon: { label:'Due in 4wks', bg:'#fef3c7', col:'#d97706' },
                 ordered:  { label:'Ordered',     bg:'#fef3c7', col:'#d97706' },
-              }[status];
+                delivered:{ label:'✓ Delivered', bg:'#dcfce7', col:'#16a34a' },
+              }[status] || { label:status, bg:'#f3f4f6', col:'#9ca3af' };
               const dateStr = stageDate ? stageDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
               return e(PlotMaterialRow, { key:material.id, material, status, badge, dateStr, order, plotId:plot.id, onSetOrder });
             })
@@ -3523,10 +3525,32 @@ function MaterialPlotRow({ plot, status, stageStartDate, order, material, onSetO
     e('span',{style:{fontSize:11,color:'#9ca3af',whiteSpace:'nowrap'}},'Stage: '+dateStr),
     e('span',{style:{padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,background:badge.bg,color:badge.col,whiteSpace:'nowrap'}},badge.label),
 
-    !editing && status !== 'delivered' && e('button',{
+    // Action buttons based on status
+    // pending / flagged → Mark Ordered
+    !editing && (status === 'flagged' || status === 'not_due') && e('button',{
       onClick:()=>setEditing(true),
-      style:{padding:'4px 10px',background:status==='ordered'?'#16a34a':'#f97316',border:'none',borderRadius:6,color:'#ffffff',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}
-    }, status==='ordered' ? 'Mark Delivered' : 'Mark Ordered'),
+      style:{padding:'4px 10px',background:'#f97316',border:'none',borderRadius:6,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}
+    }, 'Mark Ordered'),
+
+    // ordered → Mark Delivered  +  ↩ Undo
+    !editing && status === 'ordered' && e('button',{
+      onClick:()=>setEditing(true),
+      style:{padding:'4px 10px',background:'#16a34a',border:'none',borderRadius:6,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}
+    }, 'Mark Delivered'),
+    !editing && status === 'ordered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'pending',ordered_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Undo'),
+
+    // delivered → ↩ Undo Delivery (back to ordered)  +  ↩ Reset (back to pending)
+    !editing && status === 'delivered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'ordered',delivery_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Undo Delivery'),
+    !editing && status === 'delivered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'pending',ordered_date:null,delivery_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Reset'),
 
     editing && status !== 'ordered' && status !== 'delivered' && e('div',{style:{display:'flex',gap:5,alignItems:'center'}},
       e('input',{type:'date',value:orderedDate,onChange:ev=>setOrderedDate(ev.target.value),style:{fontSize:10,padding:'3px 5px',border:'1px solid #d1d5db',borderRadius:5}}),
