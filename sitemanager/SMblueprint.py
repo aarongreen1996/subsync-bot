@@ -271,13 +271,18 @@ def api_hs_log_update(log_id):
 @smc_bp.route("/api/map-image", methods=["GET"])
 @_require_auth
 def api_map_image_get():
-    """Return the public URL of the stored map drawing from Supabase Storage."""
+    """Return the stored site map drawing (base64 data URL) for cross-device access."""
     try:
-        r = supabase.table("smc_map_image").select("image_url") \
+        r = supabase.table("smc_map_image").select("image_data,image_url") \
             .eq("project_id", SMC_PROJECT_ID).limit(1).execute()
-        if r.data and r.data[0].get("image_url"):
-            return jsonify({"image_url": r.data[0]["image_url"]})
-        return jsonify({"image_url": None})
+        if r.data:
+            row = r.data[0]
+            # Prefer direct image_data (most reliable), fall back to image_url
+            if row.get("image_data"):
+                return jsonify({"image_data": row["image_data"]})
+            if row.get("image_url"):
+                return jsonify({"image_url": row["image_url"]})
+        return jsonify({"image_data": None})
     except Exception as e:
         return err(e)
 
@@ -285,30 +290,36 @@ def api_map_image_get():
 @smc_bp.route("/api/map-image", methods=["POST"])
 @_require_auth
 def api_map_image_set():
-    """Upload the site map drawing to Supabase Storage for cross-device access."""
+    """Save the compressed site map drawing directly in the database.
+    Uses image_data (base64 data URL) for reliable cross-device access without
+    requiring Supabase Storage configuration.
+    Image is compressed to max 1024px wide JPEG on the client before sending,
+    keeping payload to ~100-300KB."""
     data = request.get_json() or {}
-    image_b64 = data.get("image_b64", "")
-    mime_type = data.get("mime_type", "image/jpeg")
-    if not image_b64:
-        return jsonify({"ok": False, "error": "image_b64 required"}), 400
+    # Accept either full data URL or raw base64
+    image_data = data.get("image_data", "")   # full data:image/...;base64,... URL
+    image_b64  = data.get("image_b64", "")    # raw base64 (legacy)
+    mime_type  = data.get("mime_type", "image/jpeg")
+    if not image_data and not image_b64:
+        return jsonify({"ok": False, "error": "image_data required"}), 400
+    # Build full data URL if only raw base64 was sent
+    if not image_data and image_b64:
+        image_data = f"data:{mime_type};base64,{image_b64}"
     try:
-        import base64
-        img_bytes = base64.b64decode(image_b64)
-        ext = "jpg" if "jpeg" in mime_type else "png"
-        path = f"maps/{SMC_PROJECT_ID}/site_drawing.{ext}"
-        supabase.storage.from_("smc-photos").upload(
-            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
-        )
-        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
-        ex = supabase.table("smc_map_image").select("id").eq("project_id", SMC_PROJECT_ID).execute()
+        ex = supabase.table("smc_map_image").select("id") \
+            .eq("project_id", SMC_PROJECT_ID).execute()
+        now_str = __import__('datetime').datetime.utcnow().isoformat()
         if ex.data:
-            supabase.table("smc_map_image").update({"image_url": public_url}) \
+            supabase.table("smc_map_image") \
+                .update({"image_data": image_data, "updated_at": now_str}) \
                 .eq("project_id", SMC_PROJECT_ID).execute()
         else:
-            supabase.table("smc_map_image").insert(
-                {"project_id": SMC_PROJECT_ID, "image_url": public_url}
-            ).execute()
-        return jsonify({"ok": True, "image_url": public_url})
+            supabase.table("smc_map_image").insert({
+                "project_id": SMC_PROJECT_ID,
+                "image_data": image_data,
+                "updated_at": now_str
+            }).execute()
+        return jsonify({"ok": True})
     except Exception as e:
         return err(e)
 
