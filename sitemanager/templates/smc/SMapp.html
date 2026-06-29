@@ -377,8 +377,17 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
       });
     }
 
-    // ── Mode 1: Current stage confirmed → anchor it at today ──────────────
+    // ── Mode 1: Current stage confirmed → anchor it at started date (or today) ─
+    // If the stage started before today, the Gantt accurately shows the stage
+    // as being in progress rather than starting fresh today.
     if (plot.current_stage_id && defMap[plot.current_stage_id]) {
+      // Use actual start date if recorded, otherwise fall back to today
+      let anchorDay = today;
+      if (plot.current_stage_started_date) {
+        const startedD = new Date(plot.current_stage_started_date);
+        const startedIdx = _schedWDs.findIndex(d => d >= startedD);
+        if (startedIdx >= 0) anchorDay = startedIdx;
+      }
 
       if (hasCustom) {
         // Has manually-saved positions: shift the whole sequence so the
@@ -427,7 +436,7 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
           s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor };
         });
 
-        let fwdCursor = today + curDur;
+        let fwdCursor = anchorDay + curDur;
         sortedDefs.forEach(def => {
           if ((def.stage_order||0) <= curOrder) return;
           const dur = def.default_duration || 1;
@@ -685,7 +694,7 @@ function ResourceSummaryPanel({ sortedDefs, schedules, visPlots, workingDays, to
   );
 }
 
-function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages, trades }) {
+function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages, trades, hsLog }) {
   // Trade → colour map: each trade has one canonical colour; all its stages share it.
   // Falls back to the stage's own .color field for backwards compatibility.
   const tradeColorMap = useMemo(() => {
@@ -1088,6 +1097,12 @@ function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages
               isCoreBlock
                 ? e('div',{style:{width:8,height:8,borderRadius:1,background:'#f97316',flexShrink:0}})
                 : e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
+              // H&S warning badge — red dot if plot has open H&S issues
+              (()=>{const openHs=(hsLog||[]).filter(h=>h.plot_id===p.id&&!h.closed);
+                return openHs.length>0&&e('div',{title:openHs.length+' open H&S issue'+(openHs.length>1?'s':''),
+                  style:{width:8,height:8,borderRadius:'50%',background:openHs.some(h=>h.severity==='red')?'#dc2626':'#f97316',
+                    flexShrink:0,boxShadow:'0 0 0 2px rgba(220,38,38,0.3)'}});
+              })(),
               e('div',{style:{flex:1,minWidth:0}},
                 e('div',{style:{fontSize:11,fontWeight:700,
                   color: isCoreBlock?'#f97316': isUnitFlat?'#0369a1':'#1f2937',
@@ -1552,9 +1567,17 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
     return rows;
   }, [materials, materialOrders, plotSchedule, todayIdx, workingDays, plot.id]);
 
-  async function setStage(stageId) {
+  const [stageStartedDate, setStageStartedDate] = useState(
+    plot.current_stage_started_date || new Date().toISOString().slice(0,10)
+  );
+
+  async function setStage(stageId, startedDate) {
     setSavingStage(true);
-    await onUpdatePlot(plot.id, { current_stage_id: stageId || null });
+    const sd = startedDate || stageStartedDate;
+    await onUpdatePlot(plot.id, {
+      current_stage_id: stageId || null,
+      current_stage_started_date: stageId ? sd : null
+    });
     setSavingStage(false);
   }
 
@@ -1625,6 +1648,16 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
               ...sortedStages.map(s => e('option', { key:s.id, value:s.id }, s.name + ' (' + s.trade + ')'))
             ),
             savingStage && e('span', { style:{ fontSize:10, color:'#f97316' } }, 'Saving...')
+          ),
+          // Stage start date — sets accurate Gantt position (halfway through a stage)
+          plot.current_stage_id && e('div',{style:{marginTop:8,display:'flex',alignItems:'center',gap:8}},
+            e('span',{style:{fontSize:10,color:'#6b7280',flexShrink:0}},'Stage started:'),
+            e('input',{type:'date',value:stageStartedDate,
+              onChange:ev=>setStageStartedDate(ev.target.value),
+              onBlur:()=>setStage(plot.current_stage_id, stageStartedDate),
+              style:{fontSize:11,border:'1px solid #d1d5db',borderRadius:5,padding:'3px 7px',color:'#111827'}
+            }),
+            e('span',{style:{fontSize:9,color:'#9ca3af'}},'Positions stage start on Gantt')
           ),
           currentStage && e('div', {
             style:{ marginTop:8, display:'flex', alignItems:'center', gap:6, padding:'6px 10px', background:currentStage.color+'18', border:'1px solid '+currentStage.color+'40', borderRadius:6 }
@@ -4163,6 +4196,17 @@ function ReportsTab({ plots, stageDefs, plotStages, trades, materials, items, hs
     const matUrgent = matsDueThisWeek.filter(m=>m.status==='not_ordered').map(m=>`${m.mat.material_name} (P${m.plot.plot_number})`).join(', ');
     const hsOpen = hsLog.filter(h=>!h.closed).length;
 
+    // Build variance data for AI analysis
+    const plotVariances = sortedPlots.map(p=>{
+      const v = varianceDays(p);
+      if (v===null) return null;
+      return `P${p.plot_number} (${plotCurrentStage(p)}): ${v>=0?'+':''}${v}d`;
+    }).filter(Boolean).slice(0,20).join(', ');
+
+    const tradeLoad = Object.entries(tradeSchedule)
+      .map(([t,items])=>`${t}: ${items.length} plots`)
+      .join(', ');
+
     const prompt = type==='site'
       ? `You are writing a professional site manager's weekly progress report for Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge (74 plots).
 Week commencing: ${weekLabel}
@@ -4171,6 +4215,24 @@ Plots behind CRC schedule: ${behindPlots.length}${behindSummary ? ' — '+behind
 Materials urgently needing ordering: ${matUrgent||'None'}
 Open H&S items: ${hsOpen}
 Write a professional 3-sentence executive summary paragraph for this report. Be direct and factual. Do not use markdown. Start with "This week".`
+      : type==='analysis'
+      ? `You are an expert construction programme analyst. Analyse the following data for SS17 Phase 1C, Sandle Park, Fordingbridge (74 residential plots, Pennyfarthing Homes).
+
+Date: ${weekLabel}
+Plot CRC variances (positive=ahead, negative=behind): ${plotVariances||'No data yet — site starting soon'}
+Trade workload this week: ${tradeLoad||'No active stages yet'}
+Plots behind CRC deadline: ${behindPlots.length} of ${sortedPlots.length}
+Open H&S issues: ${hsOpen}
+Urgent material orders needed: ${matUrgent||'None'}
+
+Provide a structured analysis covering:
+1. SCHEDULE RISK: Top 3 scheduling risks and which plots are most at risk of missing CRC deadline
+2. TRADE CONFLICTS: Any periods of high trade demand that could cause resource conflicts
+3. SLIPPAGE PATTERNS: Any evidence of consistent slippage and which trades or plot types are involved
+4. RECOMMENDATIONS: 3 specific actions to improve programme performance
+5. OUTLOOK: 4-week outlook prediction
+
+Be concise and actionable. Use numbered sections. No markdown headers — use ALL CAPS for section names.`
       : `You are writing a punchy team brief for the site team at Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge.
 Week commencing: ${weekLabel}
 Active plots: ${activeCount}
@@ -4181,21 +4243,20 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
 
     let aiText = '';
     try {
-      const aiR = await fetch('/api/anthropic/v1/messages', {
+      const aiResp = await api('/ai/generate', {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          model:'claude-sonnet-4-6', max_tokens:300,
-          messages:[{role:'user',content:prompt}]
-        })
-      }).then(r=>r.json());
-      aiText = aiR.content?.[0]?.text || '';
+        body: JSON.stringify({ prompt, comm_type:'report' })
+      });
+      const aiR = await aiResp.json();
+      aiText = aiR.text || aiR.content || aiR.message || '';
     } catch(_) { aiText = 'Unable to generate AI summary — check connection.'; }
 
     // Generate HTML report
     const html = type === 'site'
       ? generateSiteReport(aiText)
-      : generateTeamBrief(aiText);
+      : type === 'analysis'
+        ? generateAnalysisReport(aiText)
+        : generateTeamBrief(aiText);
 
     setReportHtml(html);
     setGenerating(false);
@@ -4298,21 +4359,7 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
     <tbody>${rows}</tbody>
   </table>
 
-  ${behindPlots.length>0?`<h2 style="color:#dc2626;border-color:#dc2626">⚠ Behind Schedule — Action Required</h2>
-  <table>
-    <thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th></tr></thead>
-    <tbody>${behindPlots.map(p=>{
-      const v=varianceDays(p); const schDate=scheduledCRCDay(p);
-      return `<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb">
-        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
-        <td style="padding:5px 8px;font-size:11px">${p.house_type||'—'}</td>
-        <td style="padding:5px 8px;font-size:11px">${plotCurrentStage(p)}</td>
-        <td style="padding:5px 8px;font-size:11px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
-        <td style="padding:5px 8px;font-size:11px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
-        <td style="padding:5px 8px;font-size:11px;color:#dc2626;font-weight:700">${v}d</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`:''}
+  ${behindPlots.length>0?'<h2 style="color:#dc2626;border-color:#dc2626">&#9888; Behind Schedule &mdash; Action Required</h2><table><thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th></tr></thead><tbody>'+behindPlots.map(p=>{const v=varianceDays(p);const schDate=scheduledCRCDay(p);return '<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb"><td style="padding:5px 8px;font-weight:700">P'+p.plot_number+'</td><td style="padding:5px 8px;font-size:11px">'+(p.house_type||'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px">'+plotCurrentStage(p)+'</td><td style="padding:5px 8px;font-size:11px">'+(p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px">'+(schDate?schDate.toLocaleDateString('en-GB'):'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px;color:#dc2626;font-weight:700">'+v+'d</td></tr>';}).join('')+'</tbody></table>':''}
 
   <h2>Materials Due This Week</h2>
   <table>
@@ -4329,6 +4376,87 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
   <div style="margin-top:30px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between">
     <span>SS17 Phase 1C — Sandle Park, Fordingbridge | Pennyfarthing Homes</span>
     <span>Generated by SMC on ${today}</span>
+  </div>
+</div>`;
+  }
+
+  function generateAnalysisReport(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    // Build variance table
+    const varRows = sortedPlots.filter(p=>varianceDays(p)!==null).map(p=>{
+      const v=varianceDays(p); const schDate=scheduledCRCDay(p);
+      const rag=v>=14?'#16a34a':v>=0?'#d97706':'#dc2626';
+      const ragLabel=v>=14?'Green':v>=0?'Amber':'Red';
+      return `<tr style="border-bottom:1px solid #e5e7eb;background:${v<0?'#fef2f2':'inherit'}">
+        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
+        <td style="padding:5px 8px;font-size:10px">${p.house_type||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${plotCurrentStage(p)}</td>
+        <td style="padding:5px 8px;font-size:10px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:10px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-weight:700;color:${rag}">${v>=0?'+':''}${v}d</td>
+        <td style="padding:5px 8px"><span style="background:${rag};color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;font-weight:700">${ragLabel}</span></td>
+      </tr>`;
+    }).join('');
+
+    const tradeRows = Object.entries(tradeSchedule).sort((a,b)=>b[1].length-a[1].length).map(([trade,items])=>{
+      const pct=Math.round(items.length/sortedPlots.length*100);
+      const bar='█'.repeat(Math.round(pct/5))+'░'.repeat(20-Math.round(pct/5));
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">${trade}</td>
+        <td style="padding:5px 8px;font-size:11px">${items.length} plots (${pct}% of site)</td>
+        <td style="padding:5px 8px;font-family:monospace;font-size:10px;color:#7c3aed">${bar}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #7c3aed;
+       border-bottom: 2px solid #7c3aed; padding-bottom: 4px; margin: 20px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #1e293b; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #faf5ff; border-left: 4px solid #7c3aed; padding: 12px 16px; margin: 8px 0 16px;
+            font-size: 12px; line-height: 1.8; white-space: pre-line; }
+  .kpi { display:inline-block;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 14px;margin:0 6px 6px 0;text-align:center }
+  .kpi-n { font-size:22px;font-weight:800;display:block }
+  .kpi-l { font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af }
+</style>
+<div style="padding:20px;max-width:1050px">
+  <div style="border-bottom:3px solid #7c3aed;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div style="font-size:9px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em">Pennyfarthing Homes</div>
+      <h1>AI Predictive Analysis — SS17 Phase 1C</h1>
+      <div style="font-size:11px;color:#6b7280">Sandle Park, Fordingbridge · ${weekLabel}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9ca3af">Generated: ${today}<br>Powered by Claude AI</div>
+  </div>
+
+  <h2>Risk Summary</h2>
+  <div>
+    <div class="kpi" style="border-color:#16a34a"><span class="kpi-n" style="color:#16a34a">${sortedPlots.filter(p=>{const v=varianceDays(p);return v!==null&&v>=14}).length}</span><span class="kpi-l">On Track (Green)</span></div>
+    <div class="kpi" style="border-color:#d97706"><span class="kpi-n" style="color:#d97706">${sortedPlots.filter(p=>{const v=varianceDays(p);return v!==null&&v>=0&&v<14}).length}</span><span class="kpi-l">At Risk (Amber)</span></div>
+    <div class="kpi" style="border-color:#dc2626"><span class="kpi-n" style="color:#dc2626">${behindPlots.length}</span><span class="kpi-l">Behind Schedule (Red)</span></div>
+    <div class="kpi"><span class="kpi-n">${Object.keys(tradeSchedule).length}</span><span class="kpi-l">Active Trades This Week</span></div>
+  </div>
+
+  <h2>AI Analysis</h2>
+  <div class="ai-box">${aiText.replace(/\n/g,'<br>')}</div>
+
+  <h2>CRC Variance — All Plots</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th><th>RAG</th></tr></thead>
+    <tbody>${varRows||'<tr><td colspan="7" style="padding:8px;color:#9ca3af;text-align:center">No schedule data yet — site starting soon</td></tr>'}</tbody>
+  </table>
+
+  <h2>Trade Demand This Week</h2>
+  <table>
+    <thead><tr><th>Trade</th><th>Plots Required</th><th>Demand Indicator</th></tr></thead>
+    <tbody>${tradeRows||'<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody>
+  </table>
+
+  <div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center">
+    AI Predictive Analysis — SS17 Phase 1C · Pennyfarthing Homes · Powered by Claude AI
   </div>
 </div>`;
   }
@@ -4388,6 +4516,158 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
   .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
 </style>
 <div style="padding:16px;max-width:900px">
+// ══════════════════════════════════════════════════════════════════════════
+// PERFECT DELIVERY TAB — Overview & quick-access panel
+//
+// Keeps Perfect Delivery visible from SMC without duplicating data.
+// Shows an embedded view + summary stats pulled from the PD portal.
+// Does NOT affect the Gantt chart.
+// ══════════════════════════════════════════════════════════════════════════
+function PDTab({ plots, stageDefs, plotStages, hsLog }) {
+  const [pdUrl, setPdUrl] = useState('');
+  const [showFrame, setShowFrame] = useState(false);
+  const [frameError, setFrameError] = useState(false);
+
+  // Derive which plots might need H&S alerts before PD sign-off
+  const openHsPlots = useMemo(() => {
+    return (hsLog||[]).filter(h=>!h.closed && h.severity==='red').map(h=>h.plot_id);
+  }, [hsLog]);
+
+  // Quick stats from SMC data as a proxy for PD status
+  const signedOff = plots.filter(p=>p.crc_signed_off||p.cml_signed_off);
+  const cmlDone   = plots.filter(p=>p.cml_signed_off);
+  const crcDone   = plots.filter(p=>p.crc_signed_off);
+
+  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',background:'#f9fafb',overflow:'hidden'}},
+
+    // Header
+    e('div',{style:{padding:'16px 20px',background:'#fff',borderBottom:'1px solid #e5e7eb',flexShrink:0}},
+      e('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:10}},
+        e('div',{style:{width:36,height:36,background:'#111827',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}},'🏠'),
+        e('div',null,
+          e('div',{style:{fontSize:14,fontWeight:800,color:'#111827'}},'Perfect Delivery'),
+          e('div',{style:{fontSize:11,color:'#6b7280'}},'QR-based stage sign-off platform — SS17 Phase 1C')
+        )
+      ),
+      // KPI strip from SMC data
+      e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        ...[
+          ['📋','Total Plots',plots.filter(p=>!p.is_core_block).length,'#374151'],
+          ['✅','CML Achieved',cmlDone.length,'#16a34a'],
+          ['🏁','CRC Achieved',crcDone.length,'#0891b2'],
+          ['⚠️','Open H&S (Red)',openHsPlots.length,'#dc2626'],
+        ].map(([icon,label,val,col])=>
+          e('div',{key:label,style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:100}},
+            e('div',{style:{fontSize:20,fontWeight:800,color:col}},val),
+            e('div',{style:{fontSize:9,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}},[icon,' ',label])
+          )
+        )
+      )
+    ),
+
+    // H&S alert banner if any red issues
+    openHsPlots.length>0 && e('div',{style:{background:'#fef2f2',borderBottom:'2px solid #dc2626',padding:'8px 20px',flexShrink:0,display:'flex',gap:8,alignItems:'center'}},
+      e('span',{style:{fontSize:13,fontWeight:800,color:'#dc2626'}},'⚠ SAFETY ALERT'),
+      e('span',{style:{fontSize:11,color:'#374151'}},'Open red H&S issues on '+openHsPlots.length+' plot(s) — subcontractors must not commence work until resolved.'),
+      e('span',{style:{fontSize:11,color:'#dc2626',fontWeight:700}},'Check H&S tab for details.')
+    ),
+
+    // Main content
+    e('div',{style:{flex:1,overflow:'auto',padding:20}},
+
+      // URL input + open button
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,padding:'16px',marginBottom:16}},
+        e('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}},'Perfect Delivery URL'),
+        e('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+          e('input',{
+            type:'url',
+            value:pdUrl,
+            onChange:ev=>setPdUrl(ev.target.value),
+            placeholder:'https://note2quote.co.uk/pd/ or your PD portal URL',
+            style:{flex:1,fontSize:12,border:'1px solid #d1d5db',borderRadius:7,padding:'8px 12px',color:'#111827'}
+          }),
+          e('button',{
+            onClick:()=>{ if(pdUrl) { setShowFrame(true); setFrameError(false); } },
+            disabled:!pdUrl,
+            style:{padding:'8px 16px',background:'#f97316',border:'none',borderRadius:7,color:'#fff',fontSize:12,fontWeight:700,cursor:pdUrl?'pointer':'default'}
+          },'Open →'),
+          e('a',{
+            href:pdUrl||'#',target:'_blank',
+            style:{padding:'8px 12px',background:'#e5e7eb',border:'none',borderRadius:7,color:'#374151',fontSize:12,fontWeight:600,textDecoration:'none',display:pdUrl?'block':'none'}
+          },'↗ New Tab')
+        ),
+        e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:6}},'Enter your Perfect Delivery portal URL to embed it here. Your URL is saved in browser storage.')
+      ),
+
+      // Embedded frame
+      showFrame && !frameError && e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden',marginBottom:16,height:600}},
+        e('div',{style:{background:'#111827',padding:'8px 14px',display:'flex',alignItems:'center',gap:8}},
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#ef4444'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#fbbf24'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#34d399'}}),
+          e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},pdUrl),
+          e('button',{onClick:()=>setShowFrame(false),style:{background:'none',border:'none',color:'#6b7280',cursor:'pointer',fontSize:12}},'✕')
+        ),
+        e('iframe',{
+          src:pdUrl,
+          style:{width:'100%',height:560,border:'none'},
+          title:'Perfect Delivery Portal',
+          onError:()=>setFrameError(true)
+        })
+      ),
+
+      frameError && e('div',{style:{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:16,marginBottom:16}},
+        e('div',{style:{fontWeight:700,color:'#dc2626',marginBottom:4}},'Unable to embed'),
+        e('div',{style:{fontSize:11,color:'#374151'}},'The Perfect Delivery portal cannot be embedded here (X-Frame-Options restriction). Use the "↗ New Tab" button to open it instead.')
+      ),
+
+      // Plot sign-off status from SMC data
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}},
+        e('div',{style:{padding:'10px 16px',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+          e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Plot Sign-Off Status (CML / CRC)'),
+          e('span',{style:{fontSize:10,color:'#9ca3af'}},'From SMC certificate records')
+        ),
+        e('div',{style:{overflowX:'auto'}},
+          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
+            e('thead',null,e('tr',{style:{background:'#f1f5f9'}},
+              ...['Plot','Type','CML Cert','CRC Cert','H&S'].map(h=>
+                e('th',{key:h,style:{padding:'6px 10px',textAlign:'left',color:'#6b7280',fontWeight:700,fontSize:10,textTransform:'uppercase'}},h)
+              )
+            )),
+            e('tbody',null,
+              ...plots.filter(p=>!p.is_core_block).sort((a,b)=>(parseInt(a.plot_number)||0)-(parseInt(b.plot_number)||0)).map(p=>
+                e('tr',{key:p.id,style:{borderBottom:'1px solid #f1f5f9'}},
+                  e('td',{style:{padding:'5px 10px',fontWeight:700}},'P'+p.plot_number),
+                  e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.house_type||'—'),
+                  e('td',{style:{padding:'5px 10px'}},
+                    p.cml_cert_url
+                      ? e('a',{href:p.cml_cert_url,target:'_blank',style:{color:'#16a34a',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                      : p.cml_signed_off
+                        ? e('span',{style:{color:'#16a34a',fontSize:10}},'✓ Signed')
+                        : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                  ),
+                  e('td',{style:{padding:'5px 10px'}},
+                    p.crc_cert_url
+                      ? e('a',{href:p.crc_cert_url,target:'_blank',style:{color:'#0891b2',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                      : p.crc_signed_off
+                        ? e('span',{style:{color:'#0891b2',fontSize:10}},'✓ Signed')
+                        : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                  ),
+                  e('td',{style:{padding:'5px 10px'}},
+                    openHsPlots.includes(p.id)
+                      ? e('span',{style:{color:'#dc2626',fontWeight:700,fontSize:10}},'⚠ OPEN')
+                      : e('span',{style:{color:'#16a34a',fontSize:10}},'✓')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
   <div style="background:#111827;color:#fff;padding:14px 18px;border-radius:6px;margin-bottom:0">
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#9ca3af">Pennyfarthing Homes · SS17 Phase 1C</div>
     <h1 style="color:#f97316;margin:3px 0">TEAM BRIEF — Week commencing ${weekLabel}</h1>
@@ -4461,6 +4741,12 @@ Write 3 bullet-pointed top priorities for the team this week. Each bullet should
           style:{padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#fff',
             fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
         },'👷 Team Weekly Brief'),
+        e('button',{
+          onClick:()=>generate('analysis'),
+          disabled:generating,
+          style:{padding:'10px 20px',background:'#7c3aed',border:'none',borderRadius:8,color:'#fff',
+            fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'🤖 AI Predictive Analysis'),
         reportHtml&&e('button',{
           onClick:()=>{
             const w=window.open('','_blank');
@@ -4727,6 +5013,7 @@ function App() {
     {id:'comms',     label:'✉️  Comms'},
     {id:'hs',        label:'⛑️  H&S'},
     {id:'reports',   label:'📋 Reports'},
+  {id:'pd',         label:'🏠 Perfect Delivery'},
   ];
 
   const privateCt = plots.filter(p=>p.tenure==='Private').length;
@@ -4766,7 +5053,7 @@ function App() {
         :loadErr
           ?e('div',{style:{padding:20,color:'#dc2626',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
           :tab==='programme'
-            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades})
+            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades,hsLog})
             :tab==='map'
               ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue,items,trades,onCreateItem,onUpdateItem,onDeleteItem})
               :tab==='materials'
@@ -4777,7 +5064,9 @@ function App() {
                     ?e(CommsTab,{plots,items,trades,hsLog,materials,stageDefs,onCreateItem,onUpdateItem,onDeleteItem,onGenerateComm})
                     :tab==='reports'
                       ?e(ReportsTab,{plots,stageDefs,plotStages,trades,materials,items,hsLog})
-                      :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
+                      :tab==='pd'
+                        ?e(PDTab,{plots,stageDefs,plotStages,schedules:null,hsLog})
+                        :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
     ),
     // Footer
     e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
