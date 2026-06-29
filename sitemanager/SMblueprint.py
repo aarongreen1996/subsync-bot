@@ -97,7 +97,21 @@ def api_plots():
 @_require_auth
 def api_plot_update(plot_id):
     data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url", "is_core_block", "exclude_external_stages", "snag_report_url", "pre_crc_notes"}}
+    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url", "is_core_block", "exclude_external_stages", "snag_report_url", "pre_crc_notes", "current_stage_started_date"}}
+    # Log stage history when current stage changes
+    if "current_stage_id" in updates and updates["current_stage_id"]:
+        try:
+            plot_row = supabase.table("smc_plots").select("project_id").eq("id", plot_id).single().execute()
+            stage_row = supabase.table("smc_stage_defs").select("name").eq("id", updates["current_stage_id"]).single().execute()
+            supabase.table("smc_stage_history").insert({
+                "project_id": plot_row.data["project_id"],
+                "plot_id": plot_id,
+                "stage_def_id": updates["current_stage_id"],
+                "stage_name": stage_row.data.get("name",""),
+                "started_date": updates.get("current_stage_started_date") or data.get("current_stage_started_date"),
+            }).execute()
+        except Exception:
+            pass  # history is non-critical
     if not updates:
         return jsonify({"ok": False, "error": "No valid fields"}), 400
     try:
@@ -741,6 +755,7 @@ def api_photo_delete(photo_id):
 @smc_bp.route("/api/ai/generate", methods=["POST"])
 @_require_auth
 def api_ai_generate():
+    """Generic AI text generation. Accepts {prompt} for reports or {comm_type,...} for comms."""
     """Generate professional communications using Claude.
     The prompt is built server-side from live site data so the AI has full context."""
     data = request.get_json() or {}
@@ -794,6 +809,22 @@ def api_ai_generate():
     daywork_txt     = summarise_items("daywork", "Dayworks/Extras")
     rfi_txt         = summarise_items("rfi_note", "RFI Notes")
     hs_txt = "\n".join([f"  • {h['log_date']} [{h.get('severity','').upper()}] {h['log_type']}: {h['detail']}" for h in hs_log[:5]]) or "None logged recently."
+
+    # Handle raw prompt passthrough (for reports/analysis)
+    raw_prompt = data.get("prompt")
+    if raw_prompt and data.get("comm_type") in ("report", "analysis", None) and not data.get("type"):
+        try:
+            import anthropic
+            client = anthropic.Anthropic()
+            msg = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=400,
+                messages=[{"role":"user","content":raw_prompt}]
+            )
+            text = msg.content[0].text if msg.content else ""
+            return jsonify({"ok":True,"text":text})
+        except Exception as e:
+            return jsonify({"ok":True,"text":"AI analysis unavailable — "+str(e)})
 
     prompts = {
         "daily_summary": f"""You are a professional site manager at {site_name}.
@@ -971,6 +1002,22 @@ def api_upload_snag_report(plot_id):
     except Exception as e:
         return err(e)
 
+
+
+@smc_bp.route("/api/stage-history", methods=["GET"])
+@_require_auth
+def api_stage_history():
+    """Return confirmed stage history for all plots in the project."""
+    try:
+        r = supabase.table("smc_stage_history") \
+            .select("*") \
+            .eq("project_id", SMC_PROJECT_ID) \
+            .order("confirmed_at", desc=True) \
+            .limit(500) \
+            .execute()
+        return jsonify(r.data or [])
+    except Exception as e:
+        return err(e)
 @smc_bp.route("/sw.js")
 def service_worker():
     """Service Worker: caches the app shell for offline use."""
