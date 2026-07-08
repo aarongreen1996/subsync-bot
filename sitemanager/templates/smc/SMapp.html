@@ -4920,68 +4920,34 @@ function App() {
       .catch(()=>{});
   }
 
-  // Sync version key — bump this to force a re-upload on next desktop load
-  // (used when compression settings change, e.g. quality upgrade)
-  const MAP_SYNC_VER = 'smc_map_sync_v4_hq'; // bumped — forces re-upload at scale 5
-
-  // Load drawing + dots: IndexedDB first (fast), then server (cross-device).
-  // On desktop: if server quality is old or dots are missing, push them up.
-  // On mobile/new device: pull from server.
+  // Load drawing + dots.
+  // Strategy: show local cache instantly for speed, BUT always fetch server
+  // version too — if desktop uploaded a new drawing, mobile gets it on next load.
   useEffect(() => {
-    const needsResync = !localStorage.getItem(MAP_SYNC_VER);
-
+    // Step 1: Show local cache immediately (instant, no network)
     idbGet('map_drawing').then(img => {
-      if (img) {
-        setBgImageRaw(img);
+      if (img) setBgImageRaw(img);
+    }).catch(()=>{});
 
-        // Always fetch server state to get dots and check quality version
-        api('/map-image').then(r=>r.json()).then(data => {
-          const localDots = lsGet('smc_dots_v4', {});
-          const serverHasDots = data.dots_json && JSON.parse(data.dots_json||'{}');
-          const serverDotsEmpty = !serverHasDots || Object.keys(serverHasDots).length === 0;
-          const localHasDots = localDots && Object.keys(localDots).length > 0;
-
-          if (needsResync || !data.image_data) {
-            // Re-upload: version key set AFTER success so failed uploads retry next load
-            console.log('[SMC] Syncing map to server...');
-            _saveToServer(img, localDots, () => localStorage.setItem(MAP_SYNC_VER, '1'));
-          } else if (serverDotsEmpty && localHasDots) {
-            // Image is fine but dots missing on server — push dots only
-            console.log('[SMC] Pushing dots to server...');
-            _saveDotsToServer(localDots);
-          } else if (!serverDotsEmpty) {
-            // Load server dots (may be newer from another device)
-            try {
-              const sd = JSON.parse(data.dots_json);
-              if (sd && Object.keys(sd).length > 0) {
-                setMapDotsRaw(sd);
-                lsSet('smc_dots_v4', sd);
-              }
-            } catch(_) {}
-          }
-        }).catch(()=>{});
-        return;
+    // Step 2: ALWAYS fetch from server — this ensures mobile sees the latest
+    // drawing even if it has an old cached version in IndexedDB
+    api('/map-image').then(r=>r.json()).then(data => {
+      const src = data.image_data || data.image_url || null;
+      if (src) {
+        setBgImageRaw(src);                      // replace local cache with server version
+        idbSet('map_drawing', src).catch(()=>{}); // update local cache for offline
       }
-
-      // Nothing local — pull everything from server
-      api('/map-image').then(r=>r.json()).then(data => {
-        const src = data.image_data || data.image_url || null;
-        if (src) { setBgImageRaw(src); idbSet('map_drawing', src).catch(()=>{}); }
-        if (data.dots_json) {
-          try {
-            const sd = JSON.parse(data.dots_json);
-            if (sd && Object.keys(sd).length > 0) { setMapDotsRaw(sd); lsSet('smc_dots_v4', sd); }
-          } catch(_) {}
-        }
-      }).catch(()=>{});
+      if (data.dots_json) {
+        try {
+          const sd = JSON.parse(data.dots_json);
+          if (sd && Object.keys(sd).length > 0) {
+            setMapDotsRaw(sd);
+            lsSet('smc_dots_v4', sd);
+          }
+        } catch(_) {}
+      }
     }).catch(()=>{
-      api('/map-image').then(r=>r.json()).then(data => {
-        const src = data.image_data || data.image_url || null;
-        if (src) setBgImageRaw(src);
-        if (data.dots_json) {
-          try { setMapDotsRaw(JSON.parse(data.dots_json)); } catch(_) {}
-        }
-      }).catch(()=>{});
+      // Offline — local cache already shown in step 1
     });
   }, []);
 
