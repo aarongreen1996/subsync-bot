@@ -380,64 +380,36 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
     // ── Mode 1: Current stage confirmed → anchor it at started date (or today) ─
     // If the stage started before today, the Gantt accurately shows the stage
     // as being in progress rather than starting fresh today.
+    // Mode 1: Current stage confirmed on site → anchor at started date or today.
+    // ONLY mode that shifts saved positions — everything slides so confirmed stage = today.
     if (plot.current_stage_id && defMap[plot.current_stage_id]) {
-      // Use actual start date if recorded, otherwise fall back to today
       let anchorDay = today;
       if (plot.current_stage_started_date) {
         const startedD = new Date(plot.current_stage_started_date);
         const startedIdx = _schedWDs.findIndex(d => d >= startedD);
         if (startedIdx >= 0) anchorDay = startedIdx;
       }
-
       if (hasCustom) {
-        // Has manually-saved positions: shift the whole sequence so the
-        // confirmed current stage starts at today. All relative offsets preserved.
         const curRow = dbRows.find(ps => ps.stage_def_id === plot.current_stage_id);
         if (curRow) {
-          applyWithDelta(today - curRow.start_day);
+          applyWithDelta(anchorDay - curRow.start_day);
         } else {
-          // Current stage not yet saved individually — use the earliest saved
-          // stage as the reference and try to position the current stage at today.
-          // Fall back: place at today and cascade from saved positions.
-          const curDef = defMap[plot.current_stage_id];
-          const curOrder = curDef.stage_order || 0;
-          // Estimate where today is relative to saved stages
-          const nearestSaved = dbRows.reduce((best, row) => {
-            const def = defMap[row.stage_def_id];
-            if (!def) return best;
-            const dist = Math.abs((def.stage_order||0) - curOrder);
-            return (!best || dist < best.dist) ? {row, def, dist} : best;
-          }, null);
-          if (nearestSaved) {
-            const nearOrder = nearestSaved.def.stage_order || 0;
-            const orderDiff = curOrder - nearOrder;
-            // Estimate position of current stage from nearest saved stage
-            const estimatedStart = nearestSaved.row.start_day +
-              sortedDefs.filter(d=>(d.stage_order||0)>nearOrder && (d.stage_order||0)<=curOrder)
-                .reduce((sum,d)=>sum+(d.default_duration||1),0) * (orderDiff>0?1:-1);
-            applyWithDelta(today - estimatedStart);
-          } else {
-            applyWithDelta(0);
-          }
+          applyWithDelta(0);
         }
-
       } else {
-        // No saved positions — standard anchor mode (original behaviour)
         const curDef = defMap[plot.current_stage_id];
         const curOrder = curDef.stage_order || 0;
         const curDur = curDef.default_duration || 1;
-        s[plot.id][plot.current_stage_id] = { start: today, dur: curDur, basStart: today };
-
-        let backCursor = today;
-        [...sortedDefs].reverse().forEach(def => {
+        s[plot.id][plot.current_stage_id] = { start: anchorDay, dur: curDur, basStart: anchorDay };
+        let backCursor = anchorDay;
+        [...plotSortedDefs].reverse().forEach(def => {
           if ((def.stage_order||0) >= curOrder) return;
           const dur = def.default_duration || 1;
           backCursor -= dur;
           s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor };
         });
-
         let fwdCursor = anchorDay + curDur;
-        sortedDefs.forEach(def => {
+        plotSortedDefs.forEach(def => {
           if ((def.stage_order||0) <= curOrder) return;
           const dur = def.default_duration || 1;
           s[plot.id][def.id] = { start: fwdCursor, dur, basStart: fwdCursor };
@@ -445,60 +417,34 @@ function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
         });
       }
 
-    // ── Mode 2: CRC deadline set → schedule backwards from deadline ────────
+    // Mode 2: Custom saved positions → use EXACTLY as saved, zero delta.
+    // CRC deadline is used for variance display only — it does NOT move bars.
+    // This means the buffer you create by dragging stages earlier is preserved.
+    } else if (hasCustom) {
+      applyWithDelta(0);
+
+    // Mode 3: No custom positions + CRC deadline → compute backwards from deadline.
     } else if (plot.crc_deadline_date) {
       const crcDeadlineDate = new Date(plot.crc_deadline_date);
       let crcIdx = _schedWDs.findIndex(d => d >= crcDeadlineDate);
       if (crcIdx < 0) crcIdx = _schedWDs.length - 1;
+      let cursor = crcIdx;
+      [...plotSortedDefs].reverse().forEach(def => {
+        const dur = def.default_duration || 1;
+        const startDay = cursor - dur;
+        s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
+        cursor = startDay;
+      });
 
-      if (hasCustom && crcStageDef) {
-        // Has manually-saved positions: shift so the CRC stage (last stage)
-        // lands exactly on the CRC deadline. All relative spacing preserved.
-        const crcRow = dbRows.find(ps => ps.stage_def_id === crcStageDef.id);
-        if (crcRow) {
-          applyWithDelta(crcIdx - crcRow.start_day);
-        } else {
-          // CRC stage not individually saved — anchor on the last saved stage
-          const lastSaved = [...dbRows].sort((a,b) => {
-            const oa = defMap[a.stage_def_id]?.stage_order || 0;
-            const ob = defMap[b.stage_def_id]?.stage_order || 0;
-            return ob - oa;
-          })[0];
-          if (lastSaved) {
-            const lastEnd = lastSaved.start_day + lastSaved.duration;
-            applyWithDelta(crcIdx - lastEnd);
-          } else {
-            applyWithDelta(0);
-          }
-        }
-
-      } else {
-        // No saved positions — standard backwards scheduling from CRC deadline
-        let cursor = crcIdx;
-        [...plotSortedDefs].reverse().forEach(def => {
-          const db = dbRows.find(ps => ps.stage_def_id === def.id);
-          const dur = db ? db.duration : (def.default_duration || 1);
-          const startDay = cursor - dur;
-          s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
-          cursor = startDay;
-        });
-      }
-
-    // ── Mode 3: Standard sequential (no anchor, no CRC deadline) ──────────
+    // Mode 4: Nothing set → sequential from programme start day.
     } else {
       let cum = parseInt(plot.programme_start_day) || 0;
-      sortedDefs.forEach(def => {
-        const db = dbRows.find(ps => ps.stage_def_id === def.id);
-        if (db) {
-          s[plot.id][def.id] = { start: db.start_day, dur: db.duration, basStart: db.baseline_start != null ? db.baseline_start : db.start_day };
-          cum = db.start_day + db.duration;
-        } else {
-          s[plot.id][def.id] = { start: cum, dur: def.default_duration, basStart: cum };
-          cum += def.default_duration;
-        }
+      plotSortedDefs.forEach(def => {
+        s[plot.id][def.id] = { start: cum, dur: def.default_duration || 1, basStart: cum };
+        cum += def.default_duration || 1;
       });
     }
-  });
+  });   // end plots.forEach
   return s;
 }
 
@@ -1897,7 +1843,7 @@ function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrd
 // ══════════════════════════════════════════════════════════════════════════
 // SITE MAP TAB
 // ══════════════════════════════════════════════════════════════════════════
-function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, onDotsSaved, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
   const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,730); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
   const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
   const [placeMode,  setPlaceMode]  = useState(false);
@@ -1961,7 +1907,7 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
     }
   }
 
-  function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); }
+  function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); onDotsSaved && onDotsSaved(d); }
 
   function handleImgLoad(ev) {
     setNatSize({ w: ev.target.naturalWidth, h: ev.target.naturalHeight });
@@ -2028,7 +1974,10 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, stageDefs, plot
       });
     }
     function onUp() {
-      if (moved) { lsSet('smc_dots_v4', dotsRef.current); }
+      if (moved) {
+        lsSet('smc_dots_v4', dotsRef.current);
+        onDotsSaved && onDotsSaved(dotsRef.current); // sync to server
+      }
       else { setSelected(id); }
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
@@ -4831,59 +4780,89 @@ function App() {
   const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB or server on mount
   const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
 
-  // Shared compression + server-save helper (used by setBgImage and the load migration)
-  function _saveToServer(v) {
+  // Shared compression + server-save for the map drawing.
+  // Uses devicePixelRatio so retina/high-DPI mobile screens get a sharp image.
+  // Min 1920px, max 3840px — enough for a 1:1 pixel match on any display.
+  function _saveToServer(v, dotsOverride) {
     try {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX = 1024;
+        // Scale to at least 1920px or the screen's physical pixel width (whichever is larger)
+        const physicalW = Math.round(window.screen.width * (window.devicePixelRatio || 1));
+        const MAX = Math.min(Math.max(physicalW, 1920), 3840);
         const scale = img.naturalWidth > MAX ? MAX / img.naturalWidth : 1;
         canvas.width  = Math.round(img.naturalWidth  * scale);
         canvas.height = Math.round(img.naturalHeight * scale);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-        api('/map-image', {
-          method: 'POST',
-          body: JSON.stringify({ image_data: compressed })
-        }).then(r=>r.json()).then(d=>{
-          if(d.ok) console.log('[SMC] Site map saved to server ✓ — now available on all devices');
-          else console.warn('[SMC] Server save returned not-ok:', d);
-        }).catch(ex => console.warn('[SMC] Site map server save failed:', ex));
+        const compressed = canvas.toDataURL('image/jpeg', 0.88); // higher quality for sharpness
+        const body = { image_data: compressed };
+        // Include dots if provided so both are saved in one request
+        const dots = dotsOverride !== undefined ? dotsOverride : mapDots;
+        if (dots && Object.keys(dots).length > 0) body.dots_json = JSON.stringify(dots);
+        api('/map-image', { method:'POST', body:JSON.stringify(body) })
+          .then(r=>r.json()).then(d=>{
+            if(d.ok) console.log('[SMC] Map + dots saved to server ✓');
+          }).catch(ex => console.warn('[SMC] Server save failed:', ex));
       };
       img.src = v;
     } catch(_) {}
   }
 
-  // Load drawing: IndexedDB first (fast, no network), then server (cross-device).
-  // If we find it in IndexedDB but the server is empty, push it to the server now
-  // (one-time migration for drawings uploaded before server-save was implemented).
+  // Save dots only (no image re-upload) — used when dots change but image stays the same
+  function _saveDotsToServer(dots) {
+    api('/map-image', { method:'POST', body:JSON.stringify({ dots_json: JSON.stringify(dots) }) })
+      .catch(()=>{});
+  }
+
+  // Load drawing + dots: IndexedDB (fast) then server (cross-device)
   useEffect(() => {
     idbGet('map_drawing').then(img => {
       if (img) {
         setBgImageRaw(img);
-        // Check server — if empty, push drawing there so other devices can load it
+        // Also check for server data — load dots and trigger migration if needed
         api('/map-image').then(r=>r.json()).then(data => {
           if (!data.image_data && !data.image_url) {
-            console.log('[SMC] Server has no map drawing — syncing from local cache...');
+            // Server empty — push local drawing + dots up (one-time migration)
+            console.log('[SMC] Syncing local drawing to server...');
             _saveToServer(img);
+          } else if (data.dots_json) {
+            // Server has dots — load them (might be more up-to-date than localStorage)
+            try {
+              const serverDots = JSON.parse(data.dots_json);
+              if (serverDots && Object.keys(serverDots).length > 0) {
+                setMapDotsRaw(serverDots);
+                lsSet('smc_dots_v4', serverDots);
+              }
+            } catch(_) {}
           }
         }).catch(()=>{});
         return;
       }
-      // Not in local cache — fetch from server (e.g. different device, cleared storage)
+      // Nothing in IndexedDB — fetch from server (different device, cleared storage)
       api('/map-image').then(r=>r.json()).then(data => {
         const src = data.image_data || data.image_url || null;
         if (src) {
           setBgImageRaw(src);
           idbSet('map_drawing', src).catch(()=>{});
         }
+        if (data.dots_json) {
+          try {
+            const serverDots = JSON.parse(data.dots_json);
+            if (serverDots && Object.keys(serverDots).length > 0) {
+              setMapDotsRaw(serverDots);
+              lsSet('smc_dots_v4', serverDots);
+            }
+          } catch(_) {}
+        }
       }).catch(()=>{});
     }).catch(()=>{
-      // IndexedDB unavailable (some private browsers) — try server directly
       api('/map-image').then(r=>r.json()).then(data => {
         const src = data.image_data || data.image_url || null;
         if (src) setBgImageRaw(src);
+        if (data.dots_json) {
+          try { setMapDotsRaw(JSON.parse(data.dots_json)); } catch(_) {}
+        }
       }).catch(()=>{});
     });
   }, []);
@@ -4891,15 +4870,22 @@ function App() {
   function setBgImage(v) {
     setBgImageRaw(v);
     idbSet('map_drawing', v).catch(()=>{});
-    _saveToServer(v);
+    _saveToServer(v); // saves image + current dots
     try { localStorage.removeItem('smc_bgimage_v2'); } catch(_) {}
   }
+
   function setMapDots(fn) {
     setMapDotsRaw(prev => {
       const next = typeof fn==='function' ? fn(prev) : fn;
       lsSet('smc_dots_v4', next);
+      // Save to server so dots appear on any device (debounced via the drag-end handler)
       return next;
     });
+  }
+
+  // Save dots to server after drag ends (called by SiteMapTab's onDotsSaved)
+  function onDotsSaved(dots) {
+    _saveDotsToServer(dots);
   }
 
   useEffect(()=>{
@@ -5103,7 +5089,7 @@ function App() {
           :tab==='programme'
             ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades,hsLog})
             :tab==='map'
-              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue,items,trades,onCreateItem,onUpdateItem,onDeleteItem})
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,onDotsSaved,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue,items,trades,onCreateItem,onUpdateItem,onDeleteItem})
               :tab==='materials'
                 ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
                 :tab==='stages'
