@@ -292,19 +292,14 @@ def api_map_image_get():
 @smc_bp.route("/api/map-image", methods=["POST"])
 @_require_auth
 def api_map_image_set():
-    """Save the compressed site map drawing directly in the database.
-    Uses image_data (base64 data URL) for reliable cross-device access without
-    requiring Supabase Storage configuration.
-    Image is compressed to max 1024px wide JPEG on the client before sending,
-    keeping payload to ~100-300KB."""
+    """Save site map drawing + dot positions to the database."""
     data = request.get_json() or {}
-    # Accept either full data URL or raw base64
-    image_data = data.get("image_data", "")   # full data:image/...;base64,... URL
-    image_b64  = data.get("image_b64", "")    # raw base64 (legacy)
+    image_data = data.get("image_data", "")
+    image_b64  = data.get("image_b64", "")
     mime_type  = data.get("mime_type", "image/jpeg")
-    if not image_data and not image_b64:
-        return jsonify({"ok": False, "error": "image_data required"}), 400
-    # Build full data URL if only raw base64 was sent
+    dots_json  = data.get("dots_json")   # was missing — caused NameError on every POST
+    if not image_data and not image_b64 and dots_json is None:
+        return jsonify({"ok": False, "error": "image_data or dots_json required"}), 400
     if not image_data and image_b64:
         image_data = f"data:{mime_type};base64,{image_b64}"
     try:
