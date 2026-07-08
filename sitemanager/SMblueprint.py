@@ -273,16 +273,18 @@ def api_hs_log_update(log_id):
 def api_map_image_get():
     """Return the stored site map drawing (base64 data URL) for cross-device access."""
     try:
-        r = supabase.table("smc_map_image").select("image_data,image_url") \
+        r = supabase.table("smc_map_image").select("image_data,image_url,dots_json") \
             .eq("project_id", SMC_PROJECT_ID).limit(1).execute()
         if r.data:
             row = r.data[0]
             # Prefer direct image_data (most reliable), fall back to image_url
-            if row.get("image_data"):
-                return jsonify({"image_data": row["image_data"]})
-            if row.get("image_url"):
-                return jsonify({"image_url": row["image_url"]})
-        return jsonify({"image_data": None})
+            if row.get("image_data") or row.get("image_url"):
+                return jsonify({
+                    "image_data": row.get("image_data"),
+                    "image_url":  row.get("image_url"),
+                    "dots_json":  row.get("dots_json"),
+                })
+        return jsonify({"image_data": None, "dots_json": None})
     except Exception as e:
         return err(e)
 
@@ -309,16 +311,15 @@ def api_map_image_set():
         ex = supabase.table("smc_map_image").select("id") \
             .eq("project_id", SMC_PROJECT_ID).execute()
         now_str = __import__('datetime').datetime.utcnow().isoformat()
+        row_data = {"updated_at": now_str}
+        if image_data: row_data["image_data"] = image_data
+        if dots_json is not None: row_data["dots_json"] = dots_json
         if ex.data:
-            supabase.table("smc_map_image") \
-                .update({"image_data": image_data, "updated_at": now_str}) \
+            supabase.table("smc_map_image").update(row_data) \
                 .eq("project_id", SMC_PROJECT_ID).execute()
         else:
-            supabase.table("smc_map_image").insert({
-                "project_id": SMC_PROJECT_ID,
-                "image_data": image_data,
-                "updated_at": now_str
-            }).execute()
+            row_data["project_id"] = SMC_PROJECT_ID
+            supabase.table("smc_map_image").insert(row_data).execute()
         return jsonify({"ok": True})
     except Exception as e:
         return err(e)
