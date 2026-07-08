@@ -1960,12 +1960,54 @@ function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, onDotsSaved, on
         const canvas = document.createElement('canvas');
         canvas.width = vp.width; canvas.height = vp.height;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-        setBgImage(canvas.toDataURL('image/png'));
+
+        // Save full-res PNG to state + IndexedDB for local display
+        const fullPng = canvas.toDataURL('image/png');
+        setBgImage(fullPng);
+
+        // ALSO upload a server-quality JPEG immediately (1600px) — don't wait for sync button
+        // This ensures mobile gets a sharp image even before the user clicks Sync
+        const serverCanvas = document.createElement('canvas');
+        const SRV_MAX = 1600;
+        const srvScale = canvas.width > SRV_MAX ? SRV_MAX / canvas.width : 1;
+        serverCanvas.width  = Math.round(canvas.width  * srvScale);
+        serverCanvas.height = Math.round(canvas.height * srvScale);
+        serverCanvas.getContext('2d').drawImage(canvas, 0, 0, serverCanvas.width, serverCanvas.height);
+        const srvJpeg = serverCanvas.toDataURL('image/jpeg', 0.82);
+        const dots = lsGet('smc_dots_v4', {});
+        const body = { image_data: srvJpeg };
+        if (Object.keys(dots).length > 0) body.dots_json = JSON.stringify(dots);
+        api('/map-image', { method:'POST', body: JSON.stringify(body) })
+          .then(r=>r.json()).then(d=>{ if(d.ok) console.log('[SMC] High-res map uploaded ✓', Math.round(srvJpeg.length/1024)+'KB'); })
+          .catch(()=>{});
+        localStorage.removeItem('smc_map_sync_v4_hq');
+
       } catch(ex) { alert('PDF error: '+ex.message+'\nTry saving the PDF page as PNG instead.'); }
       setPdfLoading(false);
     } else {
+      // Image file — read then upload high-res immediately
       const reader = new FileReader();
-      reader.onload = e2 => setBgImage(e2.target.result);
+      reader.onload = async e2 => {
+        const dataUrl = e2.target.result;
+        setBgImage(dataUrl);
+        // Upload to server at 1600px
+        const img = new Image();
+        img.onload = () => {
+          const c2 = document.createElement('canvas');
+          const SRV_MAX = 1600;
+          const sc = img.naturalWidth > SRV_MAX ? SRV_MAX/img.naturalWidth : 1;
+          c2.width = Math.round(img.naturalWidth*sc); c2.height = Math.round(img.naturalHeight*sc);
+          c2.getContext('2d').drawImage(img, 0, 0, c2.width, c2.height);
+          const srvJpeg = c2.toDataURL('image/jpeg', 0.82);
+          const dots = lsGet('smc_dots_v4', {});
+          const body = { image_data: srvJpeg };
+          if (Object.keys(dots).length > 0) body.dots_json = JSON.stringify(dots);
+          api('/map-image', { method:'POST', body: JSON.stringify(body) })
+            .then(r=>r.json()).then(d=>{ if(d.ok) console.log('[SMC] Image uploaded ✓'); }).catch(()=>{});
+          localStorage.removeItem('smc_map_sync_v4_hq');
+        };
+        img.src = dataUrl;
+      };
       reader.readAsDataURL(file);
     }
   }
