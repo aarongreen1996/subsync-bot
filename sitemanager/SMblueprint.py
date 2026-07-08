@@ -1,1117 +1,5150 @@
-"""
-sitemanager/SMblueprint.py
-"""
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, make_response, Response
-from functools import wraps
-import os, hashlib
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SMC">
+<meta name="theme-color" content="#111827">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/smc/manifest.json">
+<title>Site Command Centre — SS17</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #111827; height: 100vh; overflow: hidden; }
+#root { height: 100vh; display: flex; flex-direction: column; }
+select, button, input { font-family: inherit; }
+/* Gantt scrollbars — big enough to grab easily */
+::-webkit-scrollbar { width: 12px; height: 14px; }
+::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #e5e7eb; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-corner { background: #e5e7eb; }
 
-smc_bp = Blueprint("smc", __name__, template_folder="templates")
+/* ── Offline indicator ─────────────────────────────────────────────── */
+#offline-bar {
+  display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+  background: #1e293b; color: #f97316; font-size: 11px; font-weight: 700;
+  text-align: center; padding: 6px 8px; letter-spacing: 0.05em;
+}
+#offline-bar.show { display: block; }
+#sync-badge {
+  display: none; position: fixed; bottom: 80px; right: 12px; z-index: 9000;
+  background: #f97316; color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 20px; padding: 5px 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+#sync-badge.show { display: flex; align-items: center; gap: 5px; }
 
-from supabase import create_client
-_url = os.environ.get("SUPABASE_URL", "")
-_key = os.environ.get("SUPABASE_KEY", "")
-supabase = create_client(_url, _key) if _url and _key else None
+/* ── Mobile bottom navigation ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Reserve space at bottom for nav bar */
+  #app-root { padding-bottom: 60px; }
 
-SMC_PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-SMC_PASSWORD   = os.environ.get("SMC_PASSWORD", "sandle2026")
+  /* Main tab bar → move to bottom on mobile */
+  #top-tabs {
+    position: fixed !important; bottom: 0 !important; top: auto !important;
+    left: 0; right: 0; z-index: 500;
+    background: #fff !important;
+    border-top: 1px solid #e5e7eb !important;
+    border-bottom: none !important;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.1);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding: 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    flex-shrink: 0 !important;
+    scrollbar-width: none;
+  }
+  #top-tabs::-webkit-scrollbar { display: none; }
+  #top-tabs button {
+    min-width: 70px !important;
+    padding: 8px 10px !important;
+    font-size: 9px !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    height: 56px !important;
+    white-space: nowrap !important;
+  }
 
-# Allow up to 25MB request bodies for map drawing uploads (JPEG ~500KB, PNG can be 15-20MB)
-smc_bp.after_request(lambda r: r)  # placeholder — limit set on the Flask app in main.py if needed
-COOKIE_NAME    = "smc_auth"
+  /* Make all interactive elements touch-friendly */
+  button, select, input[type="date"], input[type="text"], input[type="number"] {
+    min-height: 40px;
+    font-size: 14px !important;
+  }
 
+  /* Plot detail modal → full screen on mobile */
+  .plot-modal-overlay {
+    align-items: flex-end !important;
+  }
+  .plot-modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin: 0 !important;
+  }
 
-def _token():
-    return hashlib.sha256(SMC_PASSWORD.encode()).hexdigest()
+  /* Overview table → horizontal scroll */
+  .overview-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
 
-def _authed():
-    return request.cookies.get(COOKIE_NAME) == _token()
+  /* Gantt — ensure horizontal scroll works on iOS */
+  .gantt-scroll { -webkit-overflow-scrolling: touch !important; }
 
-def _require_auth(f):
-    @wraps(f)
-    def wrap(*a, **kw):
-        if not _authed():
-            return redirect(url_for("smc.login"))
-        return f(*a, **kw)
-    return wrap
+  /* Hide desktop-only hints on mobile */
+  .desktop-only { display: none !important; }
 
+  /* Larger site map dots for touch */
+  circle.plot-dot { r: 14 !important; }
+}
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-@smc_bp.route("/login", methods=["GET", "POST"])
-def login():
-    error = None
-    if request.method == "POST":
-        if request.form.get("password", "") == SMC_PASSWORD:
-            resp = make_response(redirect(url_for("smc.index")))
-            resp.set_cookie(COOKIE_NAME, _token(), max_age=43200, httponly=True, samesite="Lax", path="/")
-            return resp
-        error = "Incorrect password"
-    return render_template("smc/SMlogin.html", error=error)
+/* ── Tablet adjustments ─────────────────────────────────────────────── */
+@media (max-width: 1024px) and (min-width: 769px) {
+  button { min-height: 36px; }
+}
+@media print {
+  /* Hide everything except the active print target */
+  body * { visibility: hidden; }
 
+  /* Gantt print (existing) */
+  #print-content, #print-content * { visibility: visible; }
+  #print-content {
+    position: absolute; left: 0; top: 0;
+    width: 100% !important; margin: 0 !important;
+    box-shadow: none !important; font-size: 9px;
+    transform-origin: top left;
+  }
 
-@smc_bp.route("/logout")
-def logout():
-    resp = make_response(redirect(url_for("smc.login")))
-    resp.delete_cookie(COOKIE_NAME, path="/")
-    return resp
+  /* Materials calendar print */
+  #mat-print-content, #mat-print-content * { visibility: visible; }
+  #mat-print-content {
+    position: absolute; left: 0; top: 0;
+    width: 100% !important; margin: 0 !important;
+    overflow: visible !important;
+    font-size: 9px;
+  }
+  /* Scale to fit: auto-shrink if content is wider than the page */
+  #mat-print-content > div { overflow: visible !important; height: auto !important; }
+  #mat-print-content [style*="overflow"] { overflow: visible !important; }
+  #mat-print-content .no-print { display: none !important; }
+  #mat-print-content .print-only { display: block !important; }
 
+  /* Force colours on all coloured elements */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
 
-# ── App shell ─────────────────────────────────────────────────────────────────
-# Read and return the file directly as text/html — bypasses Jinja2 entirely
-@smc_bp.route("/")
-@_require_auth
-def index():
-    html_path = os.path.join(os.path.dirname(__file__), "templates", "smc", "SMapp.html")
-    with open(html_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return Response(content, mimetype="text/html")
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .print-modal-overlay { position: static !important; background: none !important; display: block !important; }
+  .print-preview-area { overflow: visible !important; background: none !important; padding: 0 !important; }
 
+  @page { size: landscape; margin: 6mm; }
+}
+/* Hide print-only elements on screen */
+.print-only { display: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+const e = React.createElement;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-def ok():    return jsonify({"ok": True})
-def err(e):  return jsonify({"ok": False, "error": str(e)}), 500
+if (window['pdfjs-dist/build/pdf']) {
+  window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc =
+    'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
 
+// ══════════════════════════════════════════════════════════════════════════
+// OFFLINE SYNC ENGINE
+// When the device has no internet, API calls are stored in IndexedDB and
+// applied optimistically to local state. When connectivity returns, the
+// queue is flushed in order. This makes the app usable on poor-signal
+// site walks without losing any data.
+// ══════════════════════════════════════════════════════════════════════════
 
-# ── Project ───────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/project")
-@_require_auth
-def api_project():
-    try:
-        r = supabase.table("smc_projects").select("*").eq("id", SMC_PROJECT_ID).single().execute()
-        return jsonify(r.data or {})
-    except Exception as e:
-        return err(e)
+const SQ_DB = 'smc_sync_queue_v1', SQ_STORE = 'queue';
+async function sqOpen() {
+  return new Promise((res,rej) => {
+    const r = indexedDB.open(SQ_DB, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(SQ_STORE, {keyPath:'id',autoIncrement:true});
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = rej;
+  });
+}
+async function sqPush(item) {
+  const db = await sqOpen();
+  return new Promise((res,rej) => {
+    const r = db.transaction(SQ_STORE,'readwrite').objectStore(SQ_STORE).add(item);
+    r.onsuccess = () => res(r.result); r.onerror = rej;
+  });
+}
+async function sqAll() {
+  const db = await sqOpen();
+  return new Promise((res,rej) => {
+    const r = db.transaction(SQ_STORE,'readonly').objectStore(SQ_STORE).getAll();
+    r.onsuccess = () => res(r.result||[]); r.onerror = rej;
+  });
+}
+async function sqDelete(id) {
+  const db = await sqOpen();
+  return new Promise((res,rej) => {
+    const r = db.transaction(SQ_STORE,'readwrite').objectStore(SQ_STORE).delete(id);
+    r.onsuccess = res; r.onerror = rej;
+  });
+}
 
+let _syncPending = 0;
+function updateSyncBadge() {
+  const badge = document.getElementById('sync-badge');
+  if (!badge) return;
+  if (_syncPending > 0) { badge.className='show'; badge.textContent='⏫ '+_syncPending+' pending sync'; }
+  else { badge.className=''; }
+}
 
-# ── Plots ─────────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/plots")
-@_require_auth
-def api_plots():
-    try:
-        r = supabase.table("smc_plots").select("*").eq("project_id", SMC_PROJECT_ID).order("plot_number").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
+async function flushSyncQueue() {
+  const items = await sqAll();
+  if (!items.length) return;
+  let flushed = 0;
+  for (const item of items) {
+    try {
+      const r = await fetch('/smc/api' + item.path, {
+        method: item.method||'POST',
+        headers: {'Content-Type':'application/json'},
+        credentials: 'same-origin',
+        body: item.body
+      });
+      if (r.ok) { await sqDelete(item.id); flushed++; _syncPending = Math.max(0,_syncPending-1); }
+    } catch(_) { break; } // stop on failure, try again next time
+  }
+  updateSyncBadge();
+  if (flushed > 0) console.log('[SMC sync] Flushed', flushed, 'queued requests');
+}
 
-
-@smc_bp.route("/api/plots/<plot_id>", methods=["PATCH"])
-@_require_auth
-def api_plot_update(plot_id):
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"programme_start_day", "map_x", "map_y", "current_stage_id", "notes", "cml_signed_off", "cml_signed_off_date", "crc_signed_off", "crc_signed_off_date", "crc_deadline_date", "cml_cert_url", "crc_cert_url", "is_core_block", "exclude_external_stages", "snag_report_url", "pre_crc_notes", "current_stage_started_date"}}
-    # Log stage history when current stage changes
-    if "current_stage_id" in updates and updates["current_stage_id"]:
-        try:
-            plot_row = supabase.table("smc_plots").select("project_id").eq("id", plot_id).single().execute()
-            stage_row = supabase.table("smc_stage_defs").select("name").eq("id", updates["current_stage_id"]).single().execute()
-            supabase.table("smc_stage_history").insert({
-                "project_id": plot_row.data["project_id"],
-                "plot_id": plot_id,
-                "stage_def_id": updates["current_stage_id"],
-                "stage_name": stage_row.data.get("name",""),
-                "started_date": updates.get("current_stage_started_date") or data.get("current_stage_started_date"),
-            }).execute()
-        except Exception:
-            pass  # history is non-critical
-    if not updates:
-        return jsonify({"ok": False, "error": "No valid fields"}), 400
-    try:
-        supabase.table("smc_plots").update(updates).eq("id", plot_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── Stage defs ────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/stage-defs")
-@_require_auth
-def api_stage_defs():
-    template_id = request.args.get("template_id")
-    all_templates = request.args.get("all") == "1"
-    try:
-        q = supabase.table("smc_stage_defs").select("*").eq("project_id", SMC_PROJECT_ID)
-        if template_id:
-            q = q.eq("template_id", template_id)
-        elif not all_templates:
-            # Default: only return the House (Standard) template — the primary programme template.
-            # This prevents 178 duplicate stage names appearing in dropdowns and the Gantt.
-            default_tpl = supabase.table("smc_stage_templates") \
-                .select("id").eq("is_default", True).limit(1).execute()
-            if default_tpl.data:
-                q = q.eq("template_id", default_tpl.data[0]["id"])
-        r = q.order("stage_order").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-# ── Plot stages ───────────────────────────────────────────────────────────────
-@smc_bp.route("/api/plot-stages")
-@_require_auth
-def api_plot_stages():
-    try:
-        r = supabase.table("smc_plot_stages").select("*").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/plot-stages", methods=["POST"])
-@_require_auth
-def api_plot_stages_upsert():
-    stages = (request.get_json() or {}).get("stages", [])
-    if not stages:
-        return jsonify({"ok": False, "error": "No stages"}), 400
-    try:
-        for s in stages:
-            ex = supabase.table("smc_plot_stages").select("id") \
-                .eq("plot_id", s["plot_id"]).eq("stage_def_id", s["stage_def_id"]).execute()
-            row = {
-                "plot_id":        s["plot_id"],
-                "stage_def_id":   s["stage_def_id"],
-                "start_day":      s["start_day"],
-                "duration":       s["duration"],
-                "baseline_start": s.get("baseline_start", s["start_day"]),
-                "status":         s.get("status", "pending"),
-            }
-            if ex.data:
-                supabase.table("smc_plot_stages").update(row).eq("id", ex.data[0]["id"]).execute()
-            else:
-                supabase.table("smc_plot_stages").insert(row).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/plot-stages/<stage_id>", methods=["PATCH"])
-@_require_auth
-def api_plot_stage_patch(stage_id):
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"start_day", "duration", "status", "notes"}}
-    if not updates:
-        return jsonify({"ok": False, "error": "No valid fields"}), 400
-    try:
-        from datetime import datetime, timezone
-        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-        supabase.table("smc_plot_stages").update(updates).eq("id", stage_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── H&S inspections ───────────────────────────────────────────────────────────
-@smc_bp.route("/api/hs-inspections")
-@_require_auth
-def api_hs_inspections():
-    try:
-        r = supabase.table("smc_hs_inspections").select("*") \
-            .eq("project_id", SMC_PROJECT_ID).order("next_date").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/hs-inspections/<insp_id>", methods=["PATCH"])
-@_require_auth
-def api_hs_inspection_update(insp_id):
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"last_date", "next_date", "responsible_person", "frequency_editable"}}
-    try:
-        supabase.table("smc_hs_inspections").update(updates).eq("id", insp_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── H&S log ───────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/hs-log")
-@_require_auth
-def api_hs_log():
-    try:
-        r = supabase.table("smc_hs_log").select("*") \
-            .eq("project_id", SMC_PROJECT_ID).order("log_date", desc=True).execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/hs-log", methods=["POST"])
-@_require_auth
-def api_hs_log_create():
-    data = request.get_json() or {}
-    data["project_id"] = SMC_PROJECT_ID
-    row = {k: v for k, v in data.items() if k in
-           {"project_id", "log_date", "log_type", "person_name", "status", "detail", "severity"}}
-    try:
-        supabase.table("smc_hs_log").insert(row).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/hs-log/<log_id>", methods=["PATCH"])
-@_require_auth
-def api_hs_log_update(log_id):
-    """Edit a log entry's status/comment, or sign it off."""
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in
-               {"status", "comment", "detail", "severity", "signed_off", "signed_off_by"}}
-    if not updates:
-        return jsonify({"ok": False, "error": "No valid fields"}), 400
-    if updates.get("signed_off"):
-        from datetime import datetime, timezone
-        updates["signed_off_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        supabase.table("smc_hs_log").update(updates).eq("id", log_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── Map image ─────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/map-image", methods=["GET"])
-@_require_auth
-def api_map_image_get():
-    """Return the stored site map drawing (base64 data URL) for cross-device access."""
-    try:
-        r = supabase.table("smc_map_image").select("image_data,image_url,dots_json") \
-            .eq("project_id", SMC_PROJECT_ID).limit(1).execute()
-        if r.data:
-            row = r.data[0]
-            # Prefer direct image_data (most reliable), fall back to image_url
-            if row.get("image_data") or row.get("image_url"):
-                return jsonify({
-                    "image_data": row.get("image_data"),
-                    "image_url":  row.get("image_url"),
-                    "dots_json":  row.get("dots_json"),
-                })
-        return jsonify({"image_data": None, "dots_json": None})
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/map-image", methods=["POST"])
-@_require_auth
-def api_map_image_set():
-    """Save the compressed site map drawing directly in the database.
-    Uses image_data (base64 data URL) for reliable cross-device access without
-    requiring Supabase Storage configuration.
-    Image is compressed to max 1024px wide JPEG on the client before sending,
-    keeping payload to ~100-300KB."""
-    data = request.get_json() or {}
-    # Accept either full data URL or raw base64
-    image_data = data.get("image_data", "")   # full data:image/...;base64,... URL
-    image_b64  = data.get("image_b64", "")    # raw base64 (legacy)
-    mime_type  = data.get("mime_type", "image/jpeg")
-    if not image_data and not image_b64:
-        return jsonify({"ok": False, "error": "image_data required"}), 400
-    # Build full data URL if only raw base64 was sent
-    if not image_data and image_b64:
-        image_data = f"data:{mime_type};base64,{image_b64}"
-    try:
-        ex = supabase.table("smc_map_image").select("id") \
-            .eq("project_id", SMC_PROJECT_ID).execute()
-        now_str = __import__('datetime').datetime.utcnow().isoformat()
-        row_data = {"updated_at": now_str}
-        if image_data: row_data["image_data"] = image_data
-        if dots_json is not None: row_data["dots_json"] = dots_json
-        if ex.data:
-            supabase.table("smc_map_image").update(row_data) \
-                .eq("project_id", SMC_PROJECT_ID).execute()
-        else:
-            row_data["project_id"] = SMC_PROJECT_ID
-            supabase.table("smc_map_image").insert(row_data).execute()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return err(e)
-
-
-# ── Trades ─────────────────────────────────────────────────────────────────────
-@smc_bp.route("/api/trades")
-@_require_auth
-def api_trades():
-    try:
-        r = supabase.table("smc_trades").select("*").order("sort_order").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-# ── Stage templates ───────────────────────────────────────────────────────────
-@smc_bp.route("/api/stage-templates")
-@_require_auth
-def api_stage_templates():
-    try:
-        r = supabase.table("smc_stage_templates").select("*").order("name").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/stage-templates", methods=["POST"])
-@_require_auth
-def api_stage_template_create():
-    """Create a new custom programme template (e.g. '3-Bed House', 'Townhouse')."""
-    data = request.get_json() or {}
-    name = data.get("name", "").strip()
-    if not name:
-        return jsonify({"ok": False, "error": "name required"}), 400
-    try:
-        r = supabase.table("smc_stage_templates").insert({
-            "name": name,
-            "description": data.get("description", "Custom programme"),
-            "is_default": False,
-        }).execute()
-        return jsonify({"ok": True, "template": r.data[0] if r.data else None})
-    except Exception as e:
-        return err(e)
-
-@smc_bp.route("/api/stage-templates/<target_id>/clone-from/<source_id>", methods=["POST"])
-@_require_auth
-def api_stage_template_clone(target_id, source_id):
-    """Clone all stage defs from source template into target template.
-    Used to seed Bungalow/Flat templates from House Standard as a starting point."""
-    try:
-        # Fetch source stages
-        src = supabase.table("smc_stage_defs").select("*") \
-            .eq("project_id", SMC_PROJECT_ID).eq("template_id", source_id).order("stage_order").execute()
-        if not src.data:
-            return jsonify({"ok": False, "error": "No stages found in source template"}), 400
-
-        # Delete any existing stages in the target template first
-        supabase.table("smc_stage_defs").delete() \
-            .eq("project_id", SMC_PROJECT_ID).eq("template_id", target_id).execute()
-
-        # Insert cloned stages into target
-        new_rows = []
-        for s in src.data:
-            new_rows.append({
-                "project_id": SMC_PROJECT_ID,
-                "template_id": target_id,
-                "stage_order": s["stage_order"],
-                "name": s["name"],
-                "trade": s.get("trade", ""),
-                "trade_id": s.get("trade_id"),
-                "color": s.get("color", "#64748b"),
-                "default_duration": s.get("default_duration", 1),
-            })
-        supabase.table("smc_stage_defs").insert(new_rows).execute()
-        return jsonify({"ok": True, "cloned": len(new_rows)})
-    except Exception as e:
-        return err(e)
-
-
-# ── Stage def editing (rename, change trade, change duration, reorder) ───────
-@smc_bp.route("/api/stage-defs/<stage_id>", methods=["PATCH"])
-@_require_auth
-def api_stage_def_update(stage_id):
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in {"name", "trade", "trade_id", "color", "default_duration", "stage_order"}}
-    if not updates:
-        return jsonify({"ok": False, "error": "No valid fields"}), 400
-    try:
-        supabase.table("smc_stage_defs").update(updates).eq("id", stage_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/stage-defs", methods=["POST"])
-@_require_auth
-def api_stage_def_create():
-    data = request.get_json() or {}
-    row = {
-        "project_id": SMC_PROJECT_ID,
-        "template_id": data.get("template_id"),
-        "stage_order": data.get("stage_order", 999),
-        "name": data.get("name", "New Stage"),
-        "trade": data.get("trade", ""),
-        "trade_id": data.get("trade_id"),
-        "color": data.get("color", "#64748b"),
-        "default_duration": data.get("default_duration", 1),
+// Intercept API calls — queue if offline, sync when back online
+const api = async (path, opts={}) => {
+  const isWrite = opts.method && opts.method !== 'GET';
+  if (!navigator.onLine && isWrite) {
+    // Store in queue, return a mock ok response so the app continues
+    await sqPush({ path, method: opts.method, body: opts.body, ts: Date.now() });
+    _syncPending++;
+    updateSyncBadge();
+    console.log('[SMC offline] Queued:', opts.method, path);
+    return new Response(JSON.stringify({ok:true,_queued:true}), {status:200,headers:{'Content-Type':'application/json'}});
+  }
+  try {
+    const r = await fetch('/smc/api' + path, {
+      headers: {'Content-Type':'application/json'},
+      credentials: 'same-origin',
+      ...opts
+    });
+    return r;
+  } catch(networkErr) {
+    if (isWrite) {
+      await sqPush({ path, method: opts.method, body: opts.body, ts: Date.now() });
+      _syncPending++;
+      updateSyncBadge();
+      return new Response(JSON.stringify({ok:true,_queued:true}), {status:200,headers:{'Content-Type':'application/json'}});
     }
-    try:
-        r = supabase.table("smc_stage_defs").insert(row).execute()
-        return jsonify({"ok": True, "stage": r.data[0] if r.data else None})
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/stage-defs/<stage_id>", methods=["DELETE"])
-@_require_auth
-def api_stage_def_delete(stage_id):
-    try:
-        supabase.table("smc_stage_defs").delete().eq("id", stage_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── Materials master tracker ──────────────────────────────────────────────────
-@smc_bp.route("/api/materials")
-@_require_auth
-def api_materials():
-    try:
-        r = supabase.table("smc_materials").select("*, smc_stage_defs(name)") \
-            .eq("project_id", SMC_PROJECT_ID).order("created_at").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/materials", methods=["POST"])
-@_require_auth
-def api_material_create():
-    data = request.get_json() or {}
-    row = {
-        "project_id": SMC_PROJECT_ID,
-        "material_name": data.get("material_name", ""),
-        "linked_stage_id": data.get("linked_stage_id"),
-        "lead_time_weeks": data.get("lead_time_weeks", 1),
-        "supplier_name": data.get("supplier_name", ""),
-        "supplier_email": data.get("supplier_email", ""),
-        "po_number": data.get("po_number", ""),
-        "applies_to_all_plots": data.get("applies_to_all_plots", True),
-        "description": data.get("description", ""),
-    }
-    try:
-        r = supabase.table("smc_materials").insert(row).execute()
-        material = r.data[0] if r.data else None
-        # If specific plots given, create the plot links
-        plot_ids = data.get("plot_ids", [])
-        if material and not row["applies_to_all_plots"] and plot_ids:
-            links = [{"material_id": material["id"], "plot_id": pid} for pid in plot_ids]
-            supabase.table("smc_material_plot_links").insert(links).execute()
-        return jsonify({"ok": True, "material": material})
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/materials/<material_id>", methods=["PATCH"])
-@_require_auth
-def api_material_update(material_id):
-    data = request.get_json() or {}
-    updates = {k: v for k, v in data.items() if k in
-               {"material_name", "linked_stage_id", "lead_time_weeks", "supplier_name", "supplier_email", "po_number", "description", "delivery_offset_days", "preferred_weekday"}}
-    try:
-        supabase.table("smc_materials").update(updates).eq("id", material_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/materials/<material_id>", methods=["DELETE"])
-@_require_auth
-def api_material_delete(material_id):
-    try:
-        supabase.table("smc_materials").delete().eq("id", material_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── Material orders (the per-plot master tracker) ────────────────────────────
-@smc_bp.route("/api/material-orders")
-@_require_auth
-def api_material_orders():
-    try:
-        r = supabase.table("smc_material_orders").select("*").execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/material-orders", methods=["POST"])
-@_require_auth
-def api_material_order_upsert():
-    """Upsert a material's order status for a specific plot."""
-    data = request.get_json() or {}
-    material_id = data.get("material_id")
-    plot_id = data.get("plot_id")
-    if not material_id or not plot_id:
-        return jsonify({"ok": False, "error": "material_id and plot_id required"}), 400
-    try:
-        from datetime import datetime, timezone
-        existing = supabase.table("smc_material_orders").select("id") \
-            .eq("material_id", material_id).eq("plot_id", plot_id).execute()
-        row = {
-            "material_id": material_id,
-            "plot_id": plot_id,
-            "status": data.get("status", "pending"),
-            "ordered_date": data.get("ordered_date"),
-            "delivery_date": data.get("delivery_date"),
-            "notes": data.get("notes", ""),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if existing.data:
-            supabase.table("smc_material_orders").update(row).eq("id", existing.data[0]["id"]).execute()
-        else:
-            supabase.table("smc_material_orders").insert(row).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ── Plot H&S issue — auto-populates the H&S log ──────────────────────────────
-@smc_bp.route("/api/plots/<plot_id>/raise-hs-issue", methods=["POST"])
-@_require_auth
-def api_plot_raise_hs(plot_id):
-    """Called from the plot detail modal's H&S box. Creates an smc_hs_log entry
-    linked to this plot, which automatically shows on the H&S tab."""
-    data = request.get_json() or {}
-    detail = data.get("detail", "").strip()
-    if not detail:
-        return jsonify({"ok": False, "error": "No detail provided"}), 400
-    try:
-        plot = supabase.table("smc_plots").select("plot_number").eq("id", plot_id).single().execute()
-        plot_number = plot.data.get("plot_number", "?") if plot.data else "?"
-        from datetime import date
-        row = {
-            "project_id": SMC_PROJECT_ID,
-            "plot_id": plot_id,
-            "log_date": str(date.today()),
-            "log_type": "Plot Issue — Plot " + str(plot_number),
-            "person_name": data.get("person_name", "Site Manager"),
-            "status": "Open",
-            "detail": detail,
-            "severity": data.get("severity", "amber"),
-        }
-        supabase.table("smc_hs_log").insert(row).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# ITEMS (cleanup notices, outstanding works, dayworks, RFI notes)
-# ══════════════════════════════════════════════════════════════════════════
-
-def _next_ref(item_type):
-    """Generate the next reference number for an item type (e.g. CLN-001)."""
-    prefixes = {
-        'cleanup_notice':   'CLN',
-        'outstanding_work': 'OSW',
-        'daywork':          'DW',
-        'rfi_note':         'RFI',
-    }
-    prefix = prefixes.get(item_type, 'REF')
-    try:
-        r = supabase.table("smc_ref_counters") \
-            .select("next_val") \
-            .eq("project_id", SMC_PROJECT_ID) \
-            .eq("item_type", item_type) \
-            .single().execute()
-        n = r.data["next_val"] if r.data else 1
-        supabase.table("smc_ref_counters") \
-            .update({"next_val": n + 1}) \
-            .eq("project_id", SMC_PROJECT_ID) \
-            .eq("item_type", item_type).execute()
-        return f"{prefix}-{n:03d}"
-    except Exception:
-        return f"{prefix}-001"
-
-
-@smc_bp.route("/api/items")
-@_require_auth
-def api_items():
-    plot_id = request.args.get("plot_id")
-    item_type = request.args.get("type")
-    try:
-        q = supabase.table("smc_items").select("*").eq("project_id", SMC_PROJECT_ID)
-        if plot_id:
-            q = q.eq("plot_id", plot_id)
-        if item_type:
-            q = q.eq("item_type", item_type)
-        r = q.order("created_at", desc=True).execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/items", methods=["POST"])
-@_require_auth
-def api_item_create():
-    data = request.get_json() or {}
-    item_type = data.get("item_type", "general")
-    from datetime import datetime, timezone
-    row = {
-        "project_id":     SMC_PROJECT_ID,
-        "plot_id":        data.get("plot_id"),
-        "item_type":      item_type,
-        "ref_number":     _next_ref(item_type),
-        "title":          data.get("title", "").strip(),
-        "description":    data.get("description", "").strip(),
-        "trade_id":       data.get("trade_id"),
-        "trade_name":     data.get("trade_name", ""),
-        "status":         data.get("status", "open"),
-        "priority":       data.get("priority", "medium"),
-        "deadline_date":  data.get("deadline_date"),
-        "chargeable":     data.get("chargeable", False),
-        "estimated_cost": data.get("estimated_cost"),
-        "ref_drawing":    data.get("ref_drawing", ""),
-        "updated_at":     datetime.now(timezone.utc).isoformat(),
-    }
-    try:
-        r = supabase.table("smc_items").insert(row).execute()
-        return jsonify({"ok": True, "item": r.data[0] if r.data else None})
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/items/<item_id>", methods=["PATCH"])
-@_require_auth
-def api_item_update(item_id):
-    data = request.get_json() or {}
-    from datetime import datetime, timezone
-    updates = {k: v for k, v in data.items() if k in {
-        "title", "description", "trade_id", "trade_name", "status",
-        "priority", "deadline_date", "resolved_date", "chargeable",
-        "estimated_cost", "ref_drawing"
-    }}
-    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        supabase.table("smc_items").update(updates).eq("id", item_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/items/<item_id>", methods=["DELETE"])
-@_require_auth
-def api_item_delete(item_id):
-    try:
-        supabase.table("smc_items").delete().eq("id", item_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PHOTOS — Supabase Storage upload + metadata
-# ══════════════════════════════════════════════════════════════════════════
-
-@smc_bp.route("/api/photos", methods=["POST"])
-@_require_auth
-def api_photo_upload():
-    """Receive a base64-encoded image, upload to Supabase Storage, record metadata."""
-    data = request.get_json() or {}
-    plot_id   = data.get("plot_id")
-    item_id   = data.get("item_id")          # optional
-    caption   = data.get("caption", "")
-    taken_at  = data.get("taken_at")         # ISO string from client
-    image_b64 = data.get("image_b64", "")
-    mime_type = data.get("mime_type", "image/jpeg")
-    if not plot_id or not image_b64:
-        return jsonify({"ok": False, "error": "plot_id and image_b64 required"}), 400
-    try:
-        import base64, uuid, datetime as dt
-        img_bytes = base64.b64decode(image_b64)
-        ext       = "jpg" if "jpeg" in mime_type else mime_type.split("/")[-1]
-        ts        = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        uid       = str(uuid.uuid4())[:8]
-        path      = f"{plot_id}/{ts}_{uid}.{ext}"
-        # Upload to Supabase Storage
-        supabase.storage.from_("smc-photos").upload(
-            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
-        )
-        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
-        # Store metadata
-        row = {
-            "project_id":   SMC_PROJECT_ID,
-            "plot_id":      plot_id,
-            "item_id":      item_id,
-            "storage_path": path,
-            "public_url":   public_url,
-            "caption":      caption,
-            "taken_at":     taken_at or dt.datetime.utcnow().isoformat(),
-        }
-        r = supabase.table("smc_photos").insert(row).execute()
-        return jsonify({"ok": True, "photo": r.data[0] if r.data else None, "public_url": public_url})
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/photos")
-@_require_auth
-def api_photos_list():
-    plot_id = request.args.get("plot_id")
-    item_id = request.args.get("item_id")
-    try:
-        q = supabase.table("smc_photos").select("*").eq("project_id", SMC_PROJECT_ID)
-        if plot_id:
-            q = q.eq("plot_id", plot_id)
-        if item_id:
-            q = q.eq("item_id", item_id)
-        r = q.order("taken_at", desc=True).execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-
-
-@smc_bp.route("/api/photos/<photo_id>", methods=["DELETE"])
-@_require_auth
-def api_photo_delete(photo_id):
-    try:
-        r = supabase.table("smc_photos").select("storage_path").eq("id", photo_id).single().execute()
-        if r.data:
-            supabase.storage.from_("smc-photos").remove([r.data["storage_path"]])
-        supabase.table("smc_photos").delete().eq("id", photo_id).execute()
-        return ok()
-    except Exception as e:
-        return err(e)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# AI COMMUNICATIONS — generate emails/summaries via Claude API
-# ══════════════════════════════════════════════════════════════════════════
-
-@smc_bp.route("/api/ai/generate", methods=["POST"])
-@_require_auth
-def api_ai_generate():
-    """Generic AI text generation. Accepts {prompt} for reports or {comm_type,...} for comms."""
-    """Generate professional communications using Claude.
-    The prompt is built server-side from live site data so the AI has full context."""
-    data = request.get_json() or {}
-    comm_type = data.get("type")           # 'daily_summary' | 'weekly_summary' | 'trade_notice' | 'qs_dayworks' | 'progress_report'
-    context   = data.get("context", {})   # extra context from the frontend
-
-    # Fetch fresh data for AI context
-    try:
-        plots_r    = supabase.table("smc_plots").select("plot_number,house_type,tenure,current_stage_id,crc_deadline_date,cml_signed_off,crc_signed_off,notes").eq("project_id", SMC_PROJECT_ID).execute()
-        items_r    = supabase.table("smc_items").select("*").eq("project_id", SMC_PROJECT_ID).eq("status", "open").order("created_at", desc=True).execute()
-        hs_r       = supabase.table("smc_hs_log").select("*").eq("project_id", SMC_PROJECT_ID).order("log_date", desc=True).limit(20).execute()
-        stages_r   = supabase.table("smc_stage_defs").select("id,name,stage_order").eq("project_id", SMC_PROJECT_ID).order("stage_order").execute()
-        plots      = plots_r.data or []
-        items      = items_r.data or []
-        hs_log     = hs_r.data or []
-        stage_map  = {s["id"]: s["name"] for s in (stages_r.data or [])}
-    except Exception as e:
-        return err(e)
-
-    # Enrich plots with current stage name
-    from datetime import date
-    today_str = str(date.today())
-    for p in plots:
-        p["current_stage_name"] = stage_map.get(p.get("current_stage_id"), "Not started")
-
-    # Build prompt based on communication type
-    site_name = "SS17 Phase 1C — Sandle Park, Fordingbridge"
-
-    def summarise_items(item_type, label):
-        filtered = [i for i in items if i["item_type"] == item_type]
-        if not filtered:
-            return ""
-        lines = []
-        for i in filtered:
-            parts = [f"• [{i.get('ref_number','—')}] Plot {context.get('plot_number_map', {}).get(i.get('plot_id',''), '?')}: {i['title']}"]
-            if i.get("trade_name"):  parts.append(f"({i['trade_name']})")
-            if i.get("deadline_date"): parts.append(f"— due {i['deadline_date']}")
-            if i.get("estimated_cost"): parts.append(f"— est. £{i['estimated_cost']}")
-            lines.append(" ".join(parts))
-        return f"\n{label}:\n" + "\n".join(lines)
-
-    in_prog  = [p for p in plots if p["current_stage_name"] not in ("Not started", "CRC")]
-    complete = [p for p in plots if p.get("crc_signed_off")]
-    behind   = [p for p in plots if p.get("crc_deadline_date")]  # simplified — could add schedule calc
-
-    plot_summary = f"Site: {site_name}\nTotal plots: {len(plots)}\nIn progress: {len(in_prog)}\nCRC signed off: {len(complete)}"
-    plot_stages  = "\n".join([f"  Plot {p['plot_number']}: {p['current_stage_name']}" for p in plots if p['current_stage_name'] != 'Not started'])
-
-    cleanup_text    = summarise_items("cleanup_notice", "Clean-Up Notices (Open)")
-    outstanding_txt = summarise_items("outstanding_work", "Outstanding Works")
-    daywork_txt     = summarise_items("daywork", "Dayworks/Extras")
-    rfi_txt         = summarise_items("rfi_note", "RFI Notes")
-    hs_txt = "\n".join([f"  • {h['log_date']} [{h.get('severity','').upper()}] {h['log_type']}: {h['detail']}" for h in hs_log[:5]]) or "None logged recently."
-
-    # Handle raw prompt passthrough (for reports/analysis)
-    raw_prompt = data.get("prompt")
-    if raw_prompt and data.get("comm_type") in ("report", "analysis", None) and not data.get("type"):
-        try:
-            import anthropic
-            client = anthropic.Anthropic()
-            msg = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=400,
-                messages=[{"role":"user","content":raw_prompt}]
-            )
-            text = msg.content[0].text if msg.content else ""
-            return jsonify({"ok":True,"text":text})
-        except Exception as e:
-            return jsonify({"ok":True,"text":"AI analysis unavailable — "+str(e)})
-
-    prompts = {
-        "daily_summary": f"""You are a professional site manager at {site_name}.
-Write a concise daily site report email (suitable for copying into an email to a line manager).
-Include: today's date ({today_str}), progress on key plots, any issues or H&S concerns, outstanding actions.
-Keep it professional but conversational — not overly formal.
-
-SITE DATA:
-{plot_summary}
-
-Current build stages (in-progress plots):
-{plot_stages or 'None currently active'}
-
-Outstanding items:
-{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
-
-Recent H&S log:
-{hs_txt}
-
-Extra notes from site manager: {context.get('notes', 'None')}
-
-Generate the email now. Start with 'Subject:' then 'Body:' on a new line.""",
-
-        "weekly_summary": f"""You are a professional site manager at {site_name}.
-Write a weekly progress report email suitable for a line manager or senior stakeholder.
-Include: week summary, plots progressed, plots at risk, H&S summary, outstanding items, next week's focus.
-
-SITE DATA:
-{plot_summary}
-
-Current build stages:
-{plot_stages or 'None currently active'}
-
-Open items this week:
-{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
-
-H&S activity:
-{hs_txt}
-
-Extra notes: {context.get('notes', 'None')}
-
-Generate the email. Start with 'Subject:' then 'Body:' on a new line.""",
-
-        "trade_notice": f"""You are a professional site manager writing a formal notice to a trade contractor.
-Trade: {context.get('trade_name', 'Contractor')}
-Site: {site_name}
-Date: {today_str}
-Area / Location: {context.get('area_reference', 'Site')}
-
-Write a short, professional but firm notice. Include:
-1. A clear statement of the issue or instruction
-2. The specific area or location this relates to: {context.get('area_reference', 'as noted on site')}
-3. A specific timeframe for compliance (use a reasonable timeframe based on urgency)
-4. A warning that failure to comply will result in {site_name} arranging the works at the contractor's cost
-5. A sign-off section with a space for the contractor to acknowledge receipt
-
-Issue / Instruction:
-{context.get('notice_content', 'General instruction to the trade.')}
-
-Keep it concise — 3-5 short paragraphs. Professional tone. Factual, not aggressive.
-End with:
-Issued by: {context.get('signed_by', 'Site Manager')}
-Received by: ___________________  Date: ___________  Signature: ___________
-
-Start with 'Subject:' then 'Body:' on a new line.""",
-
-        "qs_dayworks": f"""You are a professional site manager informing a quantity surveyor of dayworks and agreed extras on site.
-Site: {site_name}
-Date: {today_str}
-
-Write a clear, professional email to the QS summarising the following agreed extras and dayworks that need to be recorded and valued:
-
-{daywork_txt or 'See attached notes.'}
-
-Extra context from site manager: {context.get('notes', 'None')}
-
-Keep it factual and brief. The QS needs enough detail to raise instructions or value the works.
-Start with 'Subject:' then 'Body:' on a new line.""",
-
-        "progress_report": f"""You are a professional site manager writing a formal progress report for {site_name}.
-Date: {today_str}
-
-Write a structured progress report covering: programme status, plots at risk, H&S summary, outstanding actions, and immediate priorities.
-
-SITE DATA:
-{plot_summary}
-
-Build progress:
-{plot_stages or 'None currently active'}
-
-Open actions:
-{cleanup_text}{outstanding_txt}{daywork_txt}{rfi_txt}
-
-H&S:
-{hs_txt}
-
-Notes: {context.get('notes', 'None')}
-
-Format as a clear report with headings. Professional, concise.""",
-    }
-
-    prompt = prompts.get(comm_type)
-    if not prompt:
-        return jsonify({"ok": False, "error": f"Unknown communication type: {comm_type}"}), 400
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1200,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        text = msg.content[0].text if msg.content else ""
-        return jsonify({"ok": True, "text": text})
-    except Exception as e:
-        return err(e)
-
-
-# ── Certificate uploads (CML/CRC) ─────────────────────────────────────────────
-@smc_bp.route("/api/plots/<plot_id>/upload-cert", methods=["POST"])
-@_require_auth
-def api_plot_upload_cert(plot_id):
-    """Upload a CML or CRC certificate PDF/image and store public URL on the plot."""
-    data = request.get_json() or {}
-    cert_type = data.get("cert_type")   # 'cml' or 'crc'
-    image_b64 = data.get("image_b64", "")
-    mime_type = data.get("mime_type", "application/pdf")
-    if not plot_id or not image_b64 or cert_type not in ("cml", "crc"):
-        return jsonify({"ok": False, "error": "plot_id, cert_type (cml/crc), and image_b64 required"}), 400
-    try:
-        import base64, uuid, datetime as dt
-        img_bytes = base64.b64decode(image_b64)
-        ext = "pdf" if "pdf" in mime_type else mime_type.split("/")[-1]
-        ts = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        uid = str(uuid.uuid4())[:8]
-        path = f"certs/{plot_id}/{cert_type}_{ts}_{uid}.{ext}"
-        supabase.storage.from_("smc-photos").upload(
-            path, img_bytes, {"content-type": mime_type, "upsert": "true"}
-        )
-        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
-        field = "cml_cert_url" if cert_type == "cml" else "crc_cert_url"
-        supabase.table("smc_plots").update({field: public_url}).eq("id", plot_id).execute()
-        return jsonify({"ok": True, "url": public_url})
-    except Exception as e:
-        return err(e)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PWA — Service Worker + Web App Manifest
-# Served from /smc/ so the SW scope covers the whole SMC app.
-# ══════════════════════════════════════════════════════════════════════════
-
-
-@smc_bp.route("/api/plots/<plot_id>/upload-snag-report", methods=["POST"])
-@_require_auth
-def api_upload_snag_report(plot_id):
-    """Upload a snag report PDF or image to Supabase Storage."""
-    try:
-        import base64, mimetypes
-        data     = request.get_json() or {}
-        file_b64 = data.get("file_b64","")
-        filename = data.get("filename","snag_report.pdf")
-        mime     = data.get("mime_type","application/pdf")
-        if not file_b64:
-            return jsonify({"ok":False,"error":"file_b64 required"}),400
-        file_bytes = base64.b64decode(file_b64)
-        path = f"certs/{plot_id}/snag_report_{filename}"
-        supabase.storage.from_("smc-photos").upload(
-            path, file_bytes, {"content-type": mime, "upsert":"true"}
-        )
-        public_url = supabase.storage.from_("smc-photos").get_public_url(path)
-        supabase.table("smc_plots").update({"snag_report_url": public_url})            .eq("id", plot_id).execute()
-        return jsonify({"ok":True,"url":public_url})
-    except Exception as e:
-        return err(e)
-
-
-
-@smc_bp.route("/api/stage-history", methods=["GET"])
-@_require_auth
-def api_stage_history():
-    """Return confirmed stage history for all plots in the project."""
-    try:
-        r = supabase.table("smc_stage_history") \
-            .select("*") \
-            .eq("project_id", SMC_PROJECT_ID) \
-            .order("confirmed_at", desc=True) \
-            .limit(500) \
-            .execute()
-        return jsonify(r.data or [])
-    except Exception as e:
-        return err(e)
-@smc_bp.route("/sw.js")
-def service_worker():
-    """Service Worker: caches the app shell for offline use."""
-    sw_js = r"""
-const CACHE = 'smc-shell-v3';
-const SHELL = ['/smc/', '/smc/app'];
-
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})
-  );
-  self.skipWaiting();
+    throw networkErr;
+  }
+};
+
+// Online/offline events
+window.addEventListener('online', async () => {
+  document.getElementById('offline-bar')?.classList.remove('show');
+  await flushSyncQueue();
+});
+window.addEventListener('offline', () => {
+  document.getElementById('offline-bar')?.classList.add('show');
+});
+// Check queue on load (might have queued items from last session)
+window.addEventListener('load', async () => {
+  if (!navigator.onLine) document.getElementById('offline-bar')?.classList.add('show');
+  else {
+    const q = await sqAll(); _syncPending = q.length; updateSyncBadge();
+    if (q.length) flushSyncQueue();
+  }
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+// Register Service Worker for app-shell caching (offline page load)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/smc/sw.js', { scope: '/smc/' }).catch(()=>{});
+}
+
+// Use local date (not UTC) so UK BST timezone doesn't push the date forward by 1 day
+const _td = new Date();
+const TODAY = _td.getFullYear()+'-'+String(_td.getMonth()+1).padStart(2,'0')+'-'+String(_td.getDate()).padStart(2,'0');
+const TEN_COL = {
+  'Private':     '#f59e0b',
+  '1st Homes':   '#06b6d4',
+  'Aff Shared':  '#8b5cf6',
+  'Aff Rent':    '#3b82f6',
+  'Social Rent': '#10b981',
+};
+
+const UK_HOL = new Set(['2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28','2027-01-01','2027-03-26','2027-03-29','2027-05-03','2027-05-31','2027-08-30','2027-12-27','2027-12-28']);
+function isWD(d) { const w=d.getDay(); return w!==0&&w!==6&&!UK_HOL.has(d.toISOString().slice(0,10)); }
+function genWDs(s,n) { const out=[],d=new Date(s); while(out.length<n){if(isWD(d))out.push(new Date(d));d.setDate(d.getDate()+1);} return out; }
+
+const PROG_START = '2026-01-02';
+// Shared schedule builder — produces { [plotId]: { [stageDefId]: {start,dur,basStart} } }
+// Used by Programme tab (Gantt) and Materials tab (call-off flagging) so both
+// always agree on exactly when each plot reaches each stage.
+// When a plot has current_stage_id set, the schedule is anchored so that stage
+// starts at today (todayIdx), with completed stages placed sequentially behind,
+// and future stages placed sequentially after — making the Gantt truthful.
+function buildSchedules(plots, stageDefs, plotStages, todayIdx) {
+  const s = {};
+  if (!plots.length || !stageDefs.length) return s;
+  const sortedDefs = [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0));
+  const defMap = {}; stageDefs.forEach(d=>{ defMap[d.id]=d; });
+  const today = todayIdx || 0;
+
+  // Pre-computed working days for CRC index lookup — self-contained so buildSchedules
+  // can be called from any context (not just inside a component with workingDays state).
+  const _schedWDs = genWDs(PROG_START, 730);
+
+  // Find the CRC stage def once (used in CRC-mode anchor logic below)
+  const crcStageDef = sortedDefs[sortedDefs.length - 1]; // CRC is the last stage
+
+  // EXTERNAL stage order cutoff: stages 1-25 = communal/structural, 26-61 = internal
+  const EXTERNAL_CUTOFF = 25;
+
+  plots.forEach(plot => {
+    s[plot.id] = {};
+    const dbRows = (plotStages||[]).filter(ps => ps.plot_id === plot.id);
+
+    // Filter stage defs based on plot type:
+    //   Block A Core plot  → only stages 1-25 (external structure)
+    //   Individual flats   → only stages 26-61 (internal finishing)
+    //   All other plots    → all 61 stages (standard)
+    const plotSortedDefs = plot.is_core_block
+      ? sortedDefs.filter(d => (d.stage_order||0) <= EXTERNAL_CUTOFF)
+      : plot.exclude_external_stages
+        ? sortedDefs.filter(d => (d.stage_order||0) > EXTERNAL_CUTOFF)
+        : sortedDefs;
+
+    // ── Saved-position helper ──────────────────────────────────────────────
+    // If this plot has manually-saved stage positions (from bar drags), we
+    // preserve the sequence exactly by computing a single shift delta and
+    // applying it to all saved positions. This means:
+    //   • Overlapping stages stay overlapping
+    //   • Gaps between stages stay the same size
+    //   • Reordered stages stay reordered
+    // Only the overall position in time shifts (not the shape of the programme).
+    //
+    // For unsaved stages (not yet dragged), we fill them in sequentially.
+    // Crucially: unsaved stages that appear BEFORE the first saved stage are
+    // back-computed from the first saved stage's position (not placed at day 0).
+    const hasCustom = dbRows.length > 0;
+
+    function applyWithDelta(delta) {
+      // Build a map of shifted positions for all saved stages
+      const shiftedMap = {};
+      dbRows.forEach(row => {
+        shiftedMap[row.stage_def_id] = { start: row.start_day + delta, dur: row.duration };
+      });
+
+      // Find the first saved stage in programme order so we can back-compute
+      // where unsaved stages before it should go (not day 0).
+      const firstSavedIdx = plotSortedDefs.findIndex(d => shiftedMap[d.id]);
+      let cursor = 0;
+      if (firstSavedIdx > 0 && shiftedMap[plotSortedDefs[firstSavedIdx].id]) {
+        cursor = shiftedMap[plotSortedDefs[firstSavedIdx].id].start;
+        for (let i = firstSavedIdx - 1; i >= 0; i--) {
+          cursor -= (plotSortedDefs[i].default_duration || 1);
+        }
+      } else if (firstSavedIdx === 0 && shiftedMap[plotSortedDefs[0].id]) {
+        cursor = shiftedMap[plotSortedDefs[0].id].start;
+      }
+
+      // Place all stages in sequence order — use plotSortedDefs (respects core/unit flags)
+      plotSortedDefs.forEach(def => {
+        if (shiftedMap[def.id]) {
+          const sh = shiftedMap[def.id];
+          s[plot.id][def.id] = { start: sh.start, dur: sh.dur, basStart: sh.start };
+          cursor = sh.start + sh.dur; // advance cursor past this saved stage
+        } else {
+          // Not saved — fill sequentially from cursor
+          const dur = def.default_duration || 1;
+          s[plot.id][def.id] = { start: cursor, dur, basStart: cursor };
+          cursor += dur;
+        }
+      });
+    }
+
+    // ── Mode 1: Current stage confirmed → anchor it at started date (or today) ─
+    // If the stage started before today, the Gantt accurately shows the stage
+    // as being in progress rather than starting fresh today.
+    // Mode 1: Current stage confirmed on site → anchor at started date or today.
+    // ONLY mode that shifts saved positions — everything slides so confirmed stage = today.
+    if (plot.current_stage_id && defMap[plot.current_stage_id]) {
+      let anchorDay = today;
+      if (plot.current_stage_started_date) {
+        const startedD = new Date(plot.current_stage_started_date);
+        const startedIdx = _schedWDs.findIndex(d => d >= startedD);
+        if (startedIdx >= 0) anchorDay = startedIdx;
+      }
+      if (hasCustom) {
+        const curRow = dbRows.find(ps => ps.stage_def_id === plot.current_stage_id);
+        if (curRow) {
+          applyWithDelta(anchorDay - curRow.start_day);
+        } else {
+          applyWithDelta(0);
+        }
+      } else {
+        const curDef = defMap[plot.current_stage_id];
+        const curOrder = curDef.stage_order || 0;
+        const curDur = curDef.default_duration || 1;
+        s[plot.id][plot.current_stage_id] = { start: anchorDay, dur: curDur, basStart: anchorDay };
+        let backCursor = anchorDay;
+        [...plotSortedDefs].reverse().forEach(def => {
+          if ((def.stage_order||0) >= curOrder) return;
+          const dur = def.default_duration || 1;
+          backCursor -= dur;
+          s[plot.id][def.id] = { start: backCursor, dur, basStart: backCursor };
+        });
+        let fwdCursor = anchorDay + curDur;
+        plotSortedDefs.forEach(def => {
+          if ((def.stage_order||0) <= curOrder) return;
+          const dur = def.default_duration || 1;
+          s[plot.id][def.id] = { start: fwdCursor, dur, basStart: fwdCursor };
+          fwdCursor += dur;
+        });
+      }
+
+    // Mode 2: Custom saved positions → use EXACTLY as saved, zero delta.
+    // CRC deadline is used for variance display only — it does NOT move bars.
+    // This means the buffer you create by dragging stages earlier is preserved.
+    } else if (hasCustom) {
+      applyWithDelta(0);
+
+    // Mode 3: No custom positions + CRC deadline → compute backwards from deadline.
+    } else if (plot.crc_deadline_date) {
+      const crcDeadlineDate = new Date(plot.crc_deadline_date);
+      let crcIdx = _schedWDs.findIndex(d => d >= crcDeadlineDate);
+      if (crcIdx < 0) crcIdx = _schedWDs.length - 1;
+      let cursor = crcIdx;
+      [...plotSortedDefs].reverse().forEach(def => {
+        const dur = def.default_duration || 1;
+        const startDay = cursor - dur;
+        s[plot.id][def.id] = { start: startDay, dur, basStart: startDay };
+        cursor = startDay;
+      });
+
+    // Mode 4: Nothing set → sequential from programme start day.
+    } else {
+      let cum = parseInt(plot.programme_start_day) || 0;
+      plotSortedDefs.forEach(def => {
+        s[plot.id][def.id] = { start: cum, dur: def.default_duration || 1, basStart: cum };
+        cum += def.default_duration || 1;
+      });
+    }
+  });   // end plots.forEach
+  return s;
+}
+
+const lsGet = (k,def) => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(_){return def;} };
+const lsSet = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v));}catch(_){} };
+
+// IndexedDB helpers — used for the map drawing image (can be 5-20MB as base64,
+// far beyond localStorage and Supabase REST row limits).
+const IDB_NAME='smc_v1', IDB_STORE='kv', IDB_VER=1;
+function idbOpen() {
+  return new Promise((res,rej) => {
+    const r=indexedDB.open(IDB_NAME,IDB_VER);
+    r.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);
+    r.onsuccess=e=>res(e.target.result);
+    r.onerror=rej;
+  });
+}
+async function idbGet(key) {
+  try {
+    const db=await idbOpen();
+    return new Promise((res,rej)=>{
+      const r=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key);
+      r.onsuccess=()=>res(r.result??null);r.onerror=rej;
+    });
+  } catch(_){ return null; }
+}
+async function idbSet(key,value) {
+  try {
+    const db=await idbOpen();
+    return new Promise((res,rej)=>{
+      const r=db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).put(value,key);
+      r.onsuccess=res;r.onerror=rej;
+    });
+  } catch(_){}
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PROGRAMME TAB — Overview dashboard + Gantt chart
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// RESOURCE SUMMARY PANEL
+// Sits below the Gantt chart and shows, for each trade, how many plots
+// are being worked on each day. Scrolls in perfect sync with the Gantt.
+//
+// Logic: for every plot's schedule, every stage that is "active" on a day
+// (start ≤ day < start+duration) increments that trade's count for that day.
+// ══════════════════════════════════════════════════════════════════════════
+function ResourceSummaryPanel({ sortedDefs, schedules, visPlots, workingDays, todayIdx, cellW, LEFT_W, tradeFilter, stageColor, rsScrollRef, onScroll }) {
+  const TOTAL_DAYS = workingDays.length;
+  const ROW_H = 28;
+  const LEFT = LEFT_W;
+
+  // All unique trades (respect the active trade filter)
+  const trades = useMemo(() => {
+    const all = [...new Set(sortedDefs.map(d=>d.trade).filter(Boolean))].sort();
+    return tradeFilter === 'All' ? all : all.filter(t=>t===tradeFilter);
+  }, [sortedDefs, tradeFilter]);
+
+  // Which stage defs belong to each trade
+  const tradeDefsMap = useMemo(() => {
+    const m = {};
+    trades.forEach(t => { m[t] = sortedDefs.filter(d=>d.trade===t); });
+    return m;
+  }, [trades, sortedDefs]);
+
+  // Build sparse demand map: { trade → { dayIdx → plotCount } }
+  // For each plot, for each of its active stages, increment the relevant day cells.
+  const demandMap = useMemo(() => {
+    const map = {};
+    trades.forEach(t => { map[t] = {}; });
+
+    visPlots.forEach(plot => {
+      const sc = schedules[plot.id];
+      if (!sc) return;
+      trades.forEach(trade => {
+        const allDefs = tradeDefsMap[trade];
+        // Respect block type flags so resource count mirrors the Gantt
+        const defs = plot.is_core_block
+          ? allDefs.filter(d=>(d.stage_order||0)<=25)
+          : plot.exclude_external_stages
+            ? allDefs.filter(d=>(d.stage_order||0)>25)
+            : allDefs;
+        defs.forEach(def => {
+          const s = sc[def.id];
+          if (!s) return;
+          for (let day = s.start; day < s.start + s.dur && day < TOTAL_DAYS; day++) {
+            if (day < 0) continue;
+            map[trade][day] = (map[trade][day] || 0) + 1;
+          }
+        });
+      });
+    });
+    return map;
+  }, [trades, tradeDefsMap, visPlots, schedules, TOTAL_DAYS]);
+
+  // Max demand across all trades and days (for colour scaling)
+  const globalMax = useMemo(() => {
+    let m = 1;
+    Object.values(demandMap).forEach(dm => {
+      Object.values(dm).forEach(c => { if (c > m) m = c; });
+    });
+    return m;
+  }, [demandMap]);
+
+  // Find the first stage def for a trade (for its colour)
+  const tradeColorDef = useMemo(() => {
+    const m = {};
+    trades.forEach(t => {
+      const def = sortedDefs.find(d=>d.trade===t);
+      m[t] = def || null;
+    });
+    return m;
+  }, [trades, sortedDefs]);
+
+  function cellBg(count) {
+    if (!count) return null; // transparent
+    const pct = count / globalMax;
+    if (pct >= 0.75) return '#dc2626'; // high demand — red
+    if (pct >= 0.4)  return '#f97316'; // medium — orange
+    if (pct >= 0.15) return '#d97706'; // light — amber
+    return '#16a34a';                  // low — green
+  }
+
+  if (!trades.length) return null;
+
+  return e('div',{style:{display:'flex',flexDirection:'column',background:'#fff',borderTop:'2px solid #1e293b',flexShrink:0,maxHeight:'40vh',overflow:'hidden'}},
+
+    // Header
+    e('div',{style:{display:'flex',alignItems:'center',padding:'4px 8px',background:'#1e293b',flexShrink:0,gap:8}},
+      e('div',{style:{width:LEFT,flexShrink:0,fontSize:11,fontWeight:700,color:'#f97316'}},
+        '📊 Resource Demand'),
+      e('div',{style:{flex:1,fontSize:10,color:'#94a3b8'}},'Plots active per trade per day · scroll synced with Gantt'),
+      e('div',{style:{display:'flex',gap:8,alignItems:'center',marginLeft:'auto',fontSize:9}},
+        ...[['#16a34a','Low'],['#d97706','Light'],['#f97316','Medium'],['#dc2626','High']].map(([c,l])=>
+          e('div',{key:l,style:{display:'flex',alignItems:'center',gap:3,color:'#94a3b8'}},
+            e('div',{style:{width:8,height:8,borderRadius:2,background:c}}), l)
+        )
+      )
+    ),
+
+    // Table body
+    e('div',{style:{display:'flex',flex:1,overflow:'hidden',minHeight:0}},
+
+      // Fixed left column — trade names
+      e('div',{style:{width:LEFT,flexShrink:0,borderRight:'2px solid #1e293b',overflowY:'auto',background:'#f8fafc'},id:'rs-left'},
+        ...trades.map(trade => {
+          const def = tradeColorDef[trade];
+          const col = def ? stageColor(def) : '#64748b';
+          const peakCount = Math.max(0, ...Object.values(demandMap[trade]||{}));
+          return e('div',{key:trade,style:{height:ROW_H,display:'flex',alignItems:'center',padding:'0 8px',gap:6,borderBottom:'1px solid #e5e7eb'}},
+            e('div',{style:{width:8,height:8,borderRadius:2,background:col,flexShrink:0}}),
+            e('div',{style:{flex:1,fontSize:10,fontWeight:600,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},trade),
+            peakCount>0 && e('div',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},'↑'+peakCount)
+          );
+        })
+      ),
+
+      // Scrollable cells — synced with Gantt
+      e('div',{ref:rsScrollRef,style:{flex:1,overflowX:'scroll',overflowY:'auto'},
+        onScroll:onScroll},
+        e('div',{style:{width:TOTAL_DAYS*cellW,display:'flex',flexDirection:'column'}},
+          ...trades.map(trade => {
+            const dm = demandMap[trade] || {};
+            const def = tradeColorDef[trade];
+            const tradeCol = def ? stageColor(def) : '#64748b';
+            return e('div',{key:trade,style:{height:ROW_H,display:'flex',borderBottom:'1px solid #e5e7eb',position:'relative'}},
+              // Today line
+              e('div',{style:{position:'absolute',left:todayIdx*cellW+cellW/2,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.4,pointerEvents:'none',zIndex:2}}),
+              ...workingDays.map((d,i)=>{
+                const count = dm[i] || 0;
+                const bg = cellBg(count);
+                const isToday = i===todayIdx;
+                const wk = Math.floor(i/5);
+                return e('div',{key:i,style:{
+                  width:cellW,flexShrink:0,height:ROW_H,
+                  borderRight:'1px solid '+(isToday?'rgba(249,115,22,0.4)':'#f1f5f9'),
+                  background:bg||( wk%2===0?'#fff':'#f9fafb'),
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  position:'relative',
+                }},
+                  count>0 && e('span',{style:{
+                    fontSize:Math.min(9,cellW*0.38),fontWeight:700,
+                    color:'#fff',lineHeight:1,
+                    textShadow:'0 1px 2px rgba(0,0,0,0.4)',
+                  }},count)
+                );
+              })
+            );
+          })
+        )
+      )
     )
   );
-  self.clients.claim();
-});
+}
 
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
+function ProgrammeTab({ plots, stageDefs, plotStages, onUpdatePlot, onSaveStages, trades, hsLog }) {
+  // Trade → colour map: each trade has one canonical colour; all its stages share it.
+  // Falls back to the stage's own .color field for backwards compatibility.
+  const tradeColorMap = useMemo(() => {
+    const m = {};
+    // Prefer the trades table (authoritative) if available
+    if (trades && trades.length) {
+      trades.forEach(t => { m[t.name] = t.color; });
+    } else {
+      // Derive from stageDefs (same trade always has same color since seeding)
+      stageDefs.forEach(d => { if (d.trade && d.color) m[d.trade] = d.color; });
+    }
+    return m;
+  }, [trades, stageDefs]);
 
-  // API calls — always try network; never cache
-  if (url.pathname.startsWith('/smc/api/')) {
-    e.respondWith(
-      fetch(e.request).catch(() =>
-        new Response(JSON.stringify({ok:false,error:'offline'}),
-          {status:503, headers:{'Content-Type':'application/json'}})
+  function stageColor(def) {
+    return (def.trade && tradeColorMap[def.trade]) || def.color || '#6b7280';
+  }
+
+  const TOTAL_WD=730, LEFT_W=170, ROW_H=34, HDR_H=54; // 730 WD ≈ Oct 2028 — covers full Sandle Park programme
+  const [cellW, setCellW]   = useState(22);
+  const [filter, setFilter] = useState('All');
+  const [tradeFilter, setTradeFilter] = useState('All');
+  const [view, setView]     = useState('gantt'); // 'overview' or 'gantt'
+  const [showPrint, setShowPrint] = useState(false);
+  const [showResources, setShowResources] = useState(false); // Resource summary panel
+  const scrollRef  = useRef(null);  // Gantt horizontal scroll
+  const rsScrollRef= useRef(null);  // Resource summary horizontal scroll (synced)
+  const dragRef    = useRef(null);
+
+  const workingDays = useMemo(() => genWDs(PROG_START, TOTAL_WD), []);
+  const todayIdx = useMemo(() => {
+    const t = new Date(TODAY);
+    const i = workingDays.findIndex(d => d >= t);
+    return i < 0 ? 0 : i;
+  }, [workingDays]);
+
+  const [schedules, setSchedules] = useState({});
+
+  useEffect(() => {
+    setSchedules(buildSchedules(plots, stageDefs, plotStages, todayIdx));
+  }, [plots, stageDefs, plotStages]);
+
+  // Scroll to centre today when the Gantt first loads (after schedules are available).
+  // The guard ref ensures we only scroll once — dragging never resets position.
+  const scrollInitialised = useRef(false);
+  useEffect(() => {
+    const hasSchedules = Object.keys(schedules).length > 0;
+    if (!scrollInitialised.current && scrollRef.current && todayIdx > 0 && hasSchedules) {
+      // Centre today in the viewport with a small left offset so you can see a bit of history
+      const viewW = scrollRef.current.clientWidth || 800;
+      scrollRef.current.scrollLeft = Math.max(0, todayIdx*cellW - Math.floor(viewW * 0.35));
+      scrollInitialised.current = true;
+    }
+  }, [schedules, todayIdx, cellW]);
+
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
+  const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
+  const crcDef = useMemo(() => stageDefs.find(d => d.name === 'CRC'), [stageDefs]);
+
+  // Shared row-height calculator — same logic as the Gantt bar renderer uses.
+  // Returns the pixel height a plot's row needs given the current trade filter
+  // and how many lanes of parallel stages exist.
+  const LANE_H = 40;
+  function plotRowHeight(plot) {
+    const sc = schedules[plot.id] || {};
+    const stages = sortedDefs
+      .filter(def => tradeFilter==='All' || def.trade===tradeFilter)
+      .map(def => sc[def.id]).filter(Boolean)
+      .sort((a,b) => a.start - b.start);
+    const laneEnd = [];
+    stages.forEach(s => {
+      const end = s.start + s.dur;
+      let lane = laneEnd.findIndex(e => e <= s.start);
+      if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
+      laneEnd[lane] = end;
+    });
+    return Math.max(1, laneEnd.length) * LANE_H + 4;
+  }
+
+
+
+  // ── Drag = reschedule. Click (no movement) = set as the plot's current stage. ──
+  function onBarMouseDown(ev, plot, defId) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const sc = schedules[plot.id]; if(!sc||!sc[defId]) return;
+    // Completed stages are greyed and locked — cannot be dragged
+    const _curDef = plot.current_stage_id ? (stageDefs.find(d=>d.id===plot.current_stage_id)) : null;
+    const _thisDef = stageDefs.find(d=>d.id===defId);
+    if (_curDef && _thisDef && (_thisDef.stage_order||0) < (_curDef.stage_order||0)) return;
+    const orig = sc[defId].start;
+    const startX = ev.clientX;
+    let moved = false;
+    dragRef.current = { plotId: plot.id, defId };
+
+    function onMove(me) {
+      const delta = Math.round((me.clientX - startX) / cellW);
+      if (Math.abs(me.clientX - startX) > 4) moved = true;
+      if (!moved) return;
+      const ns = Math.max(0, orig + delta);
+      setSchedules(prev => {
+        const c = Object.assign({}, prev);
+        c[plot.id] = Object.assign({}, c[plot.id]);
+        c[plot.id][defId] = Object.assign({}, c[plot.id][defId], { start: ns });
+        return c;
+      });
+    }
+
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      dragRef.current = null;
+
+      if (!moved) {
+        // Plain click — set this as the plot's confirmed current build stage
+        onUpdatePlot(plot.id, { current_stage_id: defId });
+        return;
+      }
+
+      // Was dragged — cascade every later stage to follow immediately after the
+      // dragged stage, then save a COMPLETE snapshot of ALL stage positions.
+      // Saving all stages (not just from dragged onwards) ensures that
+      // buildSchedules can always find any reference stage (current stage,
+      // CRC stage) in smc_plot_stages, so applyWithDelta works correctly
+      // when the user comes back to the page.
+      let stagesToSave = null;
+
+      setSchedules(prev => {
+        const plotSched = Object.assign({}, prev[plot.id]);
+        const draggedOrder = (defMap[defId]||{}).stage_order || 0;
+
+        // Cascade: move all later stages to follow immediately after the dragged one
+        let cursor = plotSched[defId].start + plotSched[defId].dur;
+        sortedDefs.forEach(def => {
+          if ((def.stage_order||0) <= draggedOrder) return;
+          const cur = plotSched[def.id];
+          if (!cur) return;
+          plotSched[def.id] = Object.assign({}, cur, { start: cursor });
+          cursor += cur.dur;
+        });
+
+        // Build complete snapshot of ALL stages for this plot
+        stagesToSave = sortedDefs.map(def => {
+          const s = plotSched[def.id];
+          if (!s) return null;
+          return { stage_def_id: def.id, start_day: s.start, duration: s.dur, baseline_start: s.basStart ?? s.start };
+        }).filter(Boolean);
+
+        const next = Object.assign({}, prev);
+        next[plot.id] = plotSched;
+        return next;
+      });
+
+      // Save OUTSIDE setSchedules (not a side-effect in a state updater).
+      // setTimeout(0) ensures React has processed the state update first.
+      setTimeout(() => {
+        if (stagesToSave && stagesToSave.length > 0) {
+          onSaveStages(plot.id, stagesToSave);
+        }
+      }, 0);
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  const monthLabels = useMemo(() => {
+    const out=[]; let pm=-1;
+    workingDays.forEach((d,i) => { if(d.getMonth()!==pm){out.push({idx:i,label:d.toLocaleDateString('en-GB',{month:'short',year:'numeric'})});pm=d.getMonth();} });
+    return out;
+  }, [workingDays]);
+
+  const sortedPlots = useMemo(() => [...plots].sort((a,b) => parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
+
+  // ── Stage status now driven by the plot's actual current_stage_id when set,
+  // falling back to date-estimate only if no stage has been confirmed yet.
+  function stageStatus(plot, def) {
+    if (!plot.current_stage_id) return 'future'; // No confirmed stage = nothing done, no guessing from dates
+    const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+    const thisOrder = def.stage_order || 0;
+    if (thisOrder < curOrder) return 'done';
+    if (thisOrder === curOrder) return 'active';
+    return 'future';
+  }
+
+  function plotOverallStatus(plot) {
+    const sc = schedules[plot.id]; if (!sc) return { label:'Not Started', col:'#9ca3af', pct:0, crcVariance:null };
+
+    // CRC deadline comparison — the primary on-schedule signal once a deadline is set
+    let crcVariance = null, crcScheduledDate = null;
+    if (crcDef && sc[crcDef.id] && plot.crc_deadline_date) {
+      crcScheduledDate = workingDays[sc[crcDef.id].start];
+      const deadline = new Date(plot.crc_deadline_date);
+      crcVariance = Math.round((crcScheduledDate - deadline) / 86400000); // +ve = late, -ve = early
+    }
+
+    const vals = sortedDefs.map(d => ({ def:d, s: sc[d.id] })).filter(x=>x.s);
+    const total = vals.length;
+    if (!plot.current_stage_id) {
+      if (crcVariance !== null && crcVariance > 0) return { label:'Behind CRC', col:'#dc2626', pct:0, crcVariance, crcScheduledDate };
+      return { label:'Not Started', col:'#9ca3af', pct:0, crcVariance, crcScheduledDate };
+    }
+    const curOrder = (defMap[plot.current_stage_id]||{}).stage_order || 0;
+    const lastOrder = sortedDefs[sortedDefs.length-1] ? sortedDefs[sortedDefs.length-1].stage_order : 0;
+    const doneCount = vals.filter(x => (x.def.stage_order||0) < curOrder).length;
+    const pct = total ? Math.round(doneCount/total*100) : 0;
+    const isDone = curOrder >= lastOrder;
+    if (isDone) return { label:'Complete', col:'#16a34a', pct:100, crcVariance, crcScheduledDate };
+    if (crcVariance !== null) {
+      if (crcVariance > 0) return { label:'Behind CRC ('+crcVariance+'d)', col:'#dc2626', pct, crcVariance, crcScheduledDate };
+      if (crcVariance < 0) return { label:'Ahead ('+Math.abs(crcVariance)+'d)', col:'#16a34a', pct, crcVariance, crcScheduledDate };
+      return { label:'On Track', col:'#2563eb', pct, crcVariance, crcScheduledDate };
+    }
+    // No deadline set — fall back to baseline-drift as a lighter signal
+    const behind = vals.some(x => x.s.start > x.s.basStart);
+    if (behind) return { label:'Rescheduled', col:'#d97706', pct, crcVariance, crcScheduledDate };
+    return { label:'In Progress', col:'#2563eb', pct, crcVariance, crcScheduledDate };
+  }
+
+  const visPlots = useMemo(() => {
+    let p = sortedPlots;
+    if (filter === 'Behind') p = p.filter(pl => plotOverallStatus(pl).label.startsWith('Behind'));
+    else if (filter !== 'All') p = p.filter(pl => pl.tenure === filter);
+    return p;
+  }, [filter, sortedPlots, schedules]);
+
+  const uniqueTrades = useMemo(() => [...new Set(stageDefs.map(d=>d.trade).filter(Boolean))].sort(), [stageDefs]);
+
+  const stats = useMemo(() => {
+    let behind=0, done=0, inProg=0, notStarted=0;
+    sortedPlots.forEach(p => {
+      const st = plotOverallStatus(p);
+      if (st.label.startsWith('Complete')) done++;
+      else if (st.label.startsWith('Behind')) { behind++; inProg++; }
+      else if (st.label.startsWith('In Progress')) inProg++;
+      else notStarted++;
+    });
+    return { behind, done, inProg, notStarted };
+  }, [sortedPlots, schedules]);
+
+  const tenureStats = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.tenure]=(t[p.tenure]||0)+1; }); return Object.entries(t).sort((a,b)=>b[1]-a[1]); }, [sortedPlots]);
+  const typeStats   = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.plot_type]=(t[p.plot_type]||0)+1; }); return Object.entries(t).sort((a,b)=>b[1]-a[1]); }, [sortedPlots]);
+  const bedStats     = useMemo(() => { const t={}; sortedPlots.forEach(p => { t[p.beds+'bd']=(t[p.beds+'bd']||0)+1; }); return Object.entries(t).sort((a,b)=>a[0].localeCompare(b[0])); }, [sortedPlots]);
+
+  if (!plots.length) return e('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:14}},'No plot data loaded — check API connection.');
+
+  const KPI = (val, label, col, sub) => e('div',{style:{background:col+'15',border:'1px solid '+col+'40',borderRadius:8,padding:'10px 12px',minWidth:90}},
+    e('div',{style:{fontSize:22,fontWeight:700,color:col}},val),
+    e('div',{style:{fontSize:10,fontWeight:600,color:'#6b7280',marginTop:1}},label),
+    sub && e('div',{style:{fontSize:9,color:'#9ca3af',marginTop:1}},sub)
+  );
+
+  async function toggleSignOff(plot, field, dateField) {
+    const newVal = !plot[field];
+    const fields = { [field]: newVal };
+    fields[dateField] = newVal ? new Date().toISOString().slice(0,10) : null;
+    await onUpdatePlot(plot.id, fields);
+  }
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%'}},
+
+    // Tab sub-nav + controls
+    e('div',{style:{display:'flex',gap:6,padding:'6px 12px',alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0}},
+      e('button',{
+        onClick:()=>setView('overview'),
+        style:{padding:'4px 12px',background:view==='overview'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='overview'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='overview'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
+      },'📊 Overview'),
+      e('button',{
+        onClick:()=>setView('gantt'),
+        style:{padding:'4px 12px',background:view==='gantt'?'#f97316':'#e5e7eb',border:'1px solid '+(view==='gantt'?'#f97316':'#d1d5db'),borderRadius:5,color:view==='gantt'?'#111':'#6b7280',fontSize:10,fontWeight:600,cursor:'pointer'}
+      },'📅 Gantt Chart'),
+      e('div',{style:{flex:1}}),
+      view==='gantt' && e('span',{style:{fontSize:9,color:'#9ca3af'}},'Click a bar = set stage · Drag = reschedule'),
+      view==='gantt' && e('select',{value:tradeFilter,onChange:ev=>setTradeFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
+        e('option',{value:'All'},'All trades'),
+        ...uniqueTrades.map(t=>e('option',{key:t,value:t},t))
+      ),
+      view==='gantt' && e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#1f2937',fontSize:10,padding:'3px 8px'}},
+        ['All','Behind','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
+      ),
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.max(12,w-4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'− Day'),
+      view==='gantt' && e('button',{onClick:()=>setCellW(w=>Math.min(48,w+4)),style:{padding:'3px 8px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#6b7280',cursor:'pointer',fontSize:10}},'+ Day'),
+      e('button',{onClick:()=>setShowResources(r=>!r),style:{padding:'4px 12px',background:showResources?'#2563eb':'#e5e7eb',border:'none',borderRadius:5,color:showResources?'#fff':'#374151',cursor:'pointer',fontSize:10,fontWeight:700}},'📊 Resources'),
+      e('button',{onClick:()=>setShowPrint(true),style:{padding:'4px 12px',background:'#111827',border:'none',borderRadius:5,color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}},'🖨 Print Programme')
+    ),
+
+    showPrint && e(PrintProgrammeModal,{plots,stageDefs,schedules,workingDays,todayIdx,onClose:()=>setShowPrint(false)}),
+
+    // ── OVERVIEW VIEW ─────────────────────────────────────────────────────
+    view === 'overview' && e('div',{style:{flex:1,overflowY:'auto',padding:14}},
+
+      e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:10,padding:'14px 18px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}},
+        e('div',null,
+          e('div',{style:{fontSize:18,fontWeight:700,color:'#111827'}},'SS17 Phase 1C — Sandle Park'),
+          e('div',{style:{fontSize:12,color:'#6b7280',marginTop:3}},'Fordingbridge, Hampshire · Planning Approved · Pennyfarthing Homes')
+        ),
+        e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+          KPI(sortedPlots.length,'Total Plots','#6b7280'),
+          KPI(stats.done,'Complete','#16a34a','handover ready'),
+          KPI(stats.inProg,'In Progress','#2563eb','on site now'),
+          KPI(stats.behind,'Behind Prog.','#dc2626','needs attention'),
+          KPI(stats.notStarted,'Not Started','#9ca3af','upcoming')
+        )
+      ),
+
+      e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}},
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Tenure Mix'),
+          ...tenureStats.map(([tenure,count]) =>
+            e('div',{key:tenure,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{width:10,height:10,borderRadius:'50%',background:TEN_COL[tenure]||'#6b7280',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},tenure),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count),
+              e('div',{style:{fontSize:9,color:'#9ca3af'}},Math.round(count/sortedPlots.length*100)+'%')
+            )
+          )
+        ),
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Building Types'),
+          ...typeStats.map(([type,count]) =>
+            e('div',{key:type,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{fontSize:12}},type==='Flat'?'■':type==='Bungalow'?'◆':'●'),
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},type),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count)
+            )
+          )
+        ),
+        e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Bedroom Mix'),
+          ...bedStats.map(([bd,count]) =>
+            e('div',{key:bd,style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+              e('div',{style:{width:10,height:10,borderRadius:2,background:'#d1d5db',flexShrink:0}}),
+              e('div',{style:{flex:1,fontSize:11,color:'#1f2937'}},bd+' bedroom'),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#6b7280'}},count)
+            )
+          )
+        )
+      ),
+
+      // Fully editable plot schedule table
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'Accommodation Schedule — All Plots (editable)'),
+      e('div',{className:'overview-table-wrap',style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',maxWidth:'100%',WebkitOverflowScrolling:'touch'}},
+        e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:1100}},
+          e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
+            ...['Plot','House Type','Tenure','Status','Current Stage','Next Stage','Next Due','CRC Deadline','Scheduled CRC','CML Signed Off','CRC Signed Off'].map(h=>
+              e('th',{key:h,style:{textAlign:'left',padding:'7px 10px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+            )
+          )),
+          e('tbody',null,
+            ...sortedPlots.map((p,i) => {
+              const st = plotOverallStatus(p);
+              const curOrder = p.current_stage_id ? ((defMap[p.current_stage_id]||{}).stage_order||0) : 0;
+              const nextDef = sortedDefs.find(d => (d.stage_order||0) === curOrder + 1) || (p.current_stage_id ? null : sortedDefs[0]);
+              const sc = schedules[p.id];
+              const nextDate = nextDef && sc && sc[nextDef.id] ? workingDays[sc[nextDef.id].start] : null;
+              return e('tr',{key:p.id,style:{borderTop:'1px solid #e5e7eb',background:i%2===0?'#f9fafb':'#ffffff'}},
+                e('td',{style:{padding:'6px 10px',color:'#f97316',fontWeight:700}},p.plot_number),
+                e('td',{style:{padding:'6px 10px',color:'#1f2937',fontWeight:500,whiteSpace:'nowrap'}},p.house_type),
+                e('td',{style:{padding:'6px 10px'}},
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,background:(TEN_COL[p.tenure]||'#6b7280')+'25',color:TEN_COL[p.tenure]||'#6b7280',whiteSpace:'nowrap'}},p.tenure)
+                ),
+                e('td',{style:{padding:'6px 10px'}},
+                  e('span',{style:{padding:'2px 7px',borderRadius:10,fontSize:9,fontWeight:700,color:st.col,whiteSpace:'nowrap'}}, st.pct+'% '+st.label)
+                ),
+                e('td',{style:{padding:'4px 10px'}},
+                  e('select',{
+                    value: p.current_stage_id || '',
+                    onChange: ev => onUpdatePlot(p.id, { current_stage_id: ev.target.value || null }),
+                    style:{ background:'#ffffff', border:'1px solid #d1d5db', borderRadius:5, color:'#1f2937', fontSize:10, padding:'3px 5px', minWidth:150 }
+                  },
+                    e('option',{value:''},'— Not started —'),
+                    ...sortedDefs.map(d => e('option',{key:d.id, value:d.id}, d.stage_order+'. '+d.name))
+                  )
+                ),
+                e('td',{style:{padding:'6px 10px',color:'#6b7280',whiteSpace:'nowrap'}}, nextDef ? nextDef.name : '—'),
+                e('td',{style:{padding:'6px 10px',color:'#9ca3af',whiteSpace:'nowrap'}}, nextDate ? nextDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—'),
+                e('td',{style:{padding:'4px 10px'}},
+                  e('input',{
+                    type:'date', value: p.crc_deadline_date || '',
+                    onChange: ev => onUpdatePlot(p.id, { crc_deadline_date: ev.target.value || null }),
+                    style:{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:5, color:'#374151', fontSize:10, padding:'3px 5px', width:120 }
+                  })
+                ),
+                e('td',{style:{padding:'6px 10px',whiteSpace:'nowrap'}},
+                  st.crcScheduledDate
+                    ? e('span',{style:{color: st.crcVariance>0?'#dc2626':st.crcVariance<0?'#16a34a':'#6b7280', fontWeight:600}},
+                        st.crcScheduledDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+
+                        (st.crcVariance>0?' (+'+st.crcVariance+'d)':st.crcVariance<0?' ('+st.crcVariance+'d)':' (On Track)')
+                      )
+                    : e('span',{style:{color:'#d1d5db'}},'—')
+                ),
+                e('td',{style:{padding:'6px 10px',textAlign:'center'}},
+                  e('input',{type:'checkbox', checked:!!p.cml_signed_off, onChange:()=>toggleSignOff(p,'cml_signed_off','cml_signed_off_date'), style:{cursor:'pointer'}}),
+                  p.cml_signed_off_date && e('span',{style:{fontSize:8,color:'#9ca3af',marginLeft:4}}, p.cml_signed_off_date)
+                ),
+                e('td',{style:{padding:'6px 10px',textAlign:'center'}},
+                  e('input',{type:'checkbox', checked:!!p.crc_signed_off, onChange:()=>toggleSignOff(p,'crc_signed_off','crc_signed_off_date'), style:{cursor:'pointer'}}),
+                  p.crc_signed_off_date && e('span',{style:{fontSize:8,color:'#9ca3af',marginLeft:4}}, p.crc_signed_off_date)
+                )
+              );
+            })
+          )
+        )
+      )
+    ),
+
+    // ── GANTT VIEW ────────────────────────────────────────────────────────
+    view === 'gantt' && e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}},
+      e('div',{style:{display:'flex',flex:1,overflow:'hidden',minHeight:0}},
+      e('div',{style:{width:LEFT_W,flexShrink:0,borderRight:'1px solid #d1d5db',display:'flex',flexDirection:'column'}},
+        e('div',{style:{height:HDR_H,background:'#ffffff',borderBottom:'1px solid #d1d5db',display:'flex',alignItems:'center',padding:'0 8px',fontSize:10,fontWeight:700,color:'#f97316'}},visPlots.length+' of '+sortedPlots.length+' plots'),
+        e('div',{style:{flex:1,overflowY:'scroll'},id:'g-left'},
+          ...visPlots.map(p => {
+            const st = plotOverallStatus(p);
+            const rowH = plotRowHeight(p);
+            const isCoreBlock = p.is_core_block;
+            const isUnitFlat  = p.exclude_external_stages;
+            return e('div',{key:p.id,style:{height:rowH,display:'flex',alignItems:'center',padding:'0 8px',gap:5,
+              background: isCoreBlock?'#1e293b': isUnitFlat?'#f0f9ff':'#f8fafc',
+              borderBottom:'1px solid '+(isCoreBlock?'#334155':'#e5e7eb')}},
+              isCoreBlock
+                ? e('div',{style:{width:8,height:8,borderRadius:1,background:'#f97316',flexShrink:0}})
+                : e('div',{style:{width:6,height:6,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
+              // H&S warning badge — red dot if plot has open H&S issues
+              (()=>{const openHs=(hsLog||[]).filter(h=>h.plot_id===p.id&&!h.closed);
+                return openHs.length>0&&e('div',{title:openHs.length+' open H&S issue'+(openHs.length>1?'s':''),
+                  style:{width:8,height:8,borderRadius:'50%',background:openHs.some(h=>h.severity==='red')?'#dc2626':'#f97316',
+                    flexShrink:0,boxShadow:'0 0 0 2px rgba(220,38,38,0.3)'}});
+              })(),
+              e('div',{style:{flex:1,minWidth:0}},
+                e('div',{style:{fontSize:11,fontWeight:700,
+                  color: isCoreBlock?'#f97316': isUnitFlat?'#0369a1':'#1f2937',
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
+                  isCoreBlock
+                    ? '■ Block A — Core'
+                    : isUnitFlat
+                      ? 'Flat '+p.plot_number+' · '+p.house_type
+                      : String(p.plot_number).padStart(2,'0')+' · '+p.house_type
+                ),
+                e('div',{style:{fontSize:9,
+                  color: isCoreBlock?'#94a3b8': isUnitFlat?'#0891b2':'#9ca3af',
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},
+                  isCoreBlock?'External stages 1-25 (communal build)':
+                  isUnitFlat?'Internal stages only (26-61)':
+                  p.address)
+              ),
+              st.label.startsWith('Complete')?e('span',{style:{fontSize:9,color:'#16a34a',fontWeight:700,flexShrink:0}},'✓')
+                :st.label.startsWith('Behind')?e('span',{style:{fontSize:9,color:'#dc2626',fontWeight:700,flexShrink:0}},'▲')
+                :e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},st.pct+'%')
+            );
+          })
+        )
+      ),
+      e('div',{ref:scrollRef,className:'gantt-scroll',style:{flex:1,overflow:'scroll'},onScroll:ev=>{
+        const l=document.getElementById('g-left');if(l)l.scrollTop=ev.target.scrollTop;
+        if(rsScrollRef.current) rsScrollRef.current.scrollLeft=ev.target.scrollLeft;
+      }},
+        e('div',{style:{width:workingDays.length*cellW,position:'relative',minHeight:'100%'}},
+          e('div',{style:{position:'sticky',top:0,zIndex:20,background:'#ffffff',height:HDR_H,borderBottom:'1px solid #d1d5db'}},
+            e('div',{style:{position:'relative',height:28,borderBottom:'1px solid #e5e7eb'}},
+              ...monthLabels.map(({idx,label})=>e('div',{key:idx,style:{position:'absolute',left:idx*cellW,top:0,height:28,display:'flex',alignItems:'center',paddingLeft:5,fontSize:10,fontWeight:700,color:'#6b7280',whiteSpace:'nowrap',pointerEvents:'none'}},label))
+            ),
+            e('div',{style:{height:26,display:'flex',borderBottom:'1px solid #e5e7eb'}},
+              ...workingDays.map((d,i)=>{
+                const absIdx=i;
+                const isToday=absIdx===todayIdx;
+                const weekNum=Math.floor(i/5);
+                return e('div',{key:i,style:{width:cellW,flexShrink:0,borderRight:'1px solid #e5e7eb',background:isToday?'#fff7ed':weekNum%2===0?'#fff':'#f9fafb',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+                  e('span',{style:{fontSize:7,fontWeight:isToday?700:400,color:isToday?'#f97316':'#9ca3af',lineHeight:1.1}},d.toLocaleDateString('en-GB',{weekday:'narrow'})),
+                  e('span',{style:{fontSize:8,fontWeight:isToday?800:500,color:isToday?'#f97316':'#374151',lineHeight:1.1}},d.getDate())
+                );
+              }),
+              e('div',{style:{position:'absolute',left:todayIdx*cellW,top:0,width:2,height:26,background:'#f97316'}}),
+              e('div',{style:{position:'absolute',left:todayIdx*cellW+4,top:4,fontSize:7,fontWeight:700,color:'#f97316',background:'rgba(249,115,22,0.15)',padding:'1px 3px',borderRadius:2,pointerEvents:'none',whiteSpace:'nowrap'}},'TODAY')
+            )
+          ),
+          e('div',{style:{position:'relative'}},
+            e('div',{style:{position:'absolute',left:todayIdx*cellW+1,top:0,bottom:0,width:1.5,background:'#f97316',opacity:0.5,pointerEvents:'none',zIndex:3}}),
+            ...visPlots.map(p => {
+              const sc=schedules[p.id]||{};
+              const LANE_H=40;
+
+              // ── Lane assignment: greedy interval scheduler ─────────────────────────
+              // Sort visible stages by start day, assign each to the lowest lane that
+              // doesn't overlap with an already-placed bar. Two bars overlap when their
+              // time ranges intersect: a.start < b.end && b.start < a.end.
+              // This means overlapping bars appear on separate sub-rows, never on top.
+              // Per-plot def list respects is_core_block / exclude_external_stages
+              const _plotDefs = p.is_core_block
+                ? sortedDefs.filter(d=>(d.stage_order||0)<=25)
+                : p.exclude_external_stages
+                  ? sortedDefs.filter(d=>(d.stage_order||0)>25)
+                  : sortedDefs;
+              const stagesForLane = _plotDefs
+                .filter(def => tradeFilter==='All' || def.trade===tradeFilter)
+                .map(def => ({ def, s: sc[def.id] }))
+                .filter(x => x.s)
+                .sort((a,b) => a.s.start - b.s.start);
+
+              const laneAssign = {}; // defId -> laneIndex
+              const laneEnd = [];    // laneIndex -> latest end day placed so far
+              stagesForLane.forEach(({def, s}) => {
+                const end = s.start + s.dur;
+                let lane = laneEnd.findIndex(endDay => endDay <= s.start);
+                if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
+                laneEnd[lane] = end;
+                laneAssign[def.id] = lane;
+              });
+
+              const numLanes = Math.max(1, laneEnd.length);
+              const rowH = numLanes * LANE_H + 4;
+
+              return e('div',{key:p.id,style:{height:rowH,position:'relative',borderBottom:'1px solid #e5e7eb'}},
+                ..._plotDefs.filter(def => tradeFilter==='All' || def.trade===tradeFilter).map(def=>{
+                  const s = sc[def.id]; if(!s) return null;
+                  const lane = laneAssign[def.id] || 0;
+                  const status = stageStatus(p, def);
+                  const isDone = status==='done';
+                  const isActive = status==='active';
+                  const behind = s.start > s.basStart;
+                  const w = Math.max(s.dur*cellW-2,6);
+                  return e('div',{key:def.id,
+                    onPointerDown: ev => onBarMouseDown(ev, p, def.id),
+                    title: def.name+' · '+s.dur+' days'+(behind?' ▲ Behind':'')+(isActive?' — CURRENT STAGE':''),
+                    style:{position:'absolute',left:s.start*cellW+1,top:2+lane*LANE_H,width:w,height:LANE_H-4,borderRadius:3,cursor:'pointer',
+                      background:isDone?'#d1d5db':stageColor(def),
+                      opacity:isDone?0.5:1,
+                      border:'1px solid '+(isActive?'#111827':isDone?'#9ca3af':stageColor(def)),
+                      boxShadow:behind?'0 0 0 1.5px #dc2626':isActive?'0 0 0 2px #111827':'none',
+                      display:'flex',alignItems:'flex-start',overflow:'hidden',userSelect:'none',zIndex:isActive?3:2,
+                      padding:'2px 3px',boxSizing:'border-box'}
+                  }, e('span',{style:{fontSize:8,fontWeight:700,color:isDone?'#6b7280':'#fff',lineHeight:1.2,whiteSpace:'normal',wordBreak:'break-word',overflow:'hidden',display:'block',width:'100%'}},def.name));
+                }).filter(Boolean)
+              );
+            })
+          )
+        )
+      )
+    ),  // end inner Gantt flex row
+
+    // ── RESOURCE SUMMARY PANEL ──────────────────────────────────────────────
+    showResources && e(ResourceSummaryPanel, {
+      sortedDefs, schedules, visPlots, workingDays, todayIdx, cellW,
+      LEFT_W, tradeFilter, stageColor, rsScrollRef,
+      onScroll: ev => { if (scrollRef.current) scrollRef.current.scrollLeft = ev.target.scrollLeft; }
+    })
+
+  ), // end outer column wrapper
+
+    // Stage legend
+    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 12px',display:'flex',gap:10,flexShrink:0,overflowX:'auto',alignItems:'center'}},
+      e('span',{style:{fontSize:9,color:'#111827',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}, e('span',{style:{display:'inline-block',width:10,height:10,border:'2px solid #111827',borderRadius:2}}), 'Current stage'),
+      ...stageDefs.slice(0,6).map(d=>e('div',{key:d.id,style:{display:'flex',alignItems:'center',gap:3,flexShrink:0}},
+        e('div',{style:{width:14,height:7,borderRadius:2,background:stageColor(d)}}),
+        e('span',{style:{fontSize:9,color:'#6b7280',whiteSpace:'nowrap'}},d.name)
+      )),
+      e('span',{style:{fontSize:9,color:'#9ca3af',flexShrink:0}},'+'+(stageDefs.length-6)+' more'),
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af',flexShrink:0}},'Click bar = set current stage · Drag = reschedule (pushes later stages along)')
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PRINT PROGRAMME MODAL — generates a clean printable view matching a
+// professional construction programme layout (working days, week shading,
+// stage bars, inspection dates, legend), with date-range and trade filters.
+// ══════════════════════════════════════════════════════════════════════════
+function PrintProgrammeModal({ plots, stageDefs, schedules, workingDays, todayIdx, onClose }) {
+  const sortedDefs = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
+  const uniqueTrades = useMemo(() => {
+    const t = [...new Set(stageDefs.map(d=>d.trade).filter(Boolean))];
+    return t.sort();
+  }, [stageDefs]);
+
+  const [weeks, setWeeks] = useState(5);
+  // Snap to the Monday of the current week — working days in our array are Mon-Fri,
+  // so "Monday of this week" is the nearest Monday at or before todayIdx.
+  const mondayIdx = useMemo(() => {
+    // Walk backwards from todayIdx until we hit a Monday (getDay()===1)
+    for (let i = todayIdx; i >= 0; i--) {
+      if (workingDays[i] && workingDays[i].getDay() === 1) return i;
+    }
+    return todayIdx;
+  }, [todayIdx, workingDays]);
+  const [startIdx, setStartIdx] = useState(mondayIdx);
+  const [tradeFilter, setTradeFilter] = useState('All');
+  const [plotFilter, setPlotFilter] = useState('All');
+  const [showInspections, setShowInspections] = useState(true);
+  const [showLegend, setShowLegend] = useState(true);
+  const [showBehind, setShowBehind] = useState(true);
+
+  const sortedPlots = useMemo(() => [...plots].sort((a,b)=>{
+    // is_core_block sorts to the very top (before plot 1)
+    if (a.is_core_block && !b.is_core_block) return -1;
+    if (!a.is_core_block && b.is_core_block) return 1;
+    return (parseInt(a.plot_number)||0) - (parseInt(b.plot_number)||0);
+  }), [plots]);
+  const visPlots = useMemo(() => plotFilter==='All' ? sortedPlots : sortedPlots.filter(p=>p.tenure===plotFilter), [plotFilter, sortedPlots]);
+
+  const rangeDays = useMemo(() => workingDays.slice(startIdx, startIdx + weeks*5), [workingDays, startIdx, weeks]);
+  const rangeEndIdx = startIdx + weeks*5;
+
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>{m[d.id]=d;}); return m; }, [stageDefs]);
+  const crcDef = useMemo(() => stageDefs.find(d => d.name === 'CRC'), [stageDefs]);
+  const cmlDef = useMemo(() => stageDefs.find(d => d.name === 'CML'), [stageDefs]);
+
+  // Build the rows that actually have visible content in this date range / trade filter
+  const printRows = useMemo(() => {
+    return visPlots.map(plot => {
+      const sc = schedules[plot.id] || {};
+      const segs = sortedDefs
+        .filter(def => tradeFilter==='All' || def.trade === tradeFilter)
+        .map(def => {
+          const s = sc[def.id]; if (!s) return null;
+          const segStart = Math.max(s.start, startIdx);
+          const segEnd = Math.min(s.start + s.dur, rangeEndIdx);
+          if (segEnd <= segStart) return null; // outside the print range
+          return { def, dayOffset: segStart - startIdx, dayWidth: segEnd - segStart, behind: s.start > s.basStart };
+        }).filter(Boolean);
+      return { plot, segs };
+    }).filter(row => row.segs.length > 0);
+  }, [visPlots, schedules, sortedDefs, tradeFilter, startIdx, rangeEndIdx]);
+
+  // Inspection dates (CML/CRC) falling inside the printed range
+  const inspectionRows = useMemo(() => {
+    const out = [];
+    visPlots.forEach(plot => {
+      const sc = schedules[plot.id] || {};
+      [['CML', cmlDef], ['CRC', crcDef]].forEach(([label, def]) => {
+        if (!def) return;
+        const s = sc[def.id]; if (!s) return;
+        if (s.start < startIdx || s.start >= rangeEndIdx) return;
+        const d = workingDays[s.start];
+        out.push({ plot, label, date: d });
+      });
+    });
+    out.sort((a,b) => a.date - b.date);
+    return out;
+  }, [visPlots, schedules, cmlDef, crcDef, startIdx, rangeEndIdx, workingDays]);
+
+  const DAY_W = 34;
+  const printTitle = tradeFilter === 'All' ? 'SS17 Sandle Park — Construction Programme' : 'SS17 Sandle Park — ' + tradeFilter + ' Resource Schedule';
+
+  function doPrint() { window.print(); }
+
+  return e('div', { style:{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:500, display:'flex' }, className:'print-modal-overlay' },
+
+    // Controls sidebar (hidden when printing)
+    e('div', { className:'no-print', style:{ width:260, flexShrink:0, background:'#111827', padding:18, overflowY:'auto', color:'#fff' } },
+      e('div', { style:{ fontSize:15, fontWeight:700, marginBottom:14 } }, '🖨 Print Programme'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Date Range'),
+      e('div', { style:{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 } },
+        ...[1,2,3,4,5,6,7,8,9,10].map(w => e('button',{
+          key:w, onClick:()=>setWeeks(w),
+          style:{ width:26, height:26, fontSize:10, fontWeight:700, borderRadius:5, cursor:'pointer',
+            background: weeks===w ? '#f97316' : '#1f2937', color: weeks===w ? '#111' : '#9ca3af', border:'none' }
+        }, w))
+      ),
+      e('div', { style:{ fontSize:10, color:'#9ca3af', marginBottom:14 } }, weeks + ' week' + (weeks>1?'s':'') + ' shown'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Starting From'),
+      e('select', {
+        value: startIdx, onChange: ev => setStartIdx(parseInt(ev.target.value)),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:14 }
+      },
+        e('option', { value: mondayIdx }, 'This week (Mon)'),
+        ...workingDays.filter((d,i) => d.getDay()===1 && i>=Math.max(0,todayIdx-40)).slice(0,16).map((d,k) => {
+          const i = workingDays.findIndex(wd=>wd===d);
+          return e('option', { key:i, value:i }, d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
+        })
+      ),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Resource / Trade'),
+      e('select', {
+        value: tradeFilter, onChange: ev => setTradeFilter(ev.target.value),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:4 }
+      },
+        e('option', { value:'All' }, 'All trades — full programme'),
+        ...uniqueTrades.map(t => e('option', { key:t, value:t }, t + ' only'))
+      ),
+      e('div', { style:{ fontSize:9, color:'#6b7280', marginBottom:14 } }, 'Select a trade to print only their stages — e.g. send the Carpenter just his works.'),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Plots'),
+      e('select', {
+        value: plotFilter, onChange: ev => setPlotFilter(ev.target.value),
+        style:{ width:'100%', padding:6, borderRadius:6, border:'1px solid #374151', background:'#1f2937', color:'#fff', fontSize:11, marginBottom:14 }
+      },
+        ['All','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f,value:f},f==='All'?'All tenures':f))
+      ),
+
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', marginBottom:6 } }, 'Include'),
+      ...[
+        ['Inspection dates (CML/CRC)', showInspections, setShowInspections],
+        ['Stage legend', showLegend, setShowLegend],
+        ['Behind-schedule markers', showBehind, setShowBehind],
+      ].map(([label, val, setter]) =>
+        e('label', { key:label, style:{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#d1d5db', marginBottom:6, cursor:'pointer' } },
+          e('input', { type:'checkbox', checked:val, onChange:()=>setter(v=>!v) }),
+          label
+        )
+      ),
+
+      e('div', { style:{ marginTop:20, display:'flex', flexDirection:'column', gap:8 } },
+        e('button', { onClick:doPrint, style:{ padding:'10px', background:'#16a34a', border:'none', borderRadius:8, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' } }, '🖨 Print / Save as PDF'),
+        e('button', { onClick:onClose, style:{ padding:'8px', background:'#1f2937', border:'1px solid #374151', borderRadius:8, color:'#d1d5db', fontSize:12, cursor:'pointer' } }, 'Close')
+      )
+    ),
+
+    // Print preview
+    e('div', { className:'print-preview-area', style:{ flex:1, overflow:'auto', background:'#525659', padding:24 } },
+      e('div', { id:'print-content', style:{ background:'#fff', width: Math.max(900, 200 + rangeDays.length*DAY_W), margin:'0 auto', padding:24, fontFamily:'system-ui,sans-serif' } },
+
+        // Header
+        e('div', { style:{ marginBottom:14, borderBottom:'2px solid #111827', paddingBottom:10 } },
+          e('div', { style:{ fontSize:20, fontWeight:800, color:'#111827' } }, printTitle),
+          e('div', { style:{ fontSize:11, color:'#6b7280', marginTop:3 } },
+            'Timeline: ' + weeks + ' Week' + (weeks>1?'s':'') + '   ·   Starting: ' + (rangeDays[0]?rangeDays[0].toLocaleDateString('en-GB'):'') +
+            '   ·   Generated: ' + new Date().toLocaleDateString('en-GB')
+          )
+        ),
+
+        // Grid
+        e('div', { style:{ display:'flex', borderTop:'1px solid #111827', borderLeft:'1px solid #111827' } },
+          // Plot label column
+          e('div', { style:{ width:130, flexShrink:0 } },
+            e('div', { style:{ height:40, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:10, background:'#e5e7eb' } }, 'Plot'),
+            ...printRows.map(({plot,segs}) =>
+              e('div', { key:plot.id, style:{ height:60, borderRight:'1px solid #111827', borderBottom:'1px solid #111827', padding:'4px 6px', display:'flex', flexDirection:'column', justifyContent:'center' } },
+                e('div', { style:{ fontWeight:700, fontSize:11, color:'#111827' } }, 'Plot ' + plot.plot_number),
+                e('div', { style:{ fontSize:8, color:'#6b7280' } }, segs.length + ' stage' + (segs.length>1?'s':''))
+              )
+            )
+          ),
+          // Day grid
+          e('div', { style:{ flex:1 } },
+            // Day header row
+            e('div', { style:{ height:40, display:'flex', borderBottom:'1px solid #111827' } },
+              ...rangeDays.map((d,i) => {
+                const weekNum = Math.floor(i/5);
+                const isAlt = weekNum % 2 === 1;
+                return e('div', { key:i, style:{ width:DAY_W, flexShrink:0, borderRight:'1px solid #d1d5db', background:isAlt?'#dbeafe':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontSize:8, fontWeight:600, color:'#374151' } },
+                  e('div', null, d.toLocaleDateString('en-GB',{weekday:'short'})),
+                  e('div', null, d.getDate())
+                );
+              })
+            ),
+            // Plot rows
+            ...printRows.map(({plot,segs}) =>
+              e('div', { key:plot.id, style:{ height:60, position:'relative', borderBottom:'1px solid #111827', display:'flex' } },
+                // week shading background
+                ...rangeDays.map((d,i) => {
+                  const weekNum = Math.floor(i/5);
+                  const isAlt = weekNum % 2 === 1;
+                  return e('div', { key:'bg'+i, style:{ width:DAY_W, height:60, flexShrink:0, borderRight:'1px solid #f3f4f6', background:isAlt?'#eff6ff':'#fff' } });
+                }),
+                // stage segments overlay
+                ...segs.map((seg,si) =>
+                  e('div', {
+                    key:si,
+                    style:{
+                      position:'absolute', left: seg.dayOffset*DAY_W + 1, top:6, width: seg.dayWidth*DAY_W - 2, minHeight:32,
+                      background: seg.def.color || '#6b7280', borderRadius:3,
+                      border: showBehind && seg.behind ? '2px solid #dc2626' : '1px solid rgba(0,0,0,0.2)',
+                      display:'flex', alignItems:'flex-start', padding:'3px 3px', boxSizing:'border-box', overflow:'hidden'
+                    }
+                  }, e('span', { style:{ fontSize:7, fontWeight:700, color:'#fff', lineHeight:1.2, whiteSpace:'normal', wordBreak:'break-word', display:'block', width:'100%' } }, seg.def.name))
+                )
+              )
+            )
+          )
+        ),
+
+        printRows.length === 0 && e('div', { style:{ padding:30, textAlign:'center', color:'#9ca3af', fontSize:12 } }, 'No stages fall within this date range / trade filter.'),
+
+        // Inspections section
+        showInspections && inspectionRows.length > 0 && e('div', { style:{ marginTop:22, pageBreakInside:'avoid' } },
+          e('div', { style:{ fontSize:13, fontWeight:800, color:'#111827', marginBottom:6, borderBottom:'1px solid #d1d5db', paddingBottom:4 } }, 'Upcoming Inspections Required'),
+          ...inspectionRows.map((r,i) =>
+            e('div', { key:i, style:{ fontSize:11, color:'#374151', padding:'2px 0' } },
+              'Plot ' + r.plot.plot_number + ' ' + r.label + ' Date: ' + r.date.toLocaleDateString('en-GB')
+            )
+          )
+        ),
+
+        // Legend
+        showLegend && e('div', { style:{ marginTop:22, pageBreakInside:'avoid' } },
+          e('div', { style:{ fontSize:13, fontWeight:800, color:'#111827', marginBottom:6, borderBottom:'1px solid #d1d5db', paddingBottom:4 } }, 'Legend — Build Stages'),
+          e('div', { style:{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'3px 14px' } },
+            ...sortedDefs.filter(d => tradeFilter==='All' || d.trade===tradeFilter).map(d =>
+              e('div', { key:d.id, style:{ display:'flex', alignItems:'center', gap:5, fontSize:10, color:'#374151' } },
+                e('div', { style:{ width:12, height:8, borderRadius:2, background:d.color||'#6b7280', flexShrink:0 } }),
+                d.name
+              )
+            )
+          ),
+          e('div', { style:{ fontSize:9, color:'#9ca3af', marginTop:10 } },
+            'Timeline shows working days only (Monday–Friday). Dates shown in UK format (DD/MM/YYYY). Multiple stages may run in parallel when scheduled accordingly.' +
+            (showBehind ? ' Red outline = stage rescheduled behind its baseline.' : '')
+          )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SITE MAP TAB
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// PLOT DETAIL MODAL — opens when a placed dot is clicked
+// ══════════════════════════════════════════════════════════════════════════
+// Single material row inside the Plot Detail Modal — quick order/delivery actions
+function PlotMaterialRow({ material, status, badge, dateStr, order, plotId, onSetOrder }) {
+  const [editing, setEditing] = useState(false);
+  const [dateVal, setDateVal] = useState(status==='ordered' ? (order?.delivery_date||'') : new Date().toISOString().slice(0,10));
+
+  return e('div', { style:{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:7, fontSize:12 } },
+    e('div', { style:{ flex:1, minWidth:0 } },
+      e('div', { style:{ fontWeight:700, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, material.material_name),
+      e('div', { style:{ fontSize:10, color:'#9ca3af' } }, 'Stage due '+dateStr+(material.supplier_name?' · '+material.supplier_name:''))
+    ),
+    e('span', { style:{ padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700, background:badge.bg, color:badge.col, whiteSpace:'nowrap' } }, badge.label),
+    // Mark Ordered — only for pending/flagged, NOT for delivered
+    !editing && (status === 'pending' || status === 'flagged') && e('button', {
+      onClick:()=>setEditing(true),
+      style:{ padding:'4px 10px', background:'#f97316', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
+    }, 'Mark Ordered'),
+    // Mark Delivered — only when ordered
+    !editing && status === 'ordered' && e('button', {
+      onClick:()=>setEditing(true),
+      style:{ padding:'4px 10px', background:'#16a34a', border:'none', borderRadius:6, color:'#ffffff', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }
+    }, 'Mark Delivered'),
+    // Undo Order (ordered → pending)
+    !editing && status === 'ordered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null}),
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Undo'),
+    // Undo Delivery (delivered → ordered)
+    !editing && status === 'delivered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'ordered', delivery_date:null}),
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Undo Delivery'),
+    // Reset to Pending (delivered → pending in one tap)
+    !editing && status === 'delivered' && e('button', {
+      onClick:()=>onSetOrder(material.id, plotId, {status:'pending', ordered_date:null, delivery_date:null}),
+      style:{ padding:'4px 8px', background:'#fff', border:'1px solid #fca5a5', borderRadius:6, color:'#dc2626', fontSize:10, cursor:'pointer', whiteSpace:'nowrap' }
+    }, '↩ Reset'),
+    editing && e('div', { style:{ display:'flex', gap:4, alignItems:'center' } },
+      e('input', { type:'date', value:dateVal, onChange:ev=>setDateVal(ev.target.value), style:{ fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', borderRadius:5 } }),
+      e('button', {
+        onClick: async () => {
+          if (status === 'ordered') await onSetOrder(material.id, plotId, { status:'delivered', delivery_date: dateVal });
+          else await onSetOrder(material.id, plotId, { status:'ordered', ordered_date: dateVal });
+          setEditing(false);
+        },
+        style:{ padding:'4px 8px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:10, fontWeight:700, cursor:'pointer' }
+      }, '✓'),
+      e('button', { onClick:()=>setEditing(false), style:{ padding:'4px 8px', background:'#e5e7eb', border:'none', borderRadius:5, color:'#6b7280', fontSize:10, cursor:'pointer' } }, '×')
+    )
+  );
+}
+
+function PlotDetailModal({ plot, stageDefs, plotSchedule, materials, materialOrders, onSetOrder, onRaiseHsIssue, onClose, onUpdatePlot, onRemoveDot, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
+  const [savingStage, setSavingStage] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(plot.notes || '');
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [hsDraft, setHsDraft] = useState('');
+  const [hsSeverity, setHsSeverity] = useState('amber');
+  const [hsSubmitting, setHsSubmitting] = useState(false);
+  const [hsSubmitted, setHsSubmitted] = useState(false);
+  const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>a.stage_order-b.stage_order), [stageDefs]);
+  const currentStage = stageDefs.find(s => s.id === plot.current_stage_id);
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
+  const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
+
+  // Materials relevant to this plot — show flagged, ordered, due soon, AND delivered
+  // (delivered shown so user can undo from the plot panel on a site walk)
+  const plotMaterials = useMemo(() => {
+    const rows = [];
+    (materials||[]).forEach(material => {
+      const stageSched = plotSchedule[material.linked_stage_id];
+      if (!stageSched) return;
+      const order = (materialOrders||[]).find(o => o.material_id === material.id && o.plot_id === plot.id);
+      const daysUntilStage = stageSched.start - todayIdx;
+      const leadDays = material.lead_time_weeks * 5;
+      const stageDate = workingDays[stageSched.start];
+      let status;
+      if (order && order.status === 'delivered') status = 'delivered';
+      else if (order && order.status === 'ordered') status = 'ordered';
+      else if (daysUntilStage <= leadDays) status = 'flagged';
+      else if (daysUntilStage <= 20) status = 'due_soon';
+      else return; // not relevant yet — omit
+      rows.push({ material, status, stageDate, order });
+    });
+    const orderRank = { flagged:0, due_soon:1, ordered:2, delivered:3 };
+    rows.sort((a,b) => (orderRank[a.status]||99)-(orderRank[b.status]||99));
+    return rows;
+  }, [materials, materialOrders, plotSchedule, todayIdx, workingDays, plot.id]);
+
+  const [stageStartedDate, setStageStartedDate] = useState(
+    plot.current_stage_started_date || new Date().toISOString().slice(0,10)
+  );
+
+  async function setStage(stageId, startedDate) {
+    setSavingStage(true);
+    const sd = startedDate || stageStartedDate;
+    await onUpdatePlot(plot.id, {
+      current_stage_id: stageId || null,
+      current_stage_started_date: stageId ? sd : null
+    });
+    setSavingStage(false);
+  }
+
+  async function saveNotes() {
+    await onUpdatePlot(plot.id, { notes: noteDraft });
+    setSavedFlash(true);
+    setTimeout(()=>setSavedFlash(false), 1500);
+  }
+
+  async function submitHsIssue() {
+    if (!hsDraft.trim()) return;
+    setHsSubmitting(true);
+    const ok = await onRaiseHsIssue(plot.id, hsDraft.trim(), hsSeverity);
+    setHsSubmitting(false);
+    if (ok) {
+      setHsDraft('');
+      setHsSubmitted(true);
+      setTimeout(()=>setHsSubmitted(false), 2000);
+    }
+  }
+
+  const col = TEN_COL[plot.tenure] || '#6b7280';
+
+  return e('div', {
+    style: { position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 },
+    className: 'plot-modal-overlay',
+    onClick: onClose
+  },
+    e('div', {
+      style: { width:480, maxWidth:'100%', maxHeight:'88vh', overflowY:'auto', background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' },
+      className: 'plot-modal-content',
+      onClick: ev => ev.stopPropagation()
+    },
+      // Header
+      e('div', { style:{ padding:'16px 18px', borderBottom:'1px solid #e5e7eb', background:col+'18', display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderRadius:'12px 12px 0 0' } },
+        e('div', null,
+          e('div', { style:{ fontSize:24, fontWeight:700, color:'#111827' } }, 'Plot ' + plot.plot_number),
+          e('div', { style:{ fontSize:12, color:'#6b7280', marginTop:2 } }, plot.address + ', ' + plot.postcode),
+          e('div', { style:{ marginTop:8, display:'inline-block', padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:700, background:col+'30', color:col, border:'1px solid '+col+'50' } }, plot.tenure)
+        ),
+        e('button', { onClick:onClose, style:{ background:'#e5e7eb', border:'none', borderRadius:'50%', width:28, height:28, cursor:'pointer', color:'#6b7280', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 } }, '×')
+      ),
+
+      // Body
+      e('div', { style:{ padding:'16px 18px' } },
+
+        // House details
+        e('div', { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:18 } },
+          ...[['House Type',plot.house_type],['Building Type',plot.plot_type],['Bedrooms',plot.beds],['Plot No.',plot.plot_number]].map(([k,v]) =>
+            e('div', { key:k, style:{ background:'#f9fafb', borderRadius:7, padding:'8px 10px' } },
+              e('div', { style:{ fontSize:9, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 } }, k),
+              e('div', { style:{ fontSize:13, color:'#1f2937', fontWeight:600 } }, String(v||'—'))
+            )
+          )
+        ),
+
+        // Current build stage
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '🏗 Current Build Stage'),
+          e('div', { style:{ display:'flex', gap:8, alignItems:'center' } },
+            e('select', {
+              value: plot.current_stage_id || '',
+              onChange: ev => setStage(ev.target.value),
+              disabled: savingStage,
+              style:{ flex:1, background:'#f9fafb', border:'1px solid #d1d5db', borderRadius:7, color:'#111827', fontSize:13, padding:'8px 10px', fontWeight:600 }
+            },
+              e('option', { value:'' }, '— Not started —'),
+              ...sortedStages.map(s => e('option', { key:s.id, value:s.id }, s.name + ' (' + s.trade + ')'))
+            ),
+            savingStage && e('span', { style:{ fontSize:10, color:'#f97316' } }, 'Saving...')
+          ),
+          // Stage start date — sets accurate Gantt position (halfway through a stage)
+          plot.current_stage_id && e('div',{style:{marginTop:8,display:'flex',alignItems:'center',gap:8}},
+            e('span',{style:{fontSize:10,color:'#6b7280',flexShrink:0}},'Stage started:'),
+            e('input',{type:'date',value:stageStartedDate,
+              onChange:ev=>setStageStartedDate(ev.target.value),
+              onBlur:()=>setStage(plot.current_stage_id, stageStartedDate),
+              style:{fontSize:11,border:'1px solid #d1d5db',borderRadius:5,padding:'3px 7px',color:'#111827'}
+            }),
+            e('span',{style:{fontSize:9,color:'#9ca3af'}},'Positions stage start on Gantt')
+          ),
+          currentStage && e('div', {
+            style:{ marginTop:8, display:'flex', alignItems:'center', gap:6, padding:'6px 10px', background:currentStage.color+'18', border:'1px solid '+currentStage.color+'40', borderRadius:6 }
+          },
+            e('div', { style:{ width:10, height:10, borderRadius:3, background:currentStage.color, flexShrink:0 } }),
+            e('span', { style:{ fontSize:12, color:'#1f2937', fontWeight:600 } }, 'On site: ' + currentStage.name)
+          )
+        ),
+
+        // CRC Deadline
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '🎯 CRC Deadline'),
+          e('input', {
+            type:'date', value: plot.crc_deadline_date || '',
+            onChange: ev => onUpdatePlot(plot.id, { crc_deadline_date: ev.target.value || null }),
+            style:{ width:'100%', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:7, color:'#374151', fontSize:13, padding:'8px 10px' }
+          }),
+          e('div', { style:{ fontSize:10, color:'#9ca3af', marginTop:4 } }, 'Target CRC date — the Gantt compares the scheduled CRC against this to show On Track / Behind / Ahead.')
+        ),
+
+        // Notes
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '📝 Site Notes'),
+          e('textarea', {
+            value: noteDraft,
+            onChange: ev => setNoteDraft(ev.target.value),
+            placeholder: 'Add notes for this plot — defects, access issues, material needs...',
+            rows: 3,
+            style:{ width:'100%', background:'#f9fafb', border:'1px solid #d1d5db', borderRadius:7, color:'#1f2937', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
+          }),
+          e('div', { style:{ display:'flex', gap:8, marginTop:6, alignItems:'center' } },
+            e('button', { onClick:saveNotes, style:{ padding:'5px 14px', background:'#e5e7eb', border:'1px solid #d1d5db', borderRadius:6, color:'#6b7280', fontSize:11, cursor:'pointer', fontWeight:600 } }, 'Save Note'),
+            savedFlash && e('span', { style:{ fontSize:10, color:'#16a34a' } }, '✓ Saved')
+          )
+        ),
+
+        // Materials for this plot
+        plotMaterials.length > 0 && e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } },
+            '📦 Materials ('+(plotMaterials.filter(m=>m.status!=='delivered').length)+' active · '+plotMaterials.filter(m=>m.status==='delivered').length+' delivered)'
+          ),
+          e('div', { style:{ display:'flex', flexDirection:'column', gap:6 } },
+            ...plotMaterials.map(({material,status,stageDate,order}) => {
+              const badge = {
+                flagged:  { label:'⚠ Order Now', bg:'#fee2e2', col:'#dc2626' },
+                due_soon: { label:'Due in 4wks', bg:'#fef3c7', col:'#d97706' },
+                ordered:  { label:'Ordered',     bg:'#fef3c7', col:'#d97706' },
+                delivered:{ label:'✓ Delivered', bg:'#dcfce7', col:'#16a34a' },
+              }[status] || { label:status, bg:'#f3f4f6', col:'#9ca3af' };
+              const dateStr = stageDate ? stageDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
+              return e(PlotMaterialRow, { key:material.id, material, status, badge, dateStr, order, plotId:plot.id, onSetOrder });
+            })
+          )
+        ),
+
+        // Raise H&S issue — posts to the H&S log automatically tagged with this plot
+        e('div', { style:{ marginBottom:18 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#dc2626', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 } }, '⚠️ Raise H&S Issue'),
+          e('textarea', {
+            value: hsDraft,
+            onChange: ev => setHsDraft(ev.target.value),
+            placeholder: 'Describe the issue — e.g. unsecured scaffold, missing PPE, blocked fire exit...',
+            rows: 2,
+            style:{ width:'100%', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:7, color:'#1f2937', fontSize:12, padding:8, resize:'vertical', fontFamily:'inherit' }
+          }),
+          e('div', { style:{ display:'flex', gap:8, marginTop:6, alignItems:'center' } },
+            e('select', {
+              value: hsSeverity,
+              onChange: ev => setHsSeverity(ev.target.value),
+              style:{ background:'#ffffff', border:'1px solid #d1d5db', borderRadius:6, color:'#374151', fontSize:11, padding:'5px 8px', fontWeight:600 }
+            },
+              e('option', { value:'green' }, '🟢 Low'),
+              e('option', { value:'amber' }, '🟠 Medium'),
+              e('option', { value:'red' }, '🔴 High')
+            ),
+            e('button', {
+              onClick: submitHsIssue,
+              disabled: hsSubmitting || !hsDraft.trim(),
+              style:{ padding:'6px 14px', background:'#dc2626', border:'none', borderRadius:6, color:'#ffffff', fontSize:11, fontWeight:700, cursor:'pointer', opacity:(hsSubmitting||!hsDraft.trim())?0.6:1 }
+            }, hsSubmitting ? 'Submitting...' : 'Submit Issue'),
+            hsSubmitted && e('span', { style:{ fontSize:10, color:'#16a34a', fontWeight:600 } }, '✓ Logged to H&S')
+          ),
+          e('div', { style:{ fontSize:10, color:'#9ca3af', marginTop:5 } }, 'This automatically creates an entry on the H&S tab tagged with Plot ' + plot.plot_number + '.')
+        ),
+
+        // Site Logbook (outstanding works, cleanup notices, dayworks, RFI notes, photos)
+        e('div', { style:{ marginBottom:18, borderTop:'1px solid #e5e7eb', marginTop:8, paddingTop:14 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4, paddingLeft:0 } }, '📒 Site Logbook'),
+          e(PlotLogbook, { plot, items, trades, onCreateItem, onUpdateItem, onDeleteItem })
+        ),
+
+        // CML / CRC Certificates
+        e('div', { style:{ marginBottom:18, borderTop:'1px solid #e5e7eb', marginTop:8, paddingTop:14 } },
+          e('div', { style:{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 } }, '📄 Certificates'),
+          e('div', { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 } },
+            ...['cml','crc'].map(ct => {
+              const certUrl = plot[ct+'_cert_url'];
+              return e('div', { key:ct, style:{ background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px' } },
+                e('div', { style:{ fontSize:11, fontWeight:700, color:'#374151', marginBottom:6 } }, ct.toUpperCase()+' Certificate'),
+                certUrl
+                  ? e('div', { style:{ display:'flex', gap:5, alignItems:'center', flexWrap:'wrap' } },
+                      e('a', { href:certUrl, target:'_blank', style:{ fontSize:11, color:'#2563eb', textDecoration:'underline' } }, '📄 View Certificate'),
+                      e('label', { style:{ fontSize:10, color:'#9ca3af', cursor:'pointer', textDecoration:'underline' } },
+                        'Replace',
+                        e('input', { type:'file', accept:'image/*,application/pdf', style:{display:'none'}, onChange: async ev => {
+                          const file = ev.target.files[0]; ev.target.value='';
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = async e2 => {
+                            const b64 = e2.target.result.split(',')[1];
+                            const r = await api('/plots/'+plot.id+'/upload-cert', {method:'POST',body:JSON.stringify({cert_type:ct,image_b64:b64,mime_type:file.type})}).then(r=>r.json());
+                            if(r.ok) onUpdatePlot(plot.id,{[ct+'_cert_url']:r.url});
+                          };
+                          reader.readAsDataURL(file);
+                        }})
+                      )
+                    )
+                  : e('label', { style:{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:11, color:'#9ca3af', border:'1px dashed #d1d5db', borderRadius:5, padding:'6px 8px' } },
+                      '📁 Upload '+ct.toUpperCase()+' Certificate',
+                      e('input', { type:'file', accept:'image/*,application/pdf', style:{display:'none'}, onChange: async ev => {
+                        const file = ev.target.files[0]; ev.target.value='';
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async e2 => {
+                          const b64 = e2.target.result.split(',')[1];
+                          const r = await api('/plots/'+plot.id+'/upload-cert', {method:'POST',body:JSON.stringify({cert_type:ct,image_b64:b64,mime_type:file.type})}).then(r=>r.json());
+                          if(r.ok) onUpdatePlot(plot.id,{[ct+'_cert_url']:r.url});
+                        };
+                        reader.readAsDataURL(file);
+                      }})
+                    )
+              );
+            })
+          )
+        ),
+
+        // Snag Report upload
+        e('div',{style:{marginBottom:12}},
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'🔍 Snag Report'),
+          e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+            e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px'}},
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:6}},'Snag Report Document'),
+              plot.snag_report_url
+                ? e('div',{style:{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}},
+                    e('a',{href:plot.snag_report_url,target:'_blank',style:{fontSize:11,color:'#2563eb',textDecoration:'underline'}},'📄 View Snag Report'),
+                    e('label',{style:{fontSize:10,color:'#9ca3af',cursor:'pointer',textDecoration:'underline'}},
+                      'Replace',
+                      e('input',{type:'file',accept:'image/*,application/pdf',style:{display:'none'},onChange:async ev=>{
+                        const file=ev.target.files[0]; ev.target.value='';
+                        if(!file) return;
+                        const reader=new FileReader();
+                        reader.onload=async e2=>{
+                          const b64=e2.target.result.split(',')[1];
+                          const r=await api('/plots/'+plot.id+'/upload-snag-report',{method:'POST',body:JSON.stringify({file_b64:b64,filename:file.name,mime_type:file.type})}).then(r=>r.json());
+                          if(r.ok) onUpdatePlot(plot.id,{snag_report_url:r.url});
+                        };
+                        reader.readAsDataURL(file);
+                      }})
+                    )
+                  )
+                : e('label',{style:{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11,color:'#9ca3af',border:'1px dashed #d1d5db',borderRadius:5,padding:'6px 8px'}},
+                    '📁 Upload Snag Report',
+                    e('input',{type:'file',accept:'image/*,application/pdf',style:{display:'none'},onChange:async ev=>{
+                      const file=ev.target.files[0]; ev.target.value='';
+                      if(!file) return;
+                      const reader=new FileReader();
+                      reader.onload=async e2=>{
+                        const b64=e2.target.result.split(',')[1];
+                        const r=await api('/plots/'+plot.id+'/upload-snag-report',{method:'POST',body:JSON.stringify({file_b64:b64,filename:file.name,mime_type:file.type})}).then(r=>r.json());
+                        if(r.ok) onUpdatePlot(plot.id,{snag_report_url:r.url});
+                      };
+                      reader.readAsDataURL(file);
+                    }})
+                  )
+            ),
+            // Pre-CRC Notes
+            e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px'}},
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:6}},'Pre-CRC Snag Notes'),
+              e('textarea',{
+                defaultValue:plot.pre_crc_notes||'',
+                rows:3,
+                placeholder:'Record pre-CRC snag items here for reference...',
+                style:{width:'100%',fontSize:10,border:'1px solid #d1d5db',borderRadius:5,padding:'5px 7px',resize:'vertical',boxSizing:'border-box'},
+                onBlur: async ev => {
+                  const val = ev.target.value;
+                  await api('/plots/'+plot.id,{method:'PATCH',body:JSON.stringify({pre_crc_notes:val})});
+                  onUpdatePlot(plot.id,{pre_crc_notes:val});
+                }
+              })
+            )
+          )
+        )
+      ),
+
+      // Footer
+      e('div', { style:{ padding:'12px 18px', borderTop:'1px solid #e5e7eb', display:'flex', gap:8 } },
+        e('button', {
+          onClick: () => { onRemoveDot(plot.id); onClose(); },
+          style:{ padding:'7px 14px', background:'#fee2e2', border:'1px solid #dc2626', borderRadius:7, color:'#dc2626', fontSize:12, cursor:'pointer', fontWeight:600 }
+        }, '🗑 Remove Dot'),
+        e('div', { style:{ flex:1 } }),
+        e('button', { onClick:onClose, style:{ padding:'7px 16px', background:'#f97316', border:'none', borderRadius:7, color:'#111', fontSize:12, fontWeight:700, cursor:'pointer' } }, 'Close')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SITE MAP TAB
+// ══════════════════════════════════════════════════════════════════════════
+function SiteMapTab({ plots, bgImage, setBgImage, dots, setDots, onDotsSaved, onManualSync, stageDefs, plotStages, onUpdatePlot, materials, materialOrders, onSetOrder, onRaiseHsIssue, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,730); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
+  const [placeMode,  setPlaceMode]  = useState(false);
+  const [nextId,     setNextId]     = useState(null);
+  const [selected,   setSelected]   = useState(null);
+  const [zoom,       setZoom]       = useState(1);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [filter,     setFilter]     = useState('All');
+  const [natSize,    setNatSize]    = useState(null); // {w,h} natural image pixel size
+  const imgRef    = useRef(null);
+  const fileRef   = useRef(null);
+  const dragRef   = useRef(null);
+  const dotsRef   = useRef(dots);
+  const scrollRef = useRef(null);   // the overflow:auto map area — used for panning
+  const panRef    = useRef(null);   // pan-drag tracking
+  const suppressClickRef = useRef(false);
+  const [isPanning, setIsPanning] = useState(false);
+
+  useEffect(()=>{ dotsRef.current = dots; }, [dots]);
+
+  // Reset natural size when image changes so it's recalculated
+  useEffect(()=>{
+    setNatSize(null);
+    // Defensive fallback: if the image is already cached (e.g. restored from
+    // localStorage), the native 'load' event can fire before React attaches
+    // its onLoad listener, so onLoad never runs. Poll img.complete instead.
+    const checkComplete = () => {
+      if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth) {
+        setNatSize({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+      }
+    };
+    checkComplete();
+    const t1 = setTimeout(checkComplete, 50);
+    const t2 = setTimeout(checkComplete, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [bgImage]);
+
+  async function handleUpload(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    if (file.type === 'application/pdf') {
+      setPdfLoading(true);
+      try {
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const ab = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+        const page = await pdf.getPage(1);
+        const scale = 5; // Higher scale = sharper on retina displays
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        setBgImage(canvas.toDataURL('image/png'));
+      } catch(ex) { alert('PDF error: '+ex.message+'\nTry saving the PDF page as PNG instead.'); }
+      setPdfLoading(false);
+    } else {
+      const reader = new FileReader();
+      reader.onload = e2 => setBgImage(e2.target.result);
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function saveDots(d) { setDots(d); lsSet('smc_dots_v4', d); onDotsSaved && onDotsSaved(d); }
+
+  function handleImgLoad(ev) {
+    setNatSize({ w: ev.target.naturalWidth, h: ev.target.naturalHeight });
+  }
+
+  const sortedPlots = useMemo(() => [...plots].sort((a,b)=>{
+    // is_core_block sorts to the very top (before plot 1)
+    if (a.is_core_block && !b.is_core_block) return -1;
+    if (!a.is_core_block && b.is_core_block) return 1;
+    return (parseInt(a.plot_number)||0) - (parseInt(b.plot_number)||0);
+  }), [plots]);
+  const listPlots = useMemo(() => filter==='All' ? sortedPlots : sortedPlots.filter(p=>p.tenure===filter), [filter, sortedPlots]);
+  const unplaced  = useMemo(() => sortedPlots.filter(p => !dots[p.id]), [sortedPlots, dots]);
+  const placed    = useMemo(() => sortedPlots.filter(p =>  dots[p.id]), [sortedPlots, dots]);
+  const selPlot   = selected ? sortedPlots.find(p => p.id === selected) : null;
+  const nextPlot  = nextId   ? sortedPlots.find(p => p.id === nextId)   : null;
+
+  function startPlace() {
+    setPlaceMode(true);
+    const first = unplaced[0];
+    if (first) setNextId(first.id);
+  }
+
+  // ── Placement / selection click (on the image, not a dot) ────────────────
+  function handleMapAreaClick(ev) {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+    if (!imgRef.current) return;
+    if (ev.target !== imgRef.current) return;
+    if (!placeMode || !nextId) return; // deselect handled by background click below
+    const rect = imgRef.current.getBoundingClientRect();
+    const px = ((ev.clientX - rect.left) / rect.width)  * 100;
+    const py = ((ev.clientY - rect.top)  / rect.height) * 100;
+    const nd = Object.assign({}, dotsRef.current, { [nextId]: { px, py } });
+    saveDots(nd);
+    const remaining = sortedPlots.filter(p => !nd[p.id]);
+    setNextId(remaining.length ? remaining[0].id : null);
+    if (!remaining.length) setPlaceMode(false);
+  }
+
+  // ── Dot click → open detail modal ─────────────────────────────────────────
+  function handleDotClick(ev, id) {
+    ev.stopPropagation();
+    if (placeMode) return;
+    setSelected(id);
+  }
+
+  // ── Dot drag-to-reposition ────────────────────────────────────────────────
+  function handleDotMouseDown(ev, id) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    if (placeMode) return;
+    if (!imgRef.current || !dotsRef.current[id]) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    const orig = Object.assign({}, dotsRef.current[id]);
+    let moved = false;
+    function onMove(me) {
+      const dx = ((me.clientX - ev.clientX) / rect.width)  * 100;
+      const dy = ((me.clientY - ev.clientY) / rect.height) * 100;
+      if (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2) moved = true;
+      setDots(prev => {
+        const nd = Object.assign({}, prev, { [id]: { px: Math.max(0,Math.min(100,orig.px+dx)), py: Math.max(0,Math.min(100,orig.py+dy)) } });
+        dotsRef.current = nd;
+        return nd;
+      });
+    }
+    function onUp() {
+      if (moved) {
+        lsSet('smc_dots_v4', dotsRef.current);
+        onDotsSaved && onDotsSaved(dotsRef.current); // sync to server
+      }
+      else { setSelected(id); }
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  // ── Click-and-drag panning of the whole drawing ───────────────────────────
+  function handleWrapperMouseDown(ev) {
+    if (placeMode) return;
+    if (ev.target !== imgRef.current) return;
+    if (!scrollRef.current) return;
+    ev.preventDefault(); // prevent browser scroll-hijack on touch
+    const startX = ev.clientX, startY = ev.clientY;
+    const startScrollLeft = scrollRef.current.scrollLeft;
+    const startScrollTop  = scrollRef.current.scrollTop;
+    let moved = false;
+    panRef.current = { moved: false };
+    function onMove(me) {
+      const dx = me.clientX - startX, dy = me.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { moved = true; setIsPanning(true); }
+      if (moved && scrollRef.current) {
+        scrollRef.current.scrollLeft = startScrollLeft - dx;
+        scrollRef.current.scrollTop  = startScrollTop  - dy;
+      }
+    }
+    function onUp() {
+      if (moved) suppressClickRef.current = true;
+      setIsPanning(false);
+      panRef.current = null;
+      // Must match the event types that were added — pointermove/pointerup
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  // ── Background click (outside image) clears selection ─────────────────────
+  function handleBackgroundClick(ev) {
+    if (ev.target === scrollRef.current) setSelected(null);
+  }
+
+  const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+  // ── Pixel-accurate rendered dimensions (fixes dot/zoom sync) ──────────────
+  const renderW = natSize ? natSize.w * zoom : null;
+  const renderH = natSize ? natSize.h * zoom : null;
+
+  // ── Left sidebar ───────────────────────────────────────────────────────
+  const sidebar = e('div',{style:{width:200,flexShrink:0,background:'#f8fafc',borderRight:'1px solid #e5e7eb',display:'flex',flexDirection:'column',overflow:'hidden'}},
+
+    e('div',{style:{padding:'10px 10px 6px',borderBottom:'1px solid #e5e7eb'}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Site Plan Drawing'),
+      e('button',{
+        onClick:()=>fileRef.current.click(),
+        style:{width:'100%',padding:'7px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:6,color:'#6b7280',fontSize:11,cursor:'pointer',marginBottom:4}
+      }, pdfLoading?'⏳ Rendering...' : bgImage?'📁 Replace Drawing':'📁 Upload P101/P102'),
+      e('input',{ref:fileRef,type:'file',accept:'image/*,.pdf,application/pdf',style:{display:'none'},onChange:handleUpload}),
+      bgImage
+        ? e('div',{style:{fontSize:9,color:'#16a34a'}},'✓ Drawing loaded · syncs to all devices automatically')
+        : e('div',{style:{fontSize:9,color:'#9ca3af',lineHeight:1.4}},'Upload once on any device — automatically available on all others.'),
+      bgImage && e('button',{
+        onClick: () => { onManualSync && onManualSync(); },
+        style:{marginTop:5,width:'100%',padding:'5px',background:'#1e293b',border:'none',borderRadius:5,color:'#f97316',fontSize:10,fontWeight:700,cursor:'pointer'}
+      },'☁ Sync to all devices'),
+    ),
+
+    bgImage && e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}},'Zoom'),
+      e('div',{style:{display:'flex',gap:3,flexWrap:'wrap'}},
+        ...ZOOMS.map(z=>e('button',{key:z,onClick:()=>setZoom(z),style:{padding:'3px 6px',background:zoom===z?'#f97316':'#e5e7eb',border:'1px solid '+(zoom===z?'#f97316':'#d1d5db'),borderRadius:4,color:zoom===z?'#111':'#6b7280',fontSize:9,cursor:'pointer',fontWeight:zoom===z?700:400}},z===1?'100%':(z*100|0)+'%'))
+      ),
+      e('div',{style:{fontSize:9,color:'#9ca3af',marginTop:5}},'🖐 Click & drag the drawing to pan')
+    ),
+
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+        e('div',{style:{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.08em'}},'Plot Dots'),
+        e('div',{style:{fontSize:10,color:'#6b7280'}},placed.length+'/'+sortedPlots.length)
+      ),
+      e('div',{style:{height:4,background:'#e5e7eb',borderRadius:2,overflow:'hidden',marginBottom:8}},
+        e('div',{style:{height:'100%',background:'#f97316',width:(sortedPlots.length?(placed.length/sortedPlots.length*100):0)+'%',transition:'width 0.3s'}})
+      ),
+      placeMode
+        ? e('div',null,
+            e('button',{onClick:()=>{setPlaceMode(false);setNextId(null);},style:{width:'100%',padding:'6px',background:'#f97316',border:'1px solid #f97316',borderRadius:5,color:'#111',fontSize:11,fontWeight:700,cursor:'pointer',marginBottom:6}},'✋ Stop Placing'),
+            nextPlot && e('div',{style:{background:'#e5e7eb',borderRadius:5,padding:'6px 8px'}},
+              e('div',{style:{fontSize:9,color:'#6b7280',marginBottom:3}},'Now placing:'),
+              e('div',{style:{fontSize:11,fontWeight:700,color:'#f59e0b'}},'Plot '+nextPlot.plot_number),
+              e('div',{style:{fontSize:10,color:'#6b7280'}},nextPlot.house_type),
+              e('div',{style:{fontSize:9,color:'#9ca3af'}},nextPlot.address),
+              e('div',{style:{marginTop:4,fontSize:9,color:'#6b7280'}},'Change plot to place:'),
+              e('select',{value:nextId||'',onChange:ev=>setNextId(ev.target.value),style:{width:'100%',background:'#f9fafb',border:'1px solid #d1d5db',borderRadius:4,color:'#111827',fontSize:10,padding:3,marginTop:2}},
+                ...unplaced.map(p=>e('option',{key:p.id,value:p.id},'P'+p.plot_number+' — '+p.house_type))
+              )
+            ),
+            !nextPlot && e('div',{style:{fontSize:10,color:'#16a34a'}},'✓ All plots placed!')
+          )
+        : e('button',{
+            onClick:startPlace,
+            disabled:!bgImage,
+            style:{width:'100%',padding:'6px',background:bgImage?'#e5e7eb':'#f9fafb',border:'1px solid '+(bgImage?'#d1d5db':'#e5e7eb'),borderRadius:5,color:bgImage?'#6b7280':'#d1d5db',fontSize:11,cursor:bgImage?'pointer':'default'}
+          },'🖱 Place Plot Dots'+(!bgImage?' (upload drawing first)':''))
+    ),
+
+    e('div',{style:{padding:'8px 10px',borderBottom:'1px solid #e5e7eb'}},
+      e('div',{style:{fontSize:9,color:'#9ca3af'}},placeMode?'👆 Click the drawing to place the dot':'Click any placed dot to open its details. Drag dots to reposition.')
+    ),
+
+    e('div',{style:{padding:'6px 10px 4px',borderBottom:'1px solid #f9fafb'}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+        e('div',{style:{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}},'All Plots'),
+        e('select',{value:filter,onChange:ev=>setFilter(ev.target.value),style:{background:'#f9fafb',border:'none',color:'#9ca3af',fontSize:9,padding:'1px'}},
+          ['All','Private','Aff Shared','Aff Rent','Social Rent','1st Homes'].map(f=>e('option',{key:f},f))
+        )
+      )
+    ),
+    e('div',{style:{flex:1,overflowY:'auto'}},
+      ...listPlots.map(p => {
+        const isPlaced = !!dots[p.id];
+        const isSel = selected === p.id;
+        return e('div',{
+          key:p.id,
+          onClick:()=>{ if(placeMode){setNextId(p.id);}else if(isPlaced){setSelected(p.id);} },
+          style:{
+            padding:'5px 10px',cursor:'pointer',
+            background: isSel?'#e5e7eb':placeMode&&nextId===p.id?'rgba(249,115,22,0.1)':'transparent',
+            borderLeft: '3px solid '+(isSel?'#f97316':placeMode&&nextId===p.id?'#f97316':isPlaced?'#d1d5db':'transparent'),
+            borderBottom:'1px solid #f9fafb'
+          }
+        },
+          e('div',{style:{display:'flex',alignItems:'center',gap:5}},
+            e('div',{style:{width:7,height:7,borderRadius:'50%',background:TEN_COL[p.tenure]||'#6b7280',flexShrink:0}}),
+            e('span',{style:{fontSize:10,fontWeight:700,color:isPlaced?'#1f2937':'#9ca3af',flex:1}},'P'+p.plot_number+' '+p.house_type),
+            isPlaced && e('span',{style:{fontSize:8,color:'#16a34a'}},'✓'),
+            isPlaced && e('button',{
+              title:'Scroll map to this dot',
+              onClick:ev=>{
+                ev.stopPropagation();
+                const dot=dots[p.id]; if(!dot||!scrollRef.current||!imgRef.current)return;
+                const img=imgRef.current;
+                const scrollEl=scrollRef.current;
+                const dotX=(dot.px/100)*img.offsetWidth;
+                const dotY=(dot.py/100)*img.offsetHeight;
+                scrollEl.scrollLeft=Math.max(0,dotX-scrollEl.clientWidth/2);
+                scrollEl.scrollTop=Math.max(0,dotY-scrollEl.clientHeight/2);
+                setSelected(p.id);
+              },
+              style:{padding:'1px 5px',background:'#e5e7eb',border:'none',borderRadius:3,color:'#6b7280',fontSize:9,cursor:'pointer',lineHeight:1.2}
+            },'🔍'),
+            !isPlaced && placeMode && nextId===p.id && e('span',{style:{fontSize:8,color:'#f97316',fontWeight:700}},'◄')
+          ),
+          e('div',{style:{fontSize:9,color:'#9ca3af',paddingLeft:12,marginTop:1}},p.address)
+        );
+      })
+    ),
+    e('div',{style:{padding:'8px 10px',borderTop:'1px solid #e5e7eb',display:'flex',gap:4}},
+      e('button',{onClick:()=>{saveDots({});setSelected(null);},style:{flex:1,padding:'4px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#9ca3af',fontSize:9,cursor:'pointer'}},'Clear All'),
+      e('button',{onClick:()=>setZoom(1),style:{flex:1,padding:'4px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:4,color:'#9ca3af',fontSize:9,cursor:'pointer'}},'Reset Zoom')
+    )
+  );
+
+  // ── Map area (scrollable, pannable) ───────────────────────────────────────
+  const mapArea = e('div',{
+    ref: scrollRef,
+    style:{flex:1,overflow:'auto',background:'#ffffff',position:'relative'},
+    onClick: handleBackgroundClick
+  },
+    !bgImage
+      ? e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14}},
+          e('div',{style:{fontSize:60,opacity:0.1}},'🗺️'),
+          e('div',{style:{textAlign:'center',maxWidth:380}},
+            e('div',{style:{fontSize:15,fontWeight:700,color:'#374151',marginBottom:8}},'Upload Your Site Drawing'),
+            e('div',{style:{fontSize:12,color:'#6b7280',lineHeight:1.8}},
+              'Accepts PNG, JPG, or PDF. ',
+              e('strong',{style:{color:'#f97316'}},'PDF is recommended'),
+              ' — rendered at 3× resolution so it stays sharp when zoomed in.'
+            ),
+            e('button',{onClick:()=>fileRef.current.click(),style:{marginTop:14,padding:'10px 22px',background:'#f97316',border:'none',borderRadius:8,color:'#111',fontSize:13,fontWeight:700,cursor:'pointer'}},'Upload Drawing')
+          )
+        )
+      : e('div',{
+          style:{
+            position:'relative',
+            width: renderW ? renderW+'px' : '100%',
+            height: renderH ? renderH+'px' : 'auto',
+            cursor: placeMode ? 'crosshair' : (isPanning ? 'grabbing' : 'grab')
+          },
+          onPointerDown: handleWrapperMouseDown,
+          onClick: handleMapAreaClick
+        },
+          e('img',{
+            ref:imgRef, src:bgImage, alt:'Site Drawing', draggable:false, onLoad:handleImgLoad,
+            style:{ display:'block', width: renderW?renderW+'px':'100%', height: renderH?renderH+'px':'auto', userSelect:'none', pointerEvents:'auto' }
+          }),
+          e('svg',{ style:{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',pointerEvents:'none'} },
+            ...sortedPlots.map(plot=>{
+              const dot=dots[plot.id]; if(!dot)return null;
+              const col=TEN_COL[plot.tenure]||'#f59e0b';
+              const sel=selected===plot.id;
+              const r=10; // Fixed 9px — does not shrink as zoom increases
+              const isBung=plot.plot_type==='Bungalow', isFlat=plot.plot_type==='Flat';
+              const cx=dot.px+'%', cy=dot.py+'%';
+              return e('g',{key:plot.id,style:{cursor:placeMode?'default':'pointer',pointerEvents:'auto'},onClick:ev=>handleDotClick(ev,plot.id),onMouseDown:ev=>handleDotMouseDown(ev,plot.id)},
+                sel&&e('circle',{key:'r',cx,cy,r:r+4,fill:'none',stroke:'#fff',strokeWidth:2,opacity:0.8}),
+                plot.is_core_block
+                  // Block A Core — large orange square, distinct from individual flats
+                  ?e('rect',{key:'d',x:'calc('+dot.px+'% - '+(r*1.3)+'px)',y:'calc('+dot.py+'% - '+(r*1.3)+'px)',width:r*2.6,height:r*2.6,rx:3,fill:'#f97316',stroke:sel?'#fff':'#1e293b',strokeWidth:sel?3:2})
+                  :isFlat
+                    ?e('rect',{key:'d',x:'calc('+dot.px+'% - '+(r*0.85)+'px)',y:'calc('+dot.py+'% - '+(r*0.85)+'px)',width:r*1.7,height:r*1.7,rx:2,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
+                    :isBung
+                      ?e('polygon',{key:'d',points:dot.px+'%,calc('+dot.py+'% - '+r+'px) calc('+dot.px+'% + '+r+'px),'+dot.py+'% '+dot.px+'%,calc('+dot.py+'% + '+r+'px) calc('+dot.px+'% - '+r+'px),'+dot.py+'%',fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2})
+                      :e('circle',{key:'d',cx,cy,r,fill:col,stroke:sel?'#fff':'rgba(0,0,0,0.5)',strokeWidth:sel?2:1.2}),
+                e('text',{key:'l',x:cx,y:cy,dominantBaseline:'middle',textAnchor:'middle',fontSize:plot.is_core_block?9:8,fontWeight:700,fill:'#fff',style:{pointerEvents:'none',userSelect:'none'}},
+                  plot.is_core_block?'A':plot.plot_number)
+              );
+            }).filter(Boolean)
+          ),
+          placeMode&&nextPlot&&e('div',{style:{position:'fixed',bottom:56,left:'50%',transform:'translateX(-50%)',background:'rgba(249,115,22,0.97)',padding:'8px 20px',borderRadius:20,fontSize:12,fontWeight:700,color:'#111',pointerEvents:'none',zIndex:50,boxShadow:'0 4px 20px rgba(249,115,22,0.4)'}},'Click drawing to place Plot '+nextPlot.plot_number+' ('+nextPlot.house_type+')')
+        )
+  );
+
+  return e('div',{style:{display:'flex',height:'100%'}},
+    sidebar,
+    mapArea,
+    selPlot && e(PlotDetailModal, {
+      plot: selPlot,
+      stageDefs: stageDefs,
+      plotSchedule: schedules[selPlot.id] || {},
+      materials: materials,
+      materialOrders: materialOrders,
+      onSetOrder: onSetOrder,
+      onRaiseHsIssue: onRaiseHsIssue,
+      onClose: () => setSelected(null),
+      onUpdatePlot: onUpdatePlot,
+      onRemoveDot: (id) => { const d=Object.assign({},dotsRef.current); delete d[id]; saveDots(d); },
+      items: items,
+      trades: trades,
+      onCreateItem: onCreateItem,
+      onUpdateItem: onUpdateItem,
+      onDeleteItem: onDeleteItem,
+    })
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// H&S TAB
+// ══════════════════════════════════════════════════════════════════════════
+// Editable row for the statutory inspection matrix
+// ══════════════════════════════════════════════════════════════════════════
+// STAGE EDITOR TAB
+// ══════════════════════════════════════════════════════════════════════════
+function StageEditorTab({ stageDefs, setStageDefs, plots, trades, stageTemplates, onUpdatePlot }) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [editingId, setEditingId]     = useState(null);
+  const [editName, setEditName]       = useState('');
+  const [editTradeId, setEditTradeId] = useState('');
+  const [editDur, setEditDur]         = useState(1);
+  const [saving, setSaving]           = useState(false);
+  const [cloning, setCloning]         = useState(null);
+  const [addingStage, setAddingStage] = useState(false);
+  const [newName, setNewName]         = useState('');
+  const [newTradeId, setNewTradeId]   = useState('');
+  const [newDur, setNewDur]           = useState(1);
+  const [showPlots, setShowPlots]     = useState(false);
+  const [savingPlot, setSavingPlot]   = useState(null);
+
+  // Drag-to-reorder state
+  const dragState = useRef(null);
+  const dropIdxRef = useRef(null); // ref to avoid stale closure in onUp
+  const [dragIdx, setDragIdx]       = useState(null);
+  const [dropIdx, setDropIdx]       = useState(null);
+
+  useEffect(() => {
+    if (!selectedTemplateId && stageTemplates.length) {
+      const house = stageTemplates.find(t => t.name === 'House (Standard)') || stageTemplates[0];
+      setSelectedTemplateId(house.id);
+    }
+  }, [stageTemplates]);
+
+  const sortedTemplates = useMemo(() =>
+    [...stageTemplates].sort((a,b) => (b.is_default?1:0)-(a.is_default?1:0) || a.name.localeCompare(b.name)),
+    [stageTemplates]
+  );
+
+  const templateStages = useMemo(() => {
+    if (!selectedTemplateId) return [];
+    return [...stageDefs]
+      .filter(d => d.template_id === selectedTemplateId)
+      .sort((a,b) => (a.stage_order||0)-(b.stage_order||0));
+  }, [stageDefs, selectedTemplateId]);
+
+  const selectedTemplate = stageTemplates.find(t => t.id === selectedTemplateId);
+  const houseTemplate    = stageTemplates.find(t => t.name === 'House (Standard)');
+
+  // Plots assigned to this template
+  const assignedPlotIds = useMemo(() =>
+    new Set(plots.filter(p => p.template_id === selectedTemplateId).map(p => p.id)),
+    [plots, selectedTemplateId]
+  );
+
+  const tradeColorMap = useMemo(() => {
+    const m={}; trades.forEach(t=>{m[t.name]=t.color;m[t.id]=t.color;}); return m;
+  }, [trades]);
+
+  function getTradeColor(tradeNameOrId) { return tradeColorMap[tradeNameOrId]||'#64748b'; }
+
+  // ── Inline edit ──────────────────────────────────────────────────────────
+  function startEdit(def) {
+    setEditingId(def.id);
+    setEditName(def.name);
+    setEditTradeId(def.trade_id||'');
+    setEditDur(def.default_duration||1);
+  }
+  function cancelEdit() { setEditingId(null); }
+
+  async function saveEdit(def) {
+    setSaving(true);
+    const trade = trades.find(t=>t.id===editTradeId);
+    const fields = {
+      name: editName.trim(),
+      trade: trade?trade.name:(def.trade||''),
+      trade_id: editTradeId||null,
+      color: trade?trade.color:(def.color||'#64748b'),
+      default_duration: parseInt(editDur)||1
+    };
+    await api('/stage-defs/'+def.id, {method:'PATCH',body:JSON.stringify(fields)});
+    setStageDefs(prev=>prev.map(d=>d.id===def.id?Object.assign({},d,fields):d));
+    setEditingId(null);
+    setSaving(false);
+  }
+
+  async function deleteStage(def) {
+    if (!confirm('Delete "'+def.name+'" from this template?')) return;
+    await api('/stage-defs/'+def.id, {method:'DELETE'});
+    setStageDefs(prev=>prev.filter(d=>d.id!==def.id));
+  }
+
+  // ── Add stage ─────────────────────────────────────────────────────────────
+  async function addStage() {
+    if (!newName.trim()||!selectedTemplateId) return;
+    const trade=trades.find(t=>t.id===newTradeId);
+    const nextOrder=templateStages.length?Math.max(...templateStages.map(d=>d.stage_order||0))+1:1;
+    const r=await api('/stage-defs',{method:'POST',body:JSON.stringify({
+      template_id:selectedTemplateId,
+      name:newName.trim(),
+      trade:trade?trade.name:'',
+      trade_id:newTradeId||null,
+      color:trade?trade.color:'#64748b',
+      default_duration:parseInt(newDur)||1,
+      stage_order:nextOrder,
+    })}).then(r=>r.json());
+    if(r.ok&&r.stage) setStageDefs(prev=>[...prev,r.stage]);
+    setNewName('');setNewTradeId('');setNewDur(1);setAddingStage(false);
+  }
+
+  // ── Clone template ────────────────────────────────────────────────────────
+  async function cloneTemplate(targetId) {
+    if(!houseTemplate) return;
+    const target=stageTemplates.find(t=>t.id===targetId);
+    if(!confirm('Clone all House (Standard) stages into "'+target.name+'"? Existing stages will be replaced.')) return;
+    setCloning(targetId);
+    const r=await api('/stage-templates/'+targetId+'/clone-from/'+houseTemplate.id,{method:'POST'}).then(r=>r.json());
+    if(r.ok){
+      const fresh=await api('/stage-defs').then(r=>r.json());
+      setStageDefs(Array.isArray(fresh)?fresh:[]);
+    }
+    setCloning(null);
+  }
+
+  // ── Drag-to-reorder ───────────────────────────────────────────────────────
+  function onDragHandleMouseDown(ev, idx) {
+    ev.preventDefault();
+    const startY = ev.clientY;
+    dragState.current = { idx, startY };
+    setDragIdx(idx);
+    setDropIdx(idx);
+
+    function onMove(me) {
+      if (!dragState.current) return;
+      const dy = me.clientY - dragState.current.startY;
+      const ROW = 44; // approx row height px
+      const newIdx = Math.max(0, Math.min(templateStages.length-1, dragState.current.idx + Math.round(dy/ROW)));
+      setDropIdx(newIdx);
+      dropIdxRef.current = newIdx;
+    }
+
+    async function onUp() {
+      if (!dragState.current) return;
+      const from = dragState.current.idx;
+      const to = dropIdxRef.current ?? from;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setDragIdx(null);
+      setDropIdx(null);
+      dragState.current = null;
+
+      if (from === to) return;
+
+      // Reorder: move the dragged stage to new position, renumber everything
+      const arr = [...templateStages];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+
+      // Update stage_orders: assign clean sequential numbers
+      const updates = arr.map((def, i) => ({ id: def.id, stage_order: i + 1 }));
+      setStageDefs(prev => {
+        const m = {};
+        updates.forEach(u => { m[u.id] = u.stage_order; });
+        return prev.map(d => m[d.id] !== undefined ? Object.assign({}, d, { stage_order: m[d.id] }) : d);
+      });
+
+      // Persist all changed orders in parallel
+      await Promise.all(
+        updates.map(u => api('/stage-defs/' + u.id, { method:'PATCH', body:JSON.stringify({ stage_order: u.stage_order }) }))
+      );
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  // ── Plot assignment ────────────────────────────────────────────────────────
+  async function togglePlotTemplate(plot) {
+    const newTemplateId = assignedPlotIds.has(plot.id) ? houseTemplate?.id : selectedTemplateId;
+    setSavingPlot(plot.id);
+    await onUpdatePlot(plot.id, { template_id: newTemplateId });
+    setSavingPlot(null);
+  }
+
+  const totalDays = templateStages.reduce((sum,d)=>sum+(d.default_duration||0),0);
+  const inp = { padding:'4px 7px', border:'1px solid #d1d5db', borderRadius:6, fontSize:11, color:'#111827', background:'#fff', outline:'none' };
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden',background:'#f9fafb'}},
+
+    // Header
+    e('div',{style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'10px 16px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}},
+      e('div',{style:{fontSize:15,fontWeight:700,color:'#111827'}},'⚙️ Stage Editor'),
+      e('div',{style:{width:1,height:20,background:'#e5e7eb'}}),
+      ...sortedTemplates.map(t=>
+        e('button',{key:t.id,onClick:()=>{setSelectedTemplateId(t.id);setEditingId(null);setAddingStage(false);setShowPlots(false);},
+          style:{padding:'5px 14px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',border:'1px solid',
+            background:selectedTemplateId===t.id?'#f97316':'#f3f4f6',
+            color:selectedTemplateId===t.id?'#fff':'#374151',
+            borderColor:selectedTemplateId===t.id?'#f97316':'#d1d5db'}
+        },t.name+(t.is_default?' ★':'')+(selectedTemplateId===t.id?' ('+templateStages.length+')':''))
+      ),
+      e('div',{style:{flex:1}}),
+      selectedTemplate&&!selectedTemplate.is_default&&e('button',{
+        onClick:()=>cloneTemplate(selectedTemplateId),disabled:!!cloning,
+        style:{padding:'5px 12px',background:'#1e40af',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
+      },cloning===selectedTemplateId?'Cloning...':'📋 Clone from House'),
+      e('button',{
+        onClick: async () => {
+          const name = prompt('Enter programme name (e.g. "3-Bed House", "Townhouse"):');
+          if (!name||!name.trim()) return;
+          try {
+            const r = await api('/stage-templates',{method:'POST',body:JSON.stringify({name:name.trim(),description:'Custom programme',is_default:false})}).then(r=>r.json());
+            if(r.ok&&r.template) {
+              const fresh = await api('/stage-templates').then(r=>r.json());
+              // Note: setStageTemplates not available here directly — reload page
+              alert('Template "'+name.trim()+'" created! The page will refresh to show it.');
+              window.location.reload();
+            }
+          } catch(ex) { alert('Failed: '+ex.message); }
+        },
+        style:{padding:'5px 12px',background:'#6b7280',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
+      },'+ New Programme'),
+      e('button',{
+        onClick:()=>{setShowPlots(p=>!p);setAddingStage(false);},
+        style:{padding:'5px 12px',background:showPlots?'#7c3aed':'#e5e7eb',border:'1px solid '+(showPlots?'#7c3aed':'#d1d5db'),borderRadius:6,color:showPlots?'#fff':'#374151',fontSize:11,fontWeight:600,cursor:'pointer'}
+      },'🏠 Plot Assignments '+(showPlots?'▴':'▾')),
+      e('button',{onClick:()=>{setAddingStage(p=>!p);setShowPlots(false);},disabled:!selectedTemplateId,
+        style:{padding:'5px 12px',background:'#16a34a',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}
+      },'+ Add Stage')
+    ),
+
+    // Plot assignments panel (collapsible)
+    showPlots && selectedTemplateId && e('div',{style:{background:'#faf5ff',borderBottom:'1px solid #e9d5ff',padding:'12px 16px',flexShrink:0}},
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#7c3aed',marginBottom:8}},'Plot Assignments — which plots use the "'+selectedTemplate?.name+'" template'),
+      e('div',{style:{fontSize:10,color:'#9ca3af',marginBottom:10}},
+        'Checked plots use this template. Unchecking reassigns them back to House (Standard). '+assignedPlotIds.size+' of '+plots.length+' plots currently assigned.'
+      ),
+      e('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:5,maxHeight:200,overflowY:'auto'}},
+        ...[...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)).map(p=>
+          e('label',{key:p.id,style:{display:'flex',alignItems:'center',gap:5,padding:'4px 7px',background:'#fff',borderRadius:5,border:'1px solid #e9d5ff',cursor:'pointer',fontSize:11}},
+            e('input',{type:'checkbox',checked:assignedPlotIds.has(p.id),disabled:savingPlot===p.id,
+              onChange:()=>togglePlotTemplate(p),style:{cursor:'pointer'}}),
+            e('span',{style:{fontWeight:600,color:'#7c3aed'}},'P'+p.plot_number),
+            e('span',{style:{color:'#6b7280',fontSize:10}},p.house_type.split(' ').slice(0,2).join(' ')),
+            savingPlot===p.id&&e('span',{style:{fontSize:9,color:'#9ca3af'}},'…')
+          )
+        )
+      )
+    ),
+
+    // Stats bar
+    e('div',{style:{background:'#f3f4f6',borderBottom:'1px solid #e5e7eb',padding:'5px 16px',display:'flex',gap:16,fontSize:10,color:'#6b7280',flexShrink:0,flexWrap:'wrap',alignItems:'center'}},
+      e('span',null,e('b',{style:{color:'#111827'}},templateStages.length),' stages'),
+      e('span',null,e('b',{style:{color:'#111827'}},totalDays),' working days  (~'+Math.round(totalDays/5)+' weeks)'),
+      selectedTemplate?.is_default&&e('span',{style:{color:'#f97316',fontWeight:700}},'★ Default — applied to all plots unless overridden'),
+      e('span',{style:{color:'#9ca3af',marginLeft:'auto'}},'⠿ Drag handle to reorder rows')
+    ),
+
+    // Add stage form
+    addingStage&&e('div',{style:{background:'#fffbeb',borderBottom:'1px solid #fcd34d',padding:'8px 16px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',flexShrink:0}},
+      e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'New Stage:'),
+      e('input',{type:'text',value:newName,onChange:ev=>setNewName(ev.target.value),placeholder:'Stage name',style:Object.assign({},inp,{width:180})}),
+      e('select',{value:newTradeId,onChange:ev=>setNewTradeId(ev.target.value),style:Object.assign({},inp,{width:180})},
+        e('option',{value:''},'— Trade —'),
+        ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+      ),
+      e('input',{type:'number',min:1,max:30,value:newDur,onChange:ev=>setNewDur(ev.target.value),style:Object.assign({},inp,{width:60})}),
+      e('span',{style:{fontSize:10,color:'#9ca3af'}},'days'),
+      e('button',{onClick:addStage,disabled:!newName.trim(),style:{padding:'4px 12px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'Add'),
+      e('button',{onClick:()=>setAddingStage(false),style:{padding:'4px 10px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#6b7280',fontSize:11,cursor:'pointer'}},'Cancel')
+    ),
+
+    // Stage table
+    e('div',{style:{flex:1,overflowY:'auto',background:'#fff'}},
+      templateStages.length===0
+        ?e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+            e('div',{style:{fontSize:40,marginBottom:10}},'📋'),
+            e('div',{style:{fontSize:14,fontWeight:700,color:'#374151',marginBottom:6}},selectedTemplate?'No stages in '+selectedTemplate.name:'Select a template'),
+            !selectedTemplate?.is_default&&e('div',{style:{fontSize:12}},'"Clone from House" to start with the full 61-stage sequence')
+          )
+        :e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+            e('thead',null,
+              e('tr',{style:{background:'#e5e7eb',position:'sticky',top:0,zIndex:10}},
+                ...['','#','Stage Name','Trade','Duration',''].map((h,i)=>
+                  e('th',{key:i,style:{textAlign:'left',padding:'7px 8px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',
+                    width:i===0?28:i===1?40:i===4?110:i===5?120:'auto'}},h)
+                )
+              )
+            ),
+            e('tbody',null,
+              ...templateStages.map((def,idx)=>{
+                const tradeObj=trades.find(t=>t.id===def.trade_id||t.name===def.trade);
+                const col=tradeObj?tradeObj.color:def.color||'#64748b';
+                const isDragging=dragIdx===idx;
+                const isDropTarget=dropIdx===idx&&dragIdx!==null&&dragIdx!==idx;
+                const isEditing=editingId===def.id;
+
+                if(isEditing){
+                  return e('tr',{key:def.id,style:{background:'#fffbeb',borderTop:'2px solid #fcd34d'}},
+                    e('td',{colSpan:2,style:{padding:'4px 8px',color:'#9ca3af',fontSize:10}},def.stage_order),
+                    e('td',{style:{padding:'4px 6px'}},
+                      e('input',{type:'text',value:editName,onChange:ev=>setEditName(ev.target.value),style:Object.assign({},inp,{width:'95%'})})
+                    ),
+                    e('td',{style:{padding:'4px 6px'}},
+                      e('select',{value:editTradeId,onChange:ev=>setEditTradeId(ev.target.value),style:Object.assign({},inp,{width:170})},
+                        e('option',{value:''},'— Trade —'),
+                        ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+                      )
+                    ),
+                    e('td',{style:{padding:'4px 6px'}},
+                      e('div',{style:{display:'flex',gap:4,alignItems:'center'}},
+                        e('input',{type:'number',min:1,max:30,value:editDur,onChange:ev=>setEditDur(ev.target.value),style:Object.assign({},inp,{width:55})}),
+                        e('span',{style:{fontSize:10,color:'#6b7280'}},'days')
+                      )
+                    ),
+                    e('td',{style:{padding:'4px 6px'}},
+                      e('div',{style:{display:'flex',gap:4}},
+                        e('button',{onClick:()=>saveEdit(def),disabled:saving,style:{padding:'4px 10px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}},saving?'...':'✓ Save'),
+                        e('button',{onClick:cancelEdit,style:{padding:'4px 8px',background:'#e5e7eb',border:'none',borderRadius:5,color:'#6b7280',fontSize:10,cursor:'pointer'}},'Cancel')
+                      )
+                    )
+                  );
+                }
+
+                return e('tr',{key:def.id,style:{
+                  borderBottom:'1px solid #e5e7eb',
+                  background:isDragging?'#eff6ff':isDropTarget?'#fef3c7':idx%2===0?'#f9fafb':'#fff',
+                  opacity:isDragging?0.6:1,
+                  outline:isDropTarget?'2px dashed #f97316':'none',
+                  transition:'background 0.1s'
+                }},
+                  // Drag handle
+                  e('td',{style:{padding:'4px 8px',cursor:'grab',color:'#d1d5db',fontSize:14,userSelect:'none'},
+                    onMouseDown:ev=>onDragHandleMouseDown(ev,idx),title:'Drag to reorder'},'⠿'),
+                  e('td',{style:{padding:'8px 8px',color:'#9ca3af',fontSize:10,fontWeight:600}},def.stage_order),
+                  e('td',{style:{padding:'8px 8px',fontWeight:600,color:'#111827'}},
+                    e('div',{style:{display:'flex',alignItems:'center',gap:7}},
+                      e('div',{style:{width:10,height:10,borderRadius:3,background:col,flexShrink:0}}),
+                      def.name
+                    )
+                  ),
+                  e('td',{style:{padding:'8px 8px'}},
+                    tradeObj
+                      ?e('span',{style:{padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,background:col+'20',color:col,border:'1px solid '+col+'40'}},tradeObj.name)
+                      :e('span',{style:{color:'#d1d5db',fontSize:10}},'— unassigned —')
+                  ),
+                  e('td',{style:{padding:'8px 8px',color:'#374151'}},
+                    e('span',{style:{fontWeight:600}},def.default_duration),
+                    e('span',{style:{color:'#9ca3af',fontSize:10}},def.default_duration===1?' day':' days')
+                  ),
+                  e('td',{style:{padding:'4px 6px'}},
+                    e('div',{style:{display:'flex',gap:4,alignItems:'center'}},
+                      e('button',{onClick:()=>startEdit(def),style:{padding:'4px 9px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',fontSize:10,fontWeight:600,cursor:'pointer'}},'✎'),
+                      e('button',{onClick:()=>deleteStage(def),style:{padding:'4px 9px',background:'#fff',border:'1px solid #fca5a5',borderRadius:5,color:'#dc2626',fontSize:10,cursor:'pointer'}},'🗑')
+                    )
+                  )
+                );
+              })
+            )
+          )
+    ),
+
+    templateStages.length>0&&e('div',{style:{background:'#f3f4f6',borderTop:'1px solid #e5e7eb',padding:'5px 16px',fontSize:10,color:'#6b7280',flexShrink:0,display:'flex',gap:20}},
+      e('span',null,totalDays+' working days total'),
+      e('span',null,'~'+Math.round(totalDays/5)+' calendar weeks'),
+      e('span',null,templateStages.length+' stages · '+[...new Set(templateStages.map(d=>d.trade).filter(Boolean))].length+' trades')
+    )
+  );
+}
+
+
+function InspectionRow({ ins, i, badge, onUpdateInspection }) {
+  const [editing, setEditing] = useState(false);
+  const [lastDate, setLastDate] = useState(ins.last_date || '');
+  const [nextDate, setNextDate] = useState(ins.next_date || '');
+  const [responsible, setResponsible] = useState(ins.responsible_person || '');
+  const [freq, setFreq] = useState(ins.frequency_editable || ins.frequency || '');
+  const [saving, setSaving] = useState(false);
+  const s = badge(ins);
+
+  async function save() {
+    setSaving(true);
+    await onUpdateInspection(ins.id, { last_date: lastDate, next_date: nextDate, responsible_person: responsible, frequency_editable: freq });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:'#fffbeb' } },
+      e('td', { style:{ padding:'6px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'text', value:freq, onChange:ev=>setFreq(ev.target.value), placeholder:'e.g. Weekly', style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:90 } })),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:lastDate, onChange:ev=>setLastDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'date', value:nextDate, onChange:ev=>setNextDate(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:120 } })),
+      e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
+      e('td', { style:{ padding:'4px 6px' } }, e('input', { type:'text', value:responsible, onChange:ev=>setResponsible(ev.target.value), style:{ fontSize:10, padding:'3px 4px', border:'1px solid #d1d5db', borderRadius:4, width:130 } })),
+      e('td', { style:{ padding:'6px 9px', display:'flex', gap:4 } },
+        e('button', { onClick:save, disabled:saving, style:{ padding:'3px 8px', background:'#16a34a', border:'none', borderRadius:4, color:'#fff', fontSize:9, fontWeight:700, cursor:'pointer' } }, saving?'...':'✓'),
+        e('button', { onClick:()=>setEditing(false), style:{ padding:'3px 8px', background:'#e5e7eb', border:'none', borderRadius:4, color:'#6b7280', fontSize:9, cursor:'pointer' } }, '×')
       )
     );
-    return;
   }
 
-  // App shell — network first, fall back to cache
-  if (url.pathname === '/smc/' || url.pathname === '/smc/app') {
-    e.respondWith(
-      fetch(e.request)
-        .then(r => {
-          const clone = r.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-          return r;
-        })
-        .catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  // Everything else — network with cache fallback
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+  return e('tr', { style:{ borderTop:'1px solid #e5e7eb', background:i%2===0?'#f9fafb':'#ffffff' } },
+    e('td', { style:{ padding:'7px 9px', color:'#1f2937', fontWeight:500 } }, ins.item),
+    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.frequency_editable || ins.frequency),
+    e('td', { style:{ padding:'7px 9px', color:'#9ca3af', whiteSpace:'nowrap' } }, ins.last_date),
+    e('td', { style:{ padding:'7px 9px', color:'#6b7280', whiteSpace:'nowrap' } }, ins.next_date),
+    e('td', { style:{ padding:'7px 9px' } }, e('span', { style:{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:s.bg, color:s.col, border:'1px solid '+s.border, whiteSpace:'nowrap' } }, s.label)),
+    e('td', { style:{ padding:'7px 9px', color:'#9ca3af', fontSize:10 } }, ins.responsible_person),
+    e('td', { style:{ padding:'7px 9px' } }, e('button', { onClick:()=>setEditing(true), style:{ padding:'3px 9px', background:'#e5e7eb', border:'1px solid #d1d5db', borderRadius:5, color:'#6b7280', fontSize:9, fontWeight:600, cursor:'pointer' } }, '✎ Edit'))
   );
-});
-"""
-    from flask import Response
-    resp = Response(sw_js, mimetype='application/javascript')
-    resp.headers['Service-Worker-Allowed'] = '/smc/'
-    resp.headers['Cache-Control'] = 'no-cache'
-    return resp
+}
+
+// Editable / sign-off-able H&S log entry
+function HsLogEntry({ log, sevC, onUpdateLog }) {
+  const [commenting, setCommenting] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(log.comment || '');
+  const [saving, setSaving] = useState(false);
+  const sc = sevC[log.severity]||sevC.green;
+
+  async function saveComment() {
+    setSaving(true);
+    await onUpdateLog(log.id, { comment: commentDraft });
+    setSaving(false);
+    setCommenting(false);
+  }
+
+  async function signOff() {
+    await onUpdateLog(log.id, { signed_off:true, signed_off_by:'Site Manager', status:'Closed' });
+  }
+
+  return e('div', { style:{ display:'flex', gap:10, padding:11, background:sc.bg, border:'1px solid '+sc.border, borderRadius:7 } },
+    e('div', { style:{ flexShrink:0, paddingTop:4 } }, e('div', { style:{ width:8, height:8, borderRadius:'50%', background:sc.dot } })),
+    e('div', { style:{ flex:1 } },
+      e('div', { style:{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:2 } },
+        e('span', { style:{ fontSize:12, fontWeight:700, color:'#1f2937' } }, log.log_type),
+        e('span', { style:{ fontSize:10, color:'#9ca3af' } }, log.log_date),
+        log.signed_off && e('span', { style:{ fontSize:9, fontWeight:700, color:'#16a34a', background:'#dcfce7', padding:'1px 6px', borderRadius:8 } }, '✓ Signed off'),
+        e('span', { style:{ marginLeft:'auto', fontSize:10, fontWeight:700, color:['Closed','Complete','Cleared'].includes(log.status)?'#16a34a':'#d97706' } }, log.status)
+      ),
+      e('div', { style:{ fontSize:10, color:'#6b7280', marginBottom:2 } }, log.person_name),
+      e('div', { style:{ fontSize:11, color:'#9ca3af', marginBottom:6 } }, log.detail),
+
+      log.comment && !commenting && e('div', { style:{ fontSize:10, color:'#374151', background:'rgba(255,255,255,0.6)', borderRadius:5, padding:'5px 7px', marginBottom:6 } }, '💬 ' + log.comment),
+
+      commenting
+        ? e('div', { style:{ display:'flex', gap:5, alignItems:'flex-start' } },
+            e('textarea', { value:commentDraft, onChange:ev=>setCommentDraft(ev.target.value), rows:2, style:{ flex:1, fontSize:10, padding:5, border:'1px solid #d1d5db', borderRadius:5, fontFamily:'inherit', resize:'vertical' } }),
+            e('button', { onClick:saveComment, disabled:saving, style:{ padding:'4px 8px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:9, fontWeight:700, cursor:'pointer' } }, saving?'...':'✓'),
+            e('button', { onClick:()=>setCommenting(false), style:{ padding:'4px 8px', background:'#e5e7eb', border:'none', borderRadius:5, color:'#6b7280', fontSize:9, cursor:'pointer' } }, '×')
+          )
+        : e('div', { style:{ display:'flex', gap:6 } },
+            e('button', { onClick:()=>setCommenting(true), style:{ padding:'3px 9px', background:'rgba(255,255,255,0.7)', border:'1px solid '+sc.border, borderRadius:5, color:'#374151', fontSize:9, fontWeight:600, cursor:'pointer' } }, '💬 Comment'),
+            !log.signed_off && e('button', { onClick:signOff, style:{ padding:'3px 9px', background:'#16a34a', border:'none', borderRadius:5, color:'#fff', fontSize:9, fontWeight:600, cursor:'pointer' } }, '✓ Sign Off & Close')
+          )
+    )
+  );
+}
+
+function HSTab({ inspections, hsLog, onUpdateInspection, onUpdateLog }) {
+  const [logFilter, setLogFilter] = useState('All');
+  const todayD=new Date(TODAY);
+  function badge(ins){
+    const d=Math.round((new Date(ins.next_date)-todayD)/86400000);
+    if(d<0)  return{label:Math.abs(d)+'d OVERDUE',bg:'#fee2e2',border:'#dc2626',col:'#dc2626'};
+    if(d<=2) return{label:d+'d — DUE SOON',bg:'#fef3c7',border:'#f97316',col:'#d97706'};
+    return      {label:d+' days',bg:'#dcfce7',border:'#16a34a',col:'#16a34a'};
+  }
+  const sevC={red:{bg:'#fee2e2',border:'#dc2626',dot:'#dc2626'},amber:{bg:'#fef3c7',border:'#d97706',dot:'#f59e0b'},green:{bg:'#dcfce7',border:'#86efac',dot:'#16a34a'}};
+
+  const visibleLog = useMemo(() => {
+    if (logFilter==='All') return hsLog;
+    if (logFilter==='Open') return hsLog.filter(l => !l.signed_off);
+    if (logFilter==='Signed Off') return hsLog.filter(l => l.signed_off);
+    return hsLog.filter(l => l.severity === logFilter);
+  }, [hsLog, logFilter]);
+
+  const overdueCount = inspections.filter(ins => Math.round((new Date(ins.next_date)-todayD)/86400000) < 0).length;
+  const openIssues = hsLog.filter(l => !l.signed_off).length;
+
+  return e('div',{style:{overflowY:'auto',height:'100%',padding:14}},
+    e('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}},
+      ...[
+        [String(overdueCount),'Overdue Inspections', overdueCount>0?'needs action':'all up to date', overdueCount>0?'#dc2626':'#16a34a', overdueCount>0?'#fee2e2':'#dcfce7', overdueCount>0?'#dc2626':'#16a34a'],
+        [String(openIssues),'Open H&S Issues','awaiting sign-off', openIssues>0?'#d97706':'#16a34a', openIssues>0?'#fef3c7':'#dcfce7', openIssues>0?'#d97706':'#16a34a'],
+        [String(inspections.length),'Tracked Inspections','statutory items','#6b7280','#f3f4f6','#6b7280'],
+        [String(hsLog.length),'Total Log Entries','all time','#6b7280','#f3f4f6','#6b7280'],
+      ].map(([v,l,s,tc,bg,bc])=>
+        e('div',{key:l,style:{background:bg,border:'1px solid '+bc,borderRadius:8,padding:12}},
+          e('div',{style:{fontSize:20,fontWeight:700,color:tc}},v),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#6b7280',marginTop:2}},l),
+          e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:1}},s)
+        )
+      )
+    ),
+    e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},'Statutory Inspection Matrix (editable)'),
+    inspections.length===0
+      ?e('div',{style:{color:'#9ca3af',fontSize:12,marginBottom:14}},'No inspection data loaded.')
+      :e('div',{style:{border:'1px solid #e5e7eb',borderRadius:8,overflow:'auto',marginBottom:14}},
+          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:760}},
+            e('thead',null,e('tr',{style:{background:'#e5e7eb'}},
+              ...['Inspection','Frequency','Last Done','Next Due','Status','Responsible',''].map(h=>
+                e('th',{key:h,style:{textAlign:'left',padding:'7px 9px',color:'#9ca3af',fontWeight:700,fontSize:9,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+              )
+            )),
+            e('tbody',null,...inspections.map((ins,i)=>
+              e(InspectionRow,{key:ins.id, ins, i, badge, onUpdateInspection})
+            ))
+          )
+        ),
+    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+      e('div',{style:{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.08em'}},'H&S Reports & Visits Log'),
+      e('select',{value:logFilter,onChange:ev=>setLogFilter(ev.target.value),style:{background:'#ffffff',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',fontSize:10,padding:'3px 8px'}},
+        ['All','Open','Signed Off','red','amber','green'].map(f=>e('option',{key:f,value:f},f==='red'?'High severity':f==='amber'?'Medium severity':f==='green'?'Low severity':f))
+      )
+    ),
+    e('div',{style:{display:'flex',flexDirection:'column',gap:5}},
+      visibleLog.length===0
+        ? e('div',{style:{color:'#9ca3af',fontSize:12}},'No entries match this filter.')
+        : null,
+      ...visibleLog.map(log => e(HsLogEntry,{key:log.id, log, sevC, onUpdateLog}))
+    )
+  );
+}
 
 
-@smc_bp.route("/manifest.json")
-def pwa_manifest():
-    """Web App Manifest for PWA install on iOS/Android home screen."""
-    import json
-    from flask import Response
-    manifest = {
-        "name": "Site Command Centre — SS17",
-        "short_name": "SMC",
-        "description": "Site Manager Command Centre — Sandle Park, Fordingbridge",
-        "start_url": "/smc/",
-        "display": "standalone",
-        "background_color": "#111827",
-        "theme_color": "#f97316",
-        "orientation": "any",
-        "icons": [
-            {"src": "/smc/icon-192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/smc/icon-512.png", "sizes": "512x512", "type": "image/png"}
-        ],
-        "categories": ["productivity", "business"]
+// ══════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// ADD MATERIAL MODAL
+// ══════════════════════════════════════════════════════════════════════════
+function AddMaterialModal({ stageDefs, onClose, onCreate, onUpdate, editing }) {
+  const isEdit = !!editing;
+  const [name, setName] = useState(editing ? editing.material_name : '');
+  const [stageId, setStageId] = useState(editing ? editing.linked_stage_id : '');
+  const [leadWeeks, setLeadWeeks] = useState(editing ? String(editing.lead_time_weeks) : '4');
+  const [supplier, setSupplier] = useState(editing ? (editing.supplier_name||'') : '');
+  const [supplierEmail, setSupplierEmail] = useState(editing ? (editing.supplier_email||'') : '');
+  const [po, setPo] = useState(editing ? (editing.po_number||'') : '');
+  const [desc, setDesc] = useState(editing ? (editing.description||'') : '');
+  const [saving, setSaving] = useState(false);
+  const sortedStages = useMemo(() => [...stageDefs].sort((a,b)=>(a.stage_order||0)-(b.stage_order||0)), [stageDefs]);
+
+  async function handleSave() {
+    if (!name.trim() || !stageId) { alert('Material name and linked build stage are required.'); return; }
+    setSaving(true);
+    const payload = {
+      material_name: name.trim(),
+      linked_stage_id: stageId,
+      lead_time_weeks: parseInt(leadWeeks) || 1,
+      supplier_name: supplier.trim(),
+      supplier_email: supplierEmail.trim(),
+      po_number: po.trim(),
+      applies_to_all_plots: true,
+      description: desc.trim(),
+    };
+    if (isEdit) await onUpdate(editing.id, payload);
+    else await onCreate(payload);
+    setSaving(false);
+    onClose();
+  }
+
+  const fieldLabel = (txt) => e('div',{style:{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}},txt);
+  const inputStyle = { width:'100%', padding:'9px 11px', border:'1px solid #d1d5db', borderRadius:7, fontSize:13, color:'#111827', background:'#ffffff', outline:'none' };
+
+  return e('div',{
+    style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20},
+    onClick:onClose
+  },
+    e('div',{
+      style:{width:480,maxWidth:'100%',maxHeight:'90vh',overflowY:'auto',background:'#ffffff',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'},
+      onClick:ev=>ev.stopPropagation()
+    },
+      e('div',{style:{padding:'18px 20px',borderBottom:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        e('div',{style:{fontSize:17,fontWeight:700,color:'#111827'}}, isEdit ? 'Edit Material Call Off' : 'Add Material Call Off'),
+        e('button',{onClick:onClose,style:{background:'#f3f4f6',border:'none',borderRadius:'50%',width:28,height:28,cursor:'pointer',color:'#6b7280',fontSize:16}},'×')
+      ),
+      e('div',{style:{padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
+
+        e('div',null,
+          fieldLabel('Material Name *'),
+          e('input',{type:'text',value:name,onChange:ev=>setName(ev.target.value),placeholder:'e.g., Joists, Windows, Trusses',style:inputStyle})
+        ),
+
+        e('div',null,
+          fieldLabel('Linked Build Stage *'),
+          e('select',{value:stageId,onChange:ev=>setStageId(ev.target.value),style:inputStyle},
+            e('option',{value:''},'Select a stage'),
+            ...sortedStages.map(s=>e('option',{key:s.id,value:s.id},s.stage_order+'. '+s.name+' ('+(s.trade||'')+')'))
+          )
+        ),
+
+        e('div',null,
+          fieldLabel('Lead Time (weeks) *'),
+          e('input',{type:'number',min:1,value:leadWeeks,onChange:ev=>setLeadWeeks(ev.target.value),style:inputStyle}),
+          e('div',{style:{fontSize:11,color:'#9ca3af',marginTop:4}},'How many weeks before the stage starts should the material be called off?')
+        ),
+
+        e('div',null,
+          fieldLabel('Supplier Name (optional)'),
+          e('input',{type:'text',value:supplier,onChange:ev=>setSupplier(ev.target.value),placeholder:'e.g., ABC Timber Ltd',style:inputStyle})
+        ),
+
+        e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+          e('div',null,
+            fieldLabel('Supplier Email (optional)'),
+            e('input',{type:'email',value:supplierEmail,onChange:ev=>setSupplierEmail(ev.target.value),placeholder:'supplier@example.com',style:inputStyle})
+          ),
+          e('div',null,
+            fieldLabel('PO Number (optional)'),
+            e('input',{type:'text',value:po,onChange:ev=>setPo(ev.target.value),placeholder:'PO-12345',style:inputStyle})
+          )
+        ),
+
+        e('div',null,
+          fieldLabel('Description (optional)'),
+          e('textarea',{value:desc,onChange:ev=>setDesc(ev.target.value),placeholder:'Any additional notes about this material...',rows:3,style:Object.assign({},inputStyle,{resize:'vertical',fontFamily:'inherit'})})
+        ),
+
+        e('div',{style:{fontSize:11,color:'#9ca3af',background:'#f9fafb',padding:'8px 10px',borderRadius:6}},
+          'This material applies to all 74 plots by default. Per-plot selection is coming soon.'
+        )
+      ),
+      e('div',{style:{padding:'14px 20px',borderTop:'1px solid #e5e7eb',display:'flex',justifyContent:'flex-end',gap:8}},
+        e('button',{onClick:onClose,style:{padding:'9px 18px',background:'#ffffff',border:'1px solid #d1d5db',borderRadius:8,color:'#374151',fontSize:13,fontWeight:600,cursor:'pointer'}},'Cancel'),
+        e('button',{onClick:handleSave,disabled:saving,style:{padding:'9px 18px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:saving?0.6:1}},saving?'Saving...':(isEdit?'💾 Save Changes':'💾 Create'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIAL CARD — expandable per-plot status breakdown
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// SUPPLIER EMAIL MODAL
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// SUPPLIER EMAIL MODAL — generates a copy-paste supplier delivery request
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// SUPPLIER EMAIL MODAL
+// ══════════════════════════════════════════════════════════════════════════
+function SupplierEmailModal({ material, plots, schedules, workingDays, todayIdx, orders, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const [filter, setFilter] = useState('all');
+
+  const sortedPlots = useMemo(() => [...plots].sort((a,b)=>{
+    // is_core_block sorts to the very top (before plot 1)
+    if (a.is_core_block && !b.is_core_block) return -1;
+    if (!a.is_core_block && b.is_core_block) return 1;
+    return (parseInt(a.plot_number)||0) - (parseInt(b.plot_number)||0);
+  }), [plots]);
+  const offsetDays = material.delivery_offset_days ?? material.lead_time_weeks*5;
+
+  function deliveryIdx(stageIdx) {
+    let di = stageIdx - offsetDays;
+    if (material.preferred_weekday && workingDays[di]) {
+      while (di >= 0 && workingDays[di]?.getDay() !== material.preferred_weekday) di--;
+      if (di < 0) di = stageIdx - offsetDays;
     }
-    return Response(json.dumps(manifest), mimetype='application/manifest+json')
+    return Math.max(0, di);
+  }
+
+  const rows = useMemo(() => {
+    const leadDays = offsetDays;
+    return sortedPlots.map(plot => {
+      const sc = schedules[plot.id];
+      const stageSched = sc ? sc[material.linked_stage_id] : null;
+      if (!stageSched) return null;
+      const dIdx = deliveryIdx(stageSched.start);
+      const delivDate = workingDays[dIdx];
+      if (!delivDate) return null;
+      const order = orders.find(o => o.material_id===material.id && o.plot_id===plot.id);
+      const daysUntil = stageSched.start - todayIdx;
+      let status;
+      if (order?.status==='delivered') status='delivered';
+      else if (order?.status==='ordered') status='ordered';
+      else if (daysUntil<=leadDays && daysUntil>=0) status='flagged';
+      else status='not_due';
+      return { plot, delivDate, stageDate: workingDays[stageSched.start], order, status };
+    }).filter(r => {
+      if (!r) return false;
+      if (filter==='flagged') return r.status==='flagged';
+      if (filter==='ordered') return r.status==='ordered'||r.status==='delivered';
+      return r.status!=='delivered';
+    }).sort((a,b)=>a.delivDate-b.delivDate);
+  }, [sortedPlots, schedules, material, orders, todayIdx, filter, offsetDays]);
+
+  const flaggedCount = rows.filter(r=>r.status==='flagged').length;
+
+  const emailText = [
+    `Subject: Delivery Schedule Confirmation — ${material.material_name} — SS17 Sandle Park, Fordingbridge`,
+    '',
+    `Dear ${material.supplier_name||'[Supplier Name]'},`,
+    '',
+    `Please find below our upcoming delivery requirements for ${material.material_name} at SS17 Phase 1C — Sandle Park, Fordingbridge. Please confirm all delivery dates or advise at your earliest convenience if any cannot be met.`,
+    '',
+    `Material: ${material.material_name}`,
+    `Supplier: ${material.supplier_name||'—'}`,
+    material.po_number ? `PO Number: ${material.po_number}` : '',
+    '',
+    'DELIVERY SCHEDULE',
+    '─'.repeat(78),
+    'Plot | House Type          | Address                       | Del. Required | Stage Due',
+    '─'.repeat(78),
+    ...rows.map(r =>
+      `P${String(r.plot.plot_number).padEnd(3)} | ${r.plot.house_type.substring(0,19).padEnd(19)} | ${(r.plot.address||'').substring(0,29).padEnd(29)} | ${r.delivDate.toLocaleDateString('en-GB')} | ${r.stageDate.toLocaleDateString('en-GB')}${r.order?.status==='ordered'?' ✓ Ordered':''}`
+    ),
+    '─'.repeat(78),
+    '',
+    'Please reply to confirm receipt and advise of any dates that cannot be met.',
+    '',
+    'Kind regards,',
+    'Aaron Green — Site Manager',
+    'Pennyfarthing Homes, SS17 Phase 1C, Sandle Park, Fordingbridge',
+  ].filter(l=>l!==null).join('\n');
+
+  function copy() {
+    navigator.clipboard.writeText(emailText).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
+  }
+
+  return e('div', {style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:20},onClick:onClose},
+    e('div', {style:{width:800,maxWidth:'95%',maxHeight:'90vh',overflowY:'auto',background:'#fff',borderRadius:12,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'},onClick:ev=>ev.stopPropagation()},
+      e('div', {style:{padding:'16px 20px',borderBottom:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        e('div', null,
+          e('div', {style:{fontSize:15,fontWeight:700,color:'#111827'}}, '📧 Supplier Email — '+material.material_name),
+          e('div', {style:{fontSize:11,color:'#9ca3af',marginTop:2}}, (material.supplier_email||'No email set')),
+          flaggedCount>0 && e('div',{style:{fontSize:11,color:'#dc2626',fontWeight:700,marginTop:3}}, '⚠ '+flaggedCount+' plots need ordering NOW')
+        ),
+        e('button', {onClick:onClose, style:{background:'#e5e7eb',border:'none',borderRadius:'50%',width:28,height:28,cursor:'pointer',color:'#6b7280',fontSize:16}}, '×')
+      ),
+      e('div', {style:{padding:'8px 20px',borderBottom:'1px solid #e5e7eb',display:'flex',gap:8,alignItems:'center'}},
+        ...[['all','All (excl. delivered)'],['flagged','⚠ Order Now ('+flaggedCount+')'],['ordered','Ordered/Delivered']].map(([v,l])=>
+          e('button',{key:v,onClick:()=>setFilter(v),style:{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',border:'1px solid',background:filter===v?'#f97316':'#fff',color:filter===v?'#fff':'#374151',borderColor:filter===v?'#f97316':'#d1d5db'}},l)
+        ),
+        e('span',{style:{marginLeft:'auto',fontSize:11,color:'#9ca3af'}},rows.length+' rows')
+      ),
+      e('div',{style:{padding:16}},
+        e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'14px 16px',fontFamily:'Courier New,monospace',fontSize:11,whiteSpace:'pre',lineHeight:1.7,color:'#374151',maxHeight:420,overflowY:'auto',overflowX:'auto'}},emailText)
+      ),
+      e('div',{style:{padding:'12px 20px',borderTop:'1px solid #e5e7eb',display:'flex',gap:8,justifyContent:'flex-end'}},
+        e('button',{onClick:onClose,style:{padding:'8px 16px',background:'#fff',border:'1px solid #d1d5db',borderRadius:7,color:'#374151',fontSize:13,cursor:'pointer'}},'Close'),
+        e('button',{onClick:copy,style:{padding:'8px 18px',background:copied?'#16a34a':'#111827',border:'none',borderRadius:7,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}},copied?'✓ Copied!':'📋 Copy Email')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR
+// Each material row shows a DOT per plot on its specific delivery day.
+// Multiple plots on the same day stack vertically — no overlap.
+// Dot colour: red=order now, amber=ordered, green=delivered, grey=not due.
+// Click any red dot to instantly mark ordered.
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR — standalone delivery schedule view
+//
+// Layout: columns = working days, rows = delivery events stacked per day.
+// Each bar shows "Plot N — Material Name" in the trade's colour.
+// No sidebar — the bars themselves carry all the information.
+// Multiple deliveries on the same day stack vertically.
+// Click a red bar to mark ordered; click amber to mark delivered.
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR — v4
+// Bars show: "Material Name — P5 P12 P23" grouped by material per day.
+// Multiple plots due same day → one bar, not multiple.
+// Colour = linked build stage colour (from stageDefs).
+// Border = RED (not ordered), ORANGE (ordered), no special border (not due).
+// Fill = GREEN override when ALL plots in the group are delivered.
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS CALENDAR v5
+//
+// Layout: each day is a FLEX COLUMN containing its bars stacked top-to-bottom.
+// This eliminates the absolute-positioning bleed-through where faint text from
+// one day's bars was visible through semi-transparent bars in adjacent columns.
+//
+// Bars group multiple plots of the same material due the same day into one bar.
+// Colour = linked build stage colour. Border = status indicator:
+//   Red border  = not ordered (needs action)
+//   Orange border = ordered (awaiting delivery)
+//   No border / subtle = not due yet
+//   Green fill override = all plots in group delivered
+// ══════════════════════════════════════════════════════════════════════════
+function MaterialsCalendar({ materials, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onUpdateMaterial, stageDefs }) {
+  const [weeks, setWeeks]         = useState(2);
+  const [startIdx, setStartIdx]   = useState(null);
+  const [supplierModal, setSupplierModal] = useState(null);
+  const [editingMat, setEditingMat] = useState(null);
+  const [offsetDraft, setOffsetDraft] = useState('');
+  const [weekdayDraft, setWeekdayDraft] = useState('');
+  const scrollRef = useRef(null);
+
+  const sortedPlots = useMemo(() =>
+    [...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)), [plots]);
+
+  // Stage colour lookup
+  const stageColorMap = useMemo(() => {
+    const m = {}; (stageDefs||[]).forEach(d => { m[d.id] = d.color||'#64748b'; }); return m;
+  }, [stageDefs]);
+
+  // Snap to Monday of current week
+  const mondayIdx = useMemo(() => {
+    for (let i=todayIdx; i>=0; i--) { if (workingDays[i]?.getDay()===1) return i; }
+    return todayIdx;
+  }, [todayIdx, workingDays]);
+
+  // Initialise on mount
+  useEffect(() => { if (startIdx===null) setStartIdx(mondayIdx); }, [mondayIdx]);
+
+  // Reset scroll to left edge whenever the view week changes (Prev/Next/Today)
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+  }, [startIdx]);
+
+  const start = startIdx ?? mondayIdx;
+  const totalDays = weeks * 5;
+  const rangeEnd  = start + totalDays;
+  const rangeDays = workingDays.slice(start, rangeEnd);
+
+  // Column width scales so 1 week fills nicely; more weeks = narrower columns
+  const COL_W = Math.max(80, Math.min(240, Math.floor(1080 / Math.max(5, totalDays))));
+  const BAR_H = 40;
+  const BAR_GAP = 4;
+  const HDR_H = 56;
+
+  function deliveryIdx(mat, stageIdx) {
+    const offset = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
+    let di = stageIdx - offset;
+    if (mat.preferred_weekday) {
+      let tries = 0;
+      while (di>=0 && workingDays[di]?.getDay()!==mat.preferred_weekday && tries<10) { di--; tries++; }
+      if (di<0) di = stageIdx - offset;
+    }
+    return Math.max(0, di);
+  }
+
+  // Group deliveries by [dayOffset][matId]
+  // dayOffset = absolute WD index relative to `start` (0..totalDays-1)
+  const groupedByDay = useMemo(() => {
+    const map = {};
+    for (let i=0; i<totalDays; i++) map[i] = {};  // ensure all columns exist
+
+    materials.forEach(mat => {
+      const leadDays = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
+      sortedPlots.forEach(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[mat.linked_stage_id] : null;
+        if (!stageSched) return;
+        const dIdx   = deliveryIdx(mat, stageSched.start);
+        const offset = dIdx - start;
+        if (offset < 0 || offset >= totalDays) return;
+
+        const order = orders.find(o => o.material_id===mat.id && o.plot_id===plot.id);
+        const daysUntilStage = stageSched.start - todayIdx;
+        let status;
+        if (order?.status==='delivered')          status='delivered';
+        else if (order?.status==='ordered')        status='ordered';
+        else if (daysUntilStage>=0 && daysUntilStage<=leadDays) status='flagged';
+        else                                       status='not_due';
+
+        if (!map[offset][mat.id]) map[offset][mat.id] = { mat, items: [] };
+        map[offset][mat.id].items.push({ plot, status, order });
+      });
+    });
+    return map; // map[0..totalDays-1][matId] = { mat, items }
+  }, [materials, sortedPlots, schedules, orders, start, totalDays, todayIdx]);
+
+  // Today summary
+  const todayOffset = todayIdx - start;
+  const todayGroups = (todayOffset>=0 && todayOffset<totalDays)
+    ? Object.values(groupedByDay[todayOffset]||{})
+    : [];
+
+  const monthLabels = useMemo(() => {
+    const out=[]; let pm=-1;
+    rangeDays.forEach((d,i) => {
+      if (d.getMonth()!==pm) { out.push({i, label:d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}); pm=d.getMonth(); }
+    });
+    return out;
+  }, [rangeDays]);
+
+  // Bar visual properties — no transparency, status shown via border only
+  function barProps(items, stageId) {
+    const stageCol    = stageColorMap[stageId] || '#64748b';
+    const allDelivered= items.every(i=>i.status==='delivered');
+    const anyFlagged  = items.some(i=>i.status==='flagged');
+    const anyOrdered  = items.some(i=>i.status==='ordered') && !anyFlagged;
+    const notDue      = items.every(i=>i.status==='not_due');
+    return {
+      background: allDelivered ? '#16a34a' : stageCol,
+      border: allDelivered ? '2px solid #15803d'
+            : anyFlagged   ? '2.5px solid #dc2626'
+            : anyOrdered   ? '2.5px solid #f97316'
+            :                '1px solid rgba(0,0,0,0.15)',
+      opacity: notDue ? 0.5 : 1,
+      cursor: (anyFlagged||anyOrdered||allDelivered) ? 'pointer' : 'default',
+    };
+  }
+
+  function handleClick(mat, items) {
+    const flagged   = items.filter(i=>i.status==='flagged');
+    const ordered   = items.filter(i=>i.status==='ordered');
+    const delivered = items.filter(i=>i.status==='delivered');
+    const today = new Date().toISOString().slice(0,10);
+    if (flagged.length)      flagged.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'ordered',ordered_date:today}));
+    else if (ordered.length) ordered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'delivered',delivery_date:today}));
+    // Long-press or double-tap effectively handled via the per-item undo in list view.
+  }
+  function handleUndo(mat, items) {
+    const delivered = items.filter(i=>i.status==='delivered');
+    const ordered   = items.filter(i=>i.status==='ordered');
+    if (delivered.length) delivered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'ordered',delivery_date:null}));
+    else if (ordered.length) ordered.forEach(i=>onSetOrder(mat.id,i.plot.id,{status:'pending',ordered_date:null}));
+  }
+
+  function nav(delta) { setStartIdx(s => Math.max(0, (s??mondayIdx)+delta)); }
+
+  if (!materials.length) return e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+    e('div',{style:{fontSize:36,marginBottom:8}},'📅'),
+    e('div',{style:{fontSize:14}},'No material call-offs yet. Add them in the List view.')
+  );
+
+  return e('div',{id:'mat-print-content',style:{display:'flex',flexDirection:'column',height:'100%',background:'#fff'}},
+
+    // ── Controls ────────────────────────────────────────────────────────────
+    e('div',{className:'no-print',style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'8px 16px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
+      e('div',null,
+        e('span',{style:{fontSize:13,fontWeight:700,color:'#111827'}},'Delivery Calendar'),
+        e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8}},'SS17 Sandle Park')
+      ),
+      // Week count
+      e('div',{style:{display:'flex',gap:0,border:'1px solid #d1d5db',borderRadius:6,overflow:'hidden'}},
+        ...[1,2,3,4,6,8].map(w=>e('button',{key:w,onClick:()=>setWeeks(w),
+          style:{padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',
+            background:weeks===w?'#f97316':'#fff',color:weeks===w?'#fff':'#374151'}},w+'w'))
+      ),
+      // Nav
+      e('button',{onClick:()=>nav(-5),style:{padding:'4px 9px',background:'#e5e7eb',border:'none',borderRadius:5,fontSize:11,cursor:'pointer'}},'‹ Prev'),
+      e('button',{onClick:()=>setStartIdx(mondayIdx),style:{padding:'4px 10px',background:'#e5e7eb',border:'none',borderRadius:5,fontSize:11,fontWeight:700,cursor:'pointer'}},'Today'),
+      e('button',{onClick:()=>nav(5),style:{padding:'4px 9px',background:'#e5e7eb',border:'none',borderRadius:5,fontSize:11,cursor:'pointer'}},'Next ›'),
+      e('div',{style:{flex:1}}),
+      // Legend
+      e('div',{style:{display:'flex',gap:8,fontSize:10,alignItems:'center',flexWrap:'wrap'}},
+        ...[
+          ['#dc2626','border','Not Ordered'],
+          ['#f97316','border','Ordered'],
+          ['#16a34a','fill','Delivered'],
+          ['#64748b','fill-faded','Not Due'],
+        ].map(([c,t,l])=>e('div',{key:l,style:{display:'flex',alignItems:'center',gap:3}},
+          e('div',{style:{width:12,height:12,borderRadius:3,
+            background:t==='fill'?c:t==='fill-faded'?c:'#64748b',
+            border:t==='border'?'2.5px solid '+c:'none',
+            opacity:t==='fill-faded'?0.55:1}}),
+          e('span',{style:{color:'#6b7280'}},l)
+        ))
+      ),
+      e('button',{onClick:()=>window.print(),style:{padding:'5px 12px',background:'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}},'🖨 Print')
+    ),
+
+    // ── Today summary ───────────────────────────────────────────────────────
+    todayGroups.length>0 && e('div',{className:'no-print',style:{background:'#fffbeb',borderBottom:'2px solid #fcd34d',padding:'7px 16px',flexShrink:0,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+      e('span',{style:{fontSize:11,fontWeight:700,color:'#d97706',flexShrink:0}},'📦 TODAY:'),
+      ...todayGroups.map(({mat,items},i)=>{
+        const col=stageColorMap[mat.linked_stage_id]||'#64748b';
+        const allDone=items.every(x=>x.status==='delivered');
+        return e('div',{key:i,onClick:()=>handleClick(mat,items),
+          style:{display:'flex',alignItems:'center',gap:4,background:allDone?'#dcfce7':col+'18',
+            border:'1.5px solid '+(allDone?'#86efac':col),borderRadius:6,padding:'3px 9px',
+            cursor:allDone?'default':'pointer',fontSize:11}},
+          e('div',{style:{width:7,height:7,borderRadius:2,background:allDone?'#16a34a':col}}),
+          e('b',{style:{color:'#111827'}},mat.material_name),
+          e('span',{style:{color:'#6b7280',fontSize:10}},items.map(x=>'P'+x.plot.plot_number).join(' ')),
+          !allDone&&e('span',{style:{fontSize:9,color:col,fontWeight:700}},
+            items.some(x=>x.status==='flagged')?'→ Order':'→ Delivered')
+        );
+      })
+    ),
+
+    // ── Print header ─────────────────────────────────────────────────────────
+    e('div',{className:'print-only',style:{padding:'6px 10px 2px',display:'none'}},
+      e('div',{style:{fontSize:14,fontWeight:700}},'Material Delivery Schedule — SS17 Phase 1C, Sandle Park, Fordingbridge'),
+      e('div',{style:{fontSize:9,color:'#6b7280'}},
+        'Generated: '+new Date().toLocaleDateString('en-GB')+
+        '   Period: '+(rangeDays[0]?rangeDays[0].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'')+
+        ' – '+(rangeDays[rangeDays.length-1]?rangeDays[rangeDays.length-1].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'')+
+        '   '+weeks+' week'+(weeks>1?'s':'')+' view')
+    ),
+
+    // ── Calendar grid ────────────────────────────────────────────────────────
+    // Each day column is an independent flex container — bars live inside their
+    // own column, eliminating cross-column bleed-through completely.
+    e('div',{ref:scrollRef,style:{flex:1,overflow:'auto',overflowX:'scroll'}},
+      e('div',{style:{display:'inline-flex',flexDirection:'column',minWidth:rangeDays.length*COL_W,background:'#fff'}},
+
+        // Month row
+        e('div',{style:{display:'flex',height:28,borderBottom:'1px solid #e5e7eb',background:'#f1f5f9',position:'sticky',top:0,zIndex:20}},
+          ...rangeDays.map((d,i)=>{
+            const lbl=monthLabels.find(m=>m.i===i);
+            return e('div',{key:i,style:{width:COL_W,flexShrink:0,borderRight:'1px solid #e5e7eb',
+              display:'flex',alignItems:'center',paddingLeft:lbl?8:0,fontSize:11,fontWeight:700,color:'#374151'}},
+              lbl?lbl.label:'');
+          })
+        ),
+
+        // Day header row
+        e('div',{style:{display:'flex',height:28,borderBottom:'2px solid #1e293b',position:'sticky',top:28,zIndex:20,background:'#fff'}},
+          ...rangeDays.map((d,i)=>{
+            const isToday=start+i===todayIdx;
+            const wk=Math.floor(i/5);
+            return e('div',{key:i,style:{width:COL_W,flexShrink:0,
+              borderRight:'1px solid '+(isToday?'rgba(249,115,22,0.5)':'#e5e7eb'),
+              borderBottom:isToday?'2.5px solid #f97316':'none',
+              background:isToday?'rgba(249,115,22,0.06)':wk%2===0?'#fff':'#f8fafc',
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+              e('span',{style:{fontSize:10,fontWeight:700,color:isToday?'#f97316':'#6b7280',lineHeight:1.2}},
+                d.toLocaleDateString('en-GB',{weekday:'short'})),
+              e('span',{style:{fontSize:13,fontWeight:isToday?800:600,color:isToday?'#f97316':'#111827',lineHeight:1.2}},
+                d.getDate())
+            );
+          })
+        ),
+
+        // Data row: one flex row containing one column per day
+        // Each column stacks its bars vertically — no absolute positioning
+        e('div',{style:{display:'flex',alignItems:'flex-start'}},
+          ...rangeDays.map((d,i)=>{
+            const isToday=start+i===todayIdx;
+            const wk=Math.floor(i/5);
+            const dayBars=Object.values(groupedByDay[i]||{});
+
+            return e('div',{key:i,style:{
+              width:COL_W,flexShrink:0,
+              minHeight:120,
+              borderRight:'1px solid '+(isToday?'rgba(249,115,22,0.25)':'#f0f0f0'),
+              background:isToday?'rgba(249,115,22,0.03)':wk%2===0?'#fff':'#fafafa',
+              padding:BAR_GAP+'px '+(BAR_GAP+1)+'px',
+              display:'flex',flexDirection:'column',gap:BAR_GAP,
+              boxSizing:'border-box',
+            }},
+              dayBars.length===0
+                ? e('div',{style:{height:BAR_H,display:'flex',alignItems:'center',justifyContent:'center'}}) // empty placeholder
+                : dayBars.map(({mat,items})=>{
+                    const bp=barProps(items,mat.linked_stage_id);
+                    const allDelivered=items.every(x=>x.status==='delivered');
+                    const anyFlagged  =items.some(x=>x.status==='flagged');
+                    const anyOrdered  =items.some(x=>x.status==='ordered')&&!anyFlagged;
+                    const plotNums    =items.map(x=>'P'+x.plot.plot_number).join('  ');
+                    return e('div',{
+                      key:mat.id,
+                      onClick:()=>{ if(items.every(x=>x.status==='delivered')) handleUndo(mat,items); else handleClick(mat,items); },
+                      title:[
+                        mat.material_name,
+                        'Plots: '+items.map(x=>'P'+x.plot.plot_number).join(', '),
+                        allDelivered?'All delivered ✓':anyFlagged?'⚠ Needs ordering — click':anyOrdered?'Ordered — click to mark delivered':'Not due yet',
+                        mat.supplier_name?'Supplier: '+mat.supplier_name:'',
+                      ].filter(Boolean).join('\n'),
+                      style:{
+                        height:BAR_H,flexShrink:0,
+                        background:bp.background,
+                        border:bp.border,
+                        opacity:bp.opacity,
+                        borderRadius:5,
+                        cursor:bp.cursor,
+                        padding:'2px 6px',
+                        display:'flex',flexDirection:'column',justifyContent:'center',
+                        overflow:'hidden',
+                        boxSizing:'border-box',
+                      }
+                    },
+                      e('div',{style:{display:'flex',alignItems:'center',gap:3,minWidth:0}},
+                        e('span',{style:{fontSize:10,fontWeight:800,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,lineHeight:1.2}},
+                          mat.material_name),
+                        allDelivered&&e('span',{style:{fontSize:10,flexShrink:0,color:'rgba(255,255,255,0.9)',cursor:'pointer'}},'✓ ↩'),
+                        anyFlagged&&e('span',{style:{fontSize:10,flexShrink:0,color:'#fff',fontWeight:700}},'⚠'),
+                        anyOrdered&&e('span',{style:{fontSize:10,flexShrink:0,color:'rgba(255,255,255,0.85)'}}, '✓')
+                      ),
+                      e('div',{style:{fontSize:8,color:'rgba(255,255,255,0.85)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3}},
+                        plotNums)
+                    );
+                  })
+            );
+          })
+        )
+      )
+    ),
+
+    // ── Delivery timing settings ─────────────────────────────────────────────
+    e('div',{className:'no-print',style:{borderTop:'2px solid #e5e7eb',padding:'10px 16px',background:'#f9fafb',flexShrink:0}},
+      e('div',{style:{fontSize:11,fontWeight:700,color:'#374151',marginBottom:8}},
+        '⚙ Delivery Timing — click ✎ to set days-before-stage & preferred weekday per material'),
+      e('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+        ...materials.map(mat=>{
+          const isEditing=editingMat===mat.id;
+          const offset=mat.delivery_offset_days??(mat.lead_time_weeks*5);
+          const wd=mat.preferred_weekday;
+          const wdLabel=[,'Mon','Tue','Wed','Thu','Fri'][wd]||'any';
+          const stageCol=stageColorMap[mat.linked_stage_id]||'#64748b';
+          return e('div',{key:mat.id,style:{background:'#fff',border:'2px solid '+stageCol,borderRadius:7,padding:'5px 10px',minWidth:170}},
+            e('div',{style:{display:'flex',alignItems:'center',gap:5,marginBottom:2}},
+              e('div',{style:{width:8,height:8,borderRadius:2,background:stageCol,flexShrink:0}}),
+              e('span',{style:{fontSize:11,fontWeight:700,color:'#111827',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},mat.material_name)
+            ),
+            isEditing
+              ? e('div',{style:{display:'flex',gap:3,alignItems:'center',flexWrap:'wrap'}},
+                  e('input',{type:'number',min:1,max:60,value:offsetDraft,onChange:ev=>setOffsetDraft(ev.target.value),
+                    style:{width:36,fontSize:10,padding:'2px 4px',border:'1px solid #d1d5db',borderRadius:4}}),
+                  e('span',{style:{fontSize:9,color:'#6b7280'}},'d before, on'),
+                  e('select',{value:weekdayDraft,onChange:ev=>setWeekdayDraft(ev.target.value),
+                    style:{fontSize:9,padding:'2px',border:'1px solid #d1d5db',borderRadius:4}},
+                    e('option',{value:''},'any day'),
+                    ...[['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri']].map(([v,l])=>e('option',{key:v,value:v},l))
+                  ),
+                  e('button',{onClick:async()=>{
+                    await onUpdateMaterial(mat.id,{delivery_offset_days:parseInt(offsetDraft)||offset,preferred_weekday:weekdayDraft?parseInt(weekdayDraft):null});
+                    setEditingMat(null);
+                  },style:{padding:'2px 6px',background:'#16a34a',border:'none',borderRadius:4,color:'#fff',fontSize:9,fontWeight:700,cursor:'pointer'}},'✓'),
+                  e('button',{onClick:()=>setEditingMat(null),style:{padding:'2px 5px',background:'#e5e7eb',border:'none',borderRadius:4,color:'#6b7280',fontSize:9,cursor:'pointer'}},'×')
+                )
+              : e('div',{style:{display:'flex',alignItems:'center',gap:5}},
+                  e('span',{style:{fontSize:9,color:'#6b7280'}},offset+'d before'+(wd?' · '+wdLabel:'')),
+                  e('button',{onClick:()=>{setEditingMat(mat.id);setOffsetDraft(String(offset));setWeekdayDraft(wd?String(wd):'');},
+                    style:{padding:'1px 5px',background:'none',border:'none',color:'#9ca3af',fontSize:9,cursor:'pointer'}},'✎'),
+                  e('button',{onClick:()=>setSupplierModal(mat),
+                    style:{padding:'1px 5px',background:'none',border:'none',color:'#9ca3af',fontSize:9,cursor:'pointer'}},'📧')
+                )
+          );
+        })
+      )
+    ),
+
+    supplierModal && e(SupplierEmailModal,{
+      material:supplierModal,plots:sortedPlots,schedules,workingDays,todayIdx,
+      orders,onClose:()=>setSupplierModal(null)
+    })
+  );
+}
+
+function MaterialCard({ material, plots, schedules, workingDays, todayIdx, orders, onSetOrder, onDelete, onEdit }) {
+  const [expanded, setExpanded] = useState(false);
+  const [filterMode, setFilterMode] = useState('flagged'); // flagged | all | ordered
+
+  const stage = material.smc_stage_defs;
+  const stageName = stage ? stage.name : '—';
+
+  // Compute status for every plot against this material
+  const plotStatuses = useMemo(() => {
+    return plots.map(plot => {
+      const sc = schedules[plot.id];
+      const stageSched = sc ? sc[material.linked_stage_id] : null;
+      const order = orders.find(o => o.material_id === material.id && o.plot_id === plot.id);
+      let status = 'not_due';
+      let stageStartDate = null;
+      if (stageSched && workingDays[stageSched.start]) {
+        stageStartDate = workingDays[stageSched.start];
+        const daysUntilStage = stageSched.start - todayIdx;
+        const leadDays = material.lead_time_weeks * 5; // working days approx
+        if (order && order.status === 'delivered') status = 'delivered';
+        else if (order && order.status === 'ordered') status = 'ordered';
+        else if (daysUntilStage <= leadDays) status = 'flagged';
+        else status = 'not_due';
+      }
+      return { plot, status, stageStartDate, order };
+    });
+  }, [plots, schedules, material, orders, workingDays, todayIdx]);
+
+  const counts = useMemo(() => {
+    const c = { flagged:0, ordered:0, delivered:0, not_due:0 };
+    plotStatuses.forEach(p => c[p.status]++);
+    return c;
+  }, [plotStatuses]);
+
+  const visibleRows = useMemo(() => {
+    if (filterMode === 'all') return plotStatuses;
+    if (filterMode === 'ordered') return plotStatuses.filter(p => p.status==='ordered' || p.status==='delivered');
+    return plotStatuses.filter(p => p.status === 'flagged');
+  }, [plotStatuses, filterMode]);
+
+  return e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}},
+    // Header row
+    e('div',{
+      onClick:()=>setExpanded(x=>!x),
+      style:{padding:'14px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}
+    },
+      e('div',{style:{fontSize:16}},expanded?'▾':'▸'),
+      e('div',{style:{flex:1,minWidth:160}},
+        e('div',{style:{fontSize:14,fontWeight:700,color:'#111827'}},material.material_name),
+        e('div',{style:{fontSize:11,color:'#6b7280',marginTop:2}},
+          '🏗 '+stageName+'  ·  ⏱ '+material.lead_time_weeks+' week lead time'+
+          (material.supplier_name ? '  ·  📦 '+material.supplier_name : '')
+        )
+      ),
+      counts.flagged > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#fee2e2',color:'#dc2626',border:'1px solid #fca5a5'}},'⚠ '+counts.flagged+' Due Now'),
+      counts.ordered > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#fef3c7',color:'#d97706',border:'1px solid #fcd34d'}},counts.ordered+' Ordered'),
+      counts.delivered > 0 && e('span',{style:{padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:'#dcfce7',color:'#16a34a',border:'1px solid #86efac'}},'✓ '+counts.delivered+' Delivered'),
+      e('button',{
+        onClick:(ev)=>{ev.stopPropagation(); onEdit(material);},
+        style:{padding:'4px 10px',background:'#ffffff',border:'1px solid #d1d5db',borderRadius:6,color:'#374151',fontSize:11,cursor:'pointer'}
+      },'✎ Edit'),
+      e('button',{
+        onClick:(ev)=>{ev.stopPropagation(); if(confirm('Delete this material call-off? This cannot be undone.')) onDelete(material.id);},
+        style:{padding:'4px 10px',background:'#ffffff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:11,cursor:'pointer'}
+      },'🗑')
+    ),
+
+    // Expanded plot list
+    expanded && e('div',{style:{borderTop:'1px solid #e5e7eb',padding:'12px 16px',background:'#f9fafb'}},
+      e('div',{style:{display:'flex',gap:6,marginBottom:10}},
+        ...[['flagged','⚠ Due Now ('+counts.flagged+')'],['ordered','Ordered/Delivered ('+(counts.ordered+counts.delivered)+')'],['all','All Plots ('+plots.length+')']].map(([mode,label])=>
+          e('button',{key:mode,onClick:()=>setFilterMode(mode),
+            style:{padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+              background:filterMode===mode?'#f97316':'#ffffff',color:filterMode===mode?'#ffffff':'#6b7280',
+              border:'1px solid '+(filterMode===mode?'#f97316':'#d1d5db')}
+          },label)
+        )
+      ),
+      visibleRows.length === 0
+        ? e('div',{style:{fontSize:12,color:'#9ca3af',padding:'10px 0'}},'No plots in this view.')
+        : e('div',{style:{display:'flex',flexDirection:'column',gap:4,maxHeight:340,overflowY:'auto'}},
+            ...visibleRows.map(({plot,status,stageStartDate,order}) =>
+              e(MaterialPlotRow,{key:plot.id,plot,status,stageStartDate,order,material,onSetOrder})
+            )
+          )
+    )
+  );
+}
+
+// Single plot row inside an expanded material card
+function MaterialPlotRow({ plot, status, stageStartDate, order, material, onSetOrder }) {
+  const [editing, setEditing] = useState(false);
+  const [orderedDate, setOrderedDate] = useState(order?.ordered_date || new Date().toISOString().slice(0,10));
+  const [deliveryDate, setDeliveryDate] = useState(order?.delivery_date || '');
+
+  const dateStr = stageStartDate ? stageStartDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const badge = {
+    flagged:   { label:'⚠ Order Now',  bg:'#fee2e2', col:'#dc2626' },
+    ordered:   { label:'Ordered',      bg:'#fef3c7', col:'#d97706' },
+    delivered: { label:'✓ Delivered',  bg:'#dcfce7', col:'#16a34a' },
+    not_due:   { label:'Not due yet',  bg:'#f3f4f6', col:'#9ca3af' },
+  }[status];
+
+  return e('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 10px',background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:7,fontSize:12}},
+    e('span',{style:{fontWeight:700,color:'#111827',minWidth:36}},'P'+plot.plot_number),
+    e('span',{style:{color:'#6b7280',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},plot.house_type+' — '+plot.address),
+    e('span',{style:{fontSize:11,color:'#9ca3af',whiteSpace:'nowrap'}},'Stage: '+dateStr),
+    e('span',{style:{padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,background:badge.bg,color:badge.col,whiteSpace:'nowrap'}},badge.label),
+
+    // Action buttons based on status
+    // pending / flagged → Mark Ordered
+    !editing && (status === 'flagged' || status === 'not_due') && e('button',{
+      onClick:()=>setEditing(true),
+      style:{padding:'4px 10px',background:'#f97316',border:'none',borderRadius:6,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}
+    }, 'Mark Ordered'),
+
+    // ordered → Mark Delivered  +  ↩ Undo
+    !editing && status === 'ordered' && e('button',{
+      onClick:()=>setEditing(true),
+      style:{padding:'4px 10px',background:'#16a34a',border:'none',borderRadius:6,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}
+    }, 'Mark Delivered'),
+    !editing && status === 'ordered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'pending',ordered_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Undo'),
+
+    // delivered → ↩ Undo Delivery (back to ordered)  +  ↩ Reset (back to pending)
+    !editing && status === 'delivered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'ordered',delivery_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Undo Delivery'),
+    !editing && status === 'delivered' && e('button',{
+      onClick:()=>onSetOrder(material.id,plot.id,{status:'pending',ordered_date:null,delivery_date:null}),
+      style:{padding:'4px 8px',background:'#fff',border:'1px solid #fca5a5',borderRadius:6,color:'#dc2626',fontSize:10,cursor:'pointer',whiteSpace:'nowrap'}
+    }, '↩ Reset'),
+
+    editing && status !== 'ordered' && status !== 'delivered' && e('div',{style:{display:'flex',gap:5,alignItems:'center'}},
+      e('input',{type:'date',value:orderedDate,onChange:ev=>setOrderedDate(ev.target.value),style:{fontSize:10,padding:'3px 5px',border:'1px solid #d1d5db',borderRadius:5}}),
+      e('button',{onClick:async()=>{await onSetOrder(material.id,plot.id,{status:'ordered',ordered_date:orderedDate});setEditing(false);},
+        style:{padding:'4px 8px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}},'✓'),
+      e('button',{onClick:()=>setEditing(false),style:{padding:'4px 8px',background:'#f3f4f6',border:'none',borderRadius:5,color:'#6b7280',fontSize:10,cursor:'pointer'}},'×')
+    ),
+
+    editing && status === 'ordered' && e('div',{style:{display:'flex',gap:5,alignItems:'center'}},
+      e('input',{type:'date',value:deliveryDate,onChange:ev=>setDeliveryDate(ev.target.value),style:{fontSize:10,padding:'3px 5px',border:'1px solid #d1d5db',borderRadius:5}}),
+      e('button',{onClick:async()=>{await onSetOrder(material.id,plot.id,{status:'delivered',delivery_date:deliveryDate||new Date().toISOString().slice(0,10)});setEditing(false);},
+        style:{padding:'4px 8px',background:'#16a34a',border:'none',borderRadius:5,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}},'✓'),
+      e('button',{onClick:()=>setEditing(false),style:{padding:'4px 8px',background:'#f3f4f6',border:'none',borderRadius:5,color:'#6b7280',fontSize:10,cursor:'pointer'}},'×')
+    ),
+
+    status === 'ordered' && order?.ordered_date && !editing && e('span',{style:{fontSize:10,color:'#9ca3af',whiteSpace:'nowrap'}},'Ordered '+order.ordered_date),
+    status === 'delivered' && order?.delivery_date && e('span',{style:{fontSize:10,color:'#9ca3af',whiteSpace:'nowrap'}},'Delivered '+order.delivery_date)
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MATERIALS TAB — master tracker
+// ══════════════════════════════════════════════════════════════════════════
+function MaterialsTab({ plots, stageDefs, plotStages, materials, materialOrders, onCreateMaterial, onDeleteMaterial, onUpdateMaterial, onSetOrder }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState(null);
+  const [view, setView] = useState('list'); // 'list' | 'calendar'
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
+  const todayIdx = useMemo(() => { const t=new Date(TODAY); const i=workingDays.findIndex(d=>d>=t); return i<0?0:i; }, [workingDays]);
+  const todayIdxLocal = useMemo(() => { const t=new Date(TODAY); const wds=genWDs(PROG_START,730); const i=wds.findIndex(d=>d>=t); return i<0?0:i; }, []);
+  const schedules = useMemo(() => buildSchedules(plots, stageDefs, plotStages, todayIdxLocal), [plots, stageDefs, plotStages]);
+
+  // Overall flagged count across all materials, for the header banner
+  const totalFlagged = useMemo(() => {
+    let n = 0;
+    materials.forEach(material => {
+      plots.forEach(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[material.linked_stage_id] : null;
+        if (!stageSched) return;
+        const order = materialOrders.find(o => o.material_id === material.id && o.plot_id === plot.id);
+        if (order && (order.status==='ordered'||order.status==='delivered')) return;
+        const daysUntilStage = stageSched.start - todayIdx;
+        const leadDays = material.lead_time_weeks * 5;
+        if (daysUntilStage <= leadDays) n++;
+      });
+    });
+    return n;
+  }, [materials, plots, schedules, materialOrders, todayIdx]);
+
+  return e('div',{style:{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}},
+    // Header
+    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 18px 10px',flexWrap:'wrap',gap:10,flexShrink:0,background:'#fff',borderBottom:'1px solid #e5e7eb'}},
+      e('div',null,
+        e('div',{style:{fontSize:18,fontWeight:700,color:'#111827'}},'Material Call Offs'),
+        e('div',{style:{fontSize:12,color:'#6b7280',marginTop:2}},'Set up material lead times linked to build stages')
+      ),
+      e('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+        e('div',{style:{display:'flex',gap:0,border:'1px solid #d1d5db',borderRadius:7,overflow:'hidden'}},
+          ...[ ['list','📋 List'], ['calendar','📅 Calendar'] ].map(([v,l])=>
+            e('button',{key:v,onClick:()=>setView(v),style:{padding:'6px 14px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',background:view===v?'#f97316':'#fff',color:view===v?'#fff':'#374151'}},l)
+          )
+        ),
+        e('button',{onClick:()=>setShowAdd(true),
+          style:{padding:'7px 14px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:12,fontWeight:700,cursor:'pointer'}
+        },'+ Add Material')
+      )
+    ),
+
+    // Calendar view
+    view === 'calendar' && e('div',{style:{flex:1,overflow:'hidden',minHeight:0,display:'flex',flexDirection:'column'}},
+      e(MaterialsCalendar,{materials,plots,schedules,workingDays,todayIdx,orders:materialOrders,onSetOrder,onUpdateMaterial,stageDefs})
+    ),
+
+    // List view
+    view === 'list' && e('div',{style:{flex:1,overflowY:'auto',padding:18}},
+
+    // Info banner
+    e('div',{style:{background:'#dbeafe',border:'1px solid #93c5fd',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',gap:10}},
+      e('span',{style:{fontSize:16}},'ℹ️'),
+      e('div',null,
+        e('div',{style:{fontSize:13,fontWeight:700,color:'#1e40af',marginBottom:3}},'How it works'),
+        e('div',{style:{fontSize:12,color:'#1e40af',lineHeight:1.6}},
+          'When a plot\'s build stage is scheduled within the lead time window, it will be flagged below as needing to be called off. '+
+          'For example, if Joists have a 4-week lead time and Plot 1 is due to reach the Joist stage in 4 weeks, you\'ll see it flagged here.'
+        ),
+        totalFlagged > 0 && e('div',{style:{marginTop:6,fontSize:12,fontWeight:700,color:'#dc2626'}}, '⚠ '+totalFlagged+' plot/material combinations need ordering right now')
+      )
+    ),
+
+    // Empty state
+    materials.length === 0
+      ? e('div',{style:{background:'#ffffff',border:'1px solid #e5e7eb',borderRadius:12,padding:'50px 20px',textAlign:'center'}},
+          e('div',{style:{fontSize:40,opacity:0.3,marginBottom:10}},'📦'),
+          e('div',{style:{fontSize:15,fontWeight:700,color:'#374151',marginBottom:4}},'No Material Call Offs Set Up'),
+          e('div',{style:{fontSize:12,color:'#9ca3af',marginBottom:16}},'Add materials with lead times to get automated call off flags'),
+          e('button',{onClick:()=>setShowAdd(true),
+            style:{padding:'9px 18px',background:'#16a34a',border:'none',borderRadius:8,color:'#ffffff',fontSize:13,fontWeight:700,cursor:'pointer'}
+          },'+ Add Your First Material')
+        )
+      : e('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+          ...materials.map(material =>
+            e(MaterialCard,{
+              key:material.id, material, plots, schedules, workingDays, todayIdx,
+              orders:materialOrders, onSetOrder, onDelete:onDeleteMaterial, onEdit:setEditingMaterial
+            })
+          )
+        )
+    ), // end list view div
+
+    showAdd && e(AddMaterialModal,{stageDefs,onClose:()=>setShowAdd(false),onCreate:onCreateMaterial}),
+    editingMaterial && e(AddMaterialModal,{stageDefs,editing:editingMaterial,onClose:()=>setEditingMaterial(null),onUpdate:onUpdateMaterial})
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PLOT LOGBOOK — tab inside the PlotDetailModal for items (cleanup notices,
+// outstanding works, dayworks, RFI notes) + photo upload
+// ══════════════════════════════════════════════════════════════════════════
+function PlotLogbook({ plot, items, trades, onCreateItem, onUpdateItem, onDeleteItem }) {
+  const [activeType, setActiveType] = useState('outstanding_work');
+  const [showAdd, setShowAdd]       = useState(false);
+  const [newTitle, setNewTitle]     = useState('');
+  const [newDesc, setNewDesc]       = useState('');
+  const [newTrade, setNewTrade]     = useState('');
+  const [newTradeId, setNewTradeId] = useState('');
+  const [newDeadline, setNewDeadline] = useState('');
+  const [newCost, setNewCost]       = useState('');
+  const [newChargeable, setNewChargeable] = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [photos, setPhotos]           = useState([]);   // WAS MISSING — caused white screen crash
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const fileRef   = useRef(null);
+  const cameraRef = useRef(null); // opens camera directly on mobile
+
+  const typeLabels = {
+    outstanding_work: { label:'Outstanding Works', icon:'🔧', color:'#d97706', bg:'#fef3c7' },
+    cleanup_notice:   { label:'Clean-up Notices',  icon:'🧹', color:'#dc2626', bg:'#fee2e2' },
+    daywork:          { label:'Dayworks / Extras',  icon:'💷', color:'#2563eb', bg:'#dbeafe' },
+    rfi_note:         { label:'RFI Notes',          icon:'📋', color:'#7c3aed', bg:'#ede9fe' },
+  };
+
+  const plotItems = useMemo(() =>
+    (items||[]).filter(i => i.plot_id === plot.id && i.item_type === activeType)
+    , [items, plot.id, activeType]);
+
+  // Load photos for this plot
+  useEffect(() => {
+    api('/photos?plot_id='+plot.id).then(r=>r.json()).then(data => setPhotos(Array.isArray(data)?data:[])).catch(()=>{});
+  }, [plot.id]);
+
+  async function addItem() {
+    if (!newTitle.trim()) return;
+    setSaving(true);
+    const trade = trades.find(t=>t.id===newTradeId);
+    await onCreateItem({
+      plot_id: plot.id,
+      item_type: activeType,
+      title: newTitle.trim(),
+      description: newDesc.trim(),
+      trade_id: newTradeId||null,
+      trade_name: trade?trade.name:newTrade,
+      deadline_date: newDeadline||null,
+      estimated_cost: newCost?parseFloat(newCost):null,
+      chargeable: newChargeable,
+      priority: 'medium',
+    });
+    setNewTitle(''); setNewDesc(''); setNewTrade(''); setNewTradeId(''); setNewDeadline(''); setNewCost(''); setNewChargeable(false);
+    setShowAdd(false);
+    setSaving(false);
+  }
+
+  async function handlePhotoUpload(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    setPhotoLoading(true);
+    const reader = new FileReader();
+    reader.onload = async e2 => {
+      const b64 = e2.target.result.split(',')[1];
+      const r = await api('/photos', { method:'POST', body:JSON.stringify({
+        plot_id: plot.id,
+        image_b64: b64,
+        mime_type: file.type,
+        taken_at: new Date().toISOString(),
+        caption: '',
+      })}).then(r=>r.json());
+      if (r.ok && r.photo) setPhotos(prev=>[r.photo,...prev]);
+      setPhotoLoading(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const tc = typeLabels[activeType];
+  const inp = { padding:'7px 9px', border:'1px solid #d1d5db', borderRadius:7, fontSize:12, color:'#111827', background:'#fff', width:'100%' };
+
+  return e('div',{style:{padding:'0 0 12px 0'}},
+
+    // Type tab bar
+    e('div',{style:{display:'flex',gap:4,padding:'12px 18px 10px',flexWrap:'wrap'}},
+      ...Object.entries(typeLabels).map(([type, cfg])=>{
+        const count = (items||[]).filter(i=>i.plot_id===plot.id&&i.item_type===type&&i.status==='open').length;
+        return e('button',{key:type, onClick:()=>{setActiveType(type);setShowAdd(false);},
+          style:{padding:'5px 12px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+            background:activeType===type?cfg.color:'#f3f4f6',
+            color:activeType===type?'#fff':'#374151',
+            border:'1px solid '+(activeType===type?cfg.color:'#d1d5db')}
+        }, cfg.icon+' '+cfg.label+(count?' ('+count+')':''));
+      })
+    ),
+
+    // Add item form
+    e('div',{style:{padding:'0 18px 10px'}},
+      !showAdd
+        ? e('button',{onClick:()=>setShowAdd(true),style:{width:'100%',padding:'7px',background:'#f9fafb',border:'1px dashed #d1d5db',borderRadius:7,color:'#6b7280',fontSize:12,cursor:'pointer',textAlign:'left'}},
+            '+ Add '+tc.label.slice(0,-1))
+        : e('div',{style:{background:tc.bg,border:'1px solid',borderColor:tc.color+'40',borderRadius:8,padding:'12px'}},
+            e('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+              e('input',{type:'text',value:newTitle,onChange:ev=>setNewTitle(ev.target.value),placeholder:'Title / summary *',style:inp}),
+              e('textarea',{value:newDesc,onChange:ev=>setNewDesc(ev.target.value),placeholder:'Details (optional)',rows:2,style:Object.assign({},inp,{resize:'vertical',fontFamily:'inherit'})}),
+              e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+                e('select',{value:newTradeId,onChange:ev=>setNewTradeId(ev.target.value),style:inp},
+                  e('option',{value:''},'— Trade (optional) —'),
+                  ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+                ),
+                e('input',{type:'date',value:newDeadline,onChange:ev=>setNewDeadline(ev.target.value),style:inp,placeholder:'Deadline'})
+              ),
+              activeType==='daywork' && e('input',{type:'number',value:newCost,onChange:ev=>setNewCost(ev.target.value),placeholder:'Estimated cost £',style:inp}),
+              activeType==='cleanup_notice' && e('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#374151',cursor:'pointer'}},
+                e('input',{type:'checkbox',checked:newChargeable,onChange:()=>setNewChargeable(p=>!p)}),
+                'Include chargeable warning'
+              ),
+              e('div',{style:{display:'flex',gap:6}},
+                e('button',{onClick:addItem,disabled:saving||!newTitle.trim(),style:{padding:'6px 14px',background:tc.color,border:'none',borderRadius:6,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},saving?'Saving...':'Add'),
+                e('button',{onClick:()=>setShowAdd(false),style:{padding:'6px 10px',background:'#e5e7eb',border:'none',borderRadius:6,color:'#6b7280',fontSize:12,cursor:'pointer'}},'Cancel')
+              )
+            )
+          )
+    ),
+
+    // Items list
+    plotItems.length === 0
+      ? e('div',{style:{padding:'8px 18px 4px',fontSize:11,color:'#9ca3af'}},'No '+tc.label.toLowerCase()+' logged for this plot.')
+      : e('div',{style:{padding:'0 18px',display:'flex',flexDirection:'column',gap:6}},
+          ...plotItems.map(item=>
+            e('div',{key:item.id,style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px',borderLeft:'3px solid '+tc.color}},
+              e('div',{style:{display:'flex',alignItems:'flex-start',gap:8}},
+                e('div',{style:{flex:1}},
+                  e('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}},
+                    e('span',{style:{fontSize:10,fontWeight:700,color:'#9ca3af'}},item.ref_number),
+                    e('span',{style:{fontSize:12,fontWeight:700,color:'#111827'}},item.title),
+                    item.trade_name&&e('span',{style:{fontSize:10,color:'#6b7280'}},'— '+item.trade_name),
+                    item.deadline_date&&e('span',{style:{fontSize:10,color:new Date(item.deadline_date)<new Date()?'#dc2626':'#6b7280'}},'📅 '+item.deadline_date),
+                    item.estimated_cost&&e('span',{style:{fontSize:10,fontWeight:700,color:'#2563eb'}},'£'+parseFloat(item.estimated_cost).toFixed(0)),
+                    item.chargeable&&e('span',{style:{fontSize:9,fontWeight:700,color:'#dc2626',background:'#fee2e2',padding:'1px 5px',borderRadius:4}},'CHARGEABLE')
+                  ),
+                  item.description&&e('div',{style:{fontSize:11,color:'#6b7280',marginTop:2}},item.description)
+                ),
+                e('div',{style:{display:'flex',gap:4,alignItems:'center',flexShrink:0}},
+                  e('select',{value:item.status,onChange:ev=>onUpdateItem(item.id,{status:ev.target.value}),
+                    style:{fontSize:10,padding:'2px 5px',border:'1px solid #d1d5db',borderRadius:4,color:'#374151',background:'#fff',cursor:'pointer'}},
+                    ['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+                  ),
+                  e('button',{onClick:()=>onDeleteItem(item.id),style:{padding:'2px 6px',background:'#fff',border:'1px solid #fca5a5',borderRadius:4,color:'#dc2626',fontSize:10,cursor:'pointer'}},'✕')
+                )
+              )
+            )
+          )
+        ),
+
+    // Photos section
+    e('div',{style:{padding:'14px 18px 0',borderTop:'1px solid #e5e7eb',marginTop:12}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+        e('div',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'📷 Site Photos ('+photos.length+')'),
+        e('div',{style:{display:'flex',gap:6}},
+          e('button',{onClick:()=>cameraRef.current.click(),disabled:photoLoading,
+            title:'Take a photo with your camera now',
+            style:{padding:'4px 10px',background:'#f97316',border:'none',borderRadius:5,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer'}},
+            photoLoading?'📤...':'📷 Camera'),
+          e('button',{onClick:()=>fileRef.current.click(),disabled:photoLoading,
+            title:'Upload a photo from your gallery or file system',
+            style:{padding:'4px 10px',background:'#e5e7eb',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',fontSize:11,fontWeight:600,cursor:'pointer'}},
+            '📁 Library')
+        )
+      ),
+      // Camera capture (opens camera directly on mobile)
+      e('input',{ref:cameraRef,type:'file',accept:'image/*',capture:'environment',style:{display:'none'},onChange:handlePhotoUpload}),
+      // Library/file picker (no capture attribute = shows gallery + files)
+      e('input',{ref:fileRef,type:'file',accept:'image/*,application/pdf',style:{display:'none'},onChange:handlePhotoUpload}),
+      photos.length===0
+        ? e('div',{style:{fontSize:11,color:'#9ca3af'}},'No photos yet for this plot.')
+        : e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}},
+            ...photos.map(ph=>
+              e('div',{key:ph.id,style:{position:'relative',cursor:'pointer'},onClick:()=>setLightboxUrl(ph.public_url)},
+                e('img',{src:ph.public_url,alt:ph.caption||'Site photo',style:{width:'100%',height:80,objectFit:'cover',borderRadius:6,border:'1px solid #e5e7eb'}}),
+                e('div',{style:{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0)',borderRadius:6,transition:'background 0.15s'}},
+                  e('span',{style:{fontSize:16,opacity:0.8}},'🔍')
+                ),
+                e('div',{style:{fontSize:8,color:'#9ca3af',textAlign:'center',marginTop:2}},new Date(ph.taken_at).toLocaleDateString('en-GB'))
+              )
+            )
+          ),
+    // Lightbox
+    lightboxUrl && e('div',{
+      onClick:()=>setLightboxUrl(null),
+      style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out'}
+    },
+      e('img',{src:lightboxUrl,style:{maxWidth:'92vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8,boxShadow:'0 8px 48px rgba(0,0,0,0.6)'}}),
+      e('button',{onClick:()=>setLightboxUrl(null),style:{position:'absolute',top:16,right:20,background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:20,cursor:'pointer'}}, '×')
+    )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMMS TAB — AI-powered communication generation
+// ══════════════════════════════════════════════════════════════════════════
+function CommsTab({ plots, items, trades, hsLog, materials, stageDefs, onCreateItem, onUpdateItem, onDeleteItem, onGenerateComm }) {
+  const [activeSection, setActiveSection] = useState('generate');
+  const [commType, setCommType]   = useState('daily_summary');
+  const [tradeSel, setTradeSel]   = useState('');
+  const [selectedNoticeId, setSelectedNoticeId] = useState('');
+  const [notes, setNotes]         = useState('');
+  const [areaRef, setAreaRef]     = useState(''); // for trade notices: area/location reference
+  const [signedBy, setSignedBy]   = useState('Aaron Green — Site Manager');
+  const [generating, setGenerating] = useState(false);
+  const [output, setOutput]       = useState('');
+  const [copied, setCopied]       = useState(false);
+  const [error, setError]         = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterTrade, setFilterTrade] = useState('');
+  const [filterStatus, setFilterStatus] = useState('open');
+
+  const sortedPlots = useMemo(()=>[...plots].sort((a,b)=>parseInt(a.plot_number)-parseInt(b.plot_number)),[plots]);
+  const plotNumberMap = useMemo(()=>{const m={};plots.forEach(p=>{m[p.id]=p.plot_number;});return m;},[plots]);
+
+  const allItems = useMemo(() => {
+    let i = items;
+    if (filterType!=='all') i = i.filter(x=>x.item_type===filterType);
+    if (filterTrade) i = i.filter(x=>x.trade_name===filterTrade||x.trade_id===filterTrade);
+    if (filterStatus!=='all') i = i.filter(x=>x.status===filterStatus);
+    return i.map(x=>Object.assign({},x,{plot_number:plotNumberMap[x.plot_id]||'?'}));
+  }, [items, filterType, filterTrade, filterStatus, plotNumberMap]);
+
+  const typeLabels = {
+    outstanding_work:'Outstanding Works', cleanup_notice:'Clean-up Notices',
+    daywork:'Dayworks/Extras', rfi_note:'RFI Notes'
+  };
+
+  const statusColor = {open:'#d97706',issued:'#2563eb',actioned:'#16a34a',closed:'#9ca3af'};
+
+  async function generate() {
+    setGenerating(true); setOutput(''); setError('');
+    try {
+      const text = await onGenerateComm(commType, {
+        notes,
+        trade_name: tradeSel ? (trades.find(t=>t.id===tradeSel)||{}).name : '',
+        notice_content: commType==='trade_notice' ? notes : '',
+        area_reference: areaRef,
+        signed_by: signedBy,
+        plot_number_map: plotNumberMap,
+      });
+      setOutput(text);
+    } catch(ex) { setError(ex.message||'Generation failed — check API connection.'); }
+    setGenerating(false);
+  }
+
+  function copyOutput() {
+    navigator.clipboard.writeText(output).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+  }
+
+  const commTypes = [
+    {id:'daily_summary',    label:'📋 Daily Report',      desc:'Progress update for your line manager'},
+    {id:'weekly_summary',   label:'📊 Weekly Summary',    desc:'Stakeholder progress report'},
+    {id:'trade_notice',     label:'🧹 Trade Notice',      desc:'Cleanup notice or instruction to a contractor'},
+    {id:'qs_dayworks',      label:'💷 QS Dayworks',       desc:'Inform the QS of agreed extras/dayworks'},
+    {id:'progress_report',  label:'🏗 Progress Report',   desc:'Formal structured site progress report'},
+  ];
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}},
+
+    // Section tabs
+    e('div',{style:{background:'#fff',borderBottom:'1px solid #e5e7eb',padding:'0 16px',display:'flex',gap:0,flexShrink:0}},
+      ...([['generate','✉️ Generate Communication'],['logbook','📒 All Site Items']]).map(([id,label])=>
+        e('button',{key:id,onClick:()=>setActiveSection(id),
+          style:{padding:'10px 16px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',
+            background:'transparent',color:activeSection===id?'#f97316':'#6b7280',
+            borderBottom:activeSection===id?'2px solid #f97316':'2px solid transparent'}
+        },label)
+      )
+    ),
+
+    // ── GENERATE ──────────────────────────────────────────────────────────
+    activeSection==='generate' && e('div',{style:{flex:1,overflow:'auto',display:'flex',gap:0}},
+
+      // Left: controls
+      e('div',{style:{width:280,flexShrink:0,borderRight:'1px solid #e5e7eb',padding:16,overflowY:'auto'}},
+        e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:12}},'Choose what to generate'),
+        ...commTypes.map(ct=>
+          e('div',{key:ct.id,onClick:()=>setCommType(ct.id),
+            style:{padding:'10px 12px',borderRadius:8,border:'1px solid',marginBottom:6,cursor:'pointer',
+              borderColor:commType===ct.id?'#f97316':'#e5e7eb',
+              background:commType===ct.id?'#fff7ed':'#fff'}
+          },
+            e('div',{style:{fontSize:12,fontWeight:700,color:commType===ct.id?'#f97316':'#111827'}},ct.label),
+            e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:2}},ct.desc)
+          )
+        ),
+
+        commType==='trade_notice' && e('div',{style:{marginTop:10}},
+          // Logged notices from the plot logbook — select one to base the notice on
+          e('div',{style:{fontSize:11,fontWeight:700,color:'#dc2626',marginBottom:5}},'🧹 Logged Clean-up Notices'),
+          e('div',{style:{fontSize:10,color:'#9ca3af',marginBottom:6}},'Select a notice from the plot logbook to base this communication on, or fill in manually below.'),
+          (() => {
+            const loggedNotices = (items||[]).filter(i=>i.item_type==='cleanup_notice').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+            if (!loggedNotices.length) return e('div',{style:{fontSize:11,color:'#9ca3af',background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:6,padding:'8px 10px',marginBottom:8}},
+              'No clean-up notices logged yet. Add them via plot dots (Site Map tab → click a plot dot → Site Logbook → 🧹 Clean-up Notices).'
+            );
+            return e('div',{style:{maxHeight:180,overflowY:'auto',border:'1px solid #e5e7eb',borderRadius:7,marginBottom:8}},
+              ...loggedNotices.map((item,i)=>{
+                const plotNum = plotNumberMap[item.plot_id]||'?';
+                const isSelected = selectedNoticeId===item.id;
+                const statusCol = {open:'#dc2626',issued:'#2563eb',actioned:'#d97706',closed:'#16a34a'}[item.status]||'#6b7280';
+                return e('div',{key:item.id,
+                  onClick:()=>{
+                    setSelectedNoticeId(isSelected?'':item.id);
+                    if(!isSelected){
+                      setNotes(item.description||item.title||'');
+                      setAreaRef(item.title||'');
+                      // Set trade if available
+                      if(item.trade_id) setTradeSel(item.trade_id);
+                    }
+                  },
+                  style:{padding:'8px 10px',cursor:'pointer',borderBottom:i<loggedNotices.length-1?'1px solid #e5e7eb':'none',
+                    background:isSelected?'#fff7ed':'#fff',borderLeft:isSelected?'3px solid #f97316':'3px solid transparent'}
+                },
+                  e('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+                    e('span',{style:{fontWeight:700,fontSize:11,color:'#f97316'}},item.ref_number),
+                    e('span',{style:{fontWeight:600,fontSize:11,color:'#111827',flex:1}},item.title),
+                    e('span',{style:{fontSize:10,color:'#6b7280'}},'Plot '+plotNum),
+                    item.trade_name&&e('span',{style:{fontSize:10,color:'#9ca3af'}},item.trade_name),
+                    e('select',{value:item.status,
+                      onChange:ev=>{ev.stopPropagation();onUpdateItem(item.id,{status:ev.target.value});},
+                      onClick:ev=>ev.stopPropagation(),
+                      style:{fontSize:9,padding:'2px 4px',border:'1px solid '+statusCol,borderRadius:4,color:statusCol,background:'#fff',cursor:'pointer'}},
+                      ['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+                    )
+                  ),
+                  item.description&&e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:2,paddingLeft:2}},item.description.substring(0,80)+(item.description.length>80?'...':''))
+                );
+              })
+            );
+          })(),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4}},'Trade / Contractor'),
+          e('select',{value:tradeSel,onChange:ev=>setTradeSel(ev.target.value),style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827',marginBottom:8}},
+            e('option',{value:''},'— Select trade —'),
+            ...trades.map(t=>e('option',{key:t.id,value:t.id},t.name))
+          ),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4}},'Area / Location Reference'),
+          e('input',{type:'text',value:areaRef,onChange:ev=>setAreaRef(ev.target.value),
+            placeholder:'e.g. Plot 12 scaffold yard, Groundworks compound, Plots 5-10 access road',
+            style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827',marginBottom:8}}),
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4}},'Signed by'),
+          e('input',{type:'text',value:signedBy,onChange:ev=>setSignedBy(ev.target.value),
+            style:{width:'100%',padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}})
+        ),
+
+        e('div',{style:{marginTop:12}},
+          e('div',{style:{fontSize:11,fontWeight:600,color:'#374151',marginBottom:5}},commType==='trade_notice'?'Issue Details / Instruction':'Additional notes for the AI'),
+          e('textarea',{value:notes,onChange:ev=>setNotes(ev.target.value),rows:4,
+            placeholder:commType==='trade_notice'?'Describe the issue — e.g. scaffold yard left unsecured, mortar not cleared from Plot 12 perimeter...':'Any extra context — specific plots to mention, particular issues, tone adjustments...',
+            style:{width:'100%',padding:'7px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827',fontFamily:'inherit',resize:'vertical'}
+          })
+        ),
+
+        e('button',{onClick:generate,disabled:generating,
+          style:{width:'100%',padding:'10px',marginTop:12,background:generating?'#9ca3af':'#f97316',border:'none',borderRadius:8,color:'#fff',fontSize:13,fontWeight:700,cursor:generating?'default':'pointer'}
+        },generating?'⏳ Generating...':'✨ Generate with AI')
+      ),
+
+      // Right: output
+      e('div',{style:{flex:1,padding:16,overflowY:'auto',display:'flex',flexDirection:'column',gap:10}},
+        error && e('div',{style:{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#dc2626'}},
+          '⚠ '+error
+        ),
+        output
+          ? e('div',null,
+              e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+                e('div',{style:{fontSize:12,fontWeight:700,color:'#374151'}},'Generated Output — copy and paste into your email or message'),
+                e('button',{onClick:copyOutput,style:{padding:'6px 14px',background:copied?'#16a34a':'#111827',border:'none',borderRadius:6,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}},
+                  copied?'✓ Copied!':'📋 Copy')
+              ),
+              e('div',{style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'14px 16px',fontSize:12,color:'#111827',lineHeight:1.7,whiteSpace:'pre-wrap',fontFamily:'Georgia,serif'}},output)
+            )
+          : !generating && e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',color:'#d1d5db',gap:12}},
+              e('div',{style:{fontSize:48}},'✉️'),
+              e('div',{style:{fontSize:13,color:'#9ca3af',textAlign:'center',maxWidth:300}},'Select a communication type and click Generate. The AI reads your live site data — stages, H&S log, materials, and logged items — and drafts a professional email for you to copy and send.')
+            )
+      )
+    ),
+
+    // ── LOGBOOK ───────────────────────────────────────────────────────────
+    activeSection==='logbook' && e('div',{style:{flex:1,overflow:'auto',padding:16}},
+      e('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}},
+        e('select',{value:filterType,onChange:ev=>setFilterType(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:'all'},'All Types'),
+          ...Object.entries(typeLabels).map(([k,v])=>e('option',{key:k,value:k},v))
+        ),
+        e('select',{value:filterTrade,onChange:ev=>setFilterTrade(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:''},'All Trades'),
+          ...trades.map(t=>e('option',{key:t.id,value:t.name},t.name))
+        ),
+        e('select',{value:filterStatus,onChange:ev=>setFilterStatus(ev.target.value),style:{padding:'5px 9px',border:'1px solid #d1d5db',borderRadius:6,fontSize:11,color:'#111827'}},
+          e('option',{value:'all'},'All Statuses'),
+          ...['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+        ),
+        e('span',{style:{fontSize:11,color:'#9ca3af'}},allItems.length+' items')
+      ),
+      allItems.length===0
+        ? e('div',{style:{textAlign:'center',padding:40,color:'#9ca3af'}},
+            e('div',{style:{fontSize:36,marginBottom:8}},'📒'),
+            e('div',{style:{fontSize:13}},filterStatus==='open'?'No open items — all clear!':'No items match this filter.')
+          )
+        : e('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+            ...allItems.map(item=>{
+              const tc = {outstanding_work:'#d97706',cleanup_notice:'#dc2626',daywork:'#2563eb',rfi_note:'#7c3aed'}[item.item_type]||'#6b7280';
+              const tl = typeLabels[item.item_type]||item.item_type;
+              return e('div',{key:item.id,style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid '+tc}},
+                e('div',{style:{display:'flex',alignItems:'flex-start',gap:10}},
+                  e('div',{style:{flex:1}},
+                    e('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:2}},
+                      e('span',{style:{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase'}},item.ref_number),
+                      e('span',{style:{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:4,background:tc+'15',color:tc}},tl),
+                      e('span',{style:{fontSize:11,fontWeight:700,color:'#111827'}},item.title),
+                      e('span',{style:{fontSize:10,color:'#6b7280'}},'Plot '+item.plot_number),
+                      item.trade_name&&e('span',{style:{fontSize:10,color:tc}},item.trade_name)
+                    ),
+                    item.description&&e('div',{style:{fontSize:11,color:'#6b7280',marginBottom:3}},item.description),
+                    e('div',{style:{display:'flex',gap:10,fontSize:10,color:'#9ca3af'}},
+                      item.deadline_date&&e('span',null,'📅 '+item.deadline_date),
+                      item.estimated_cost&&e('span',{style:{color:'#2563eb',fontWeight:700}},'£'+parseFloat(item.estimated_cost).toFixed(0)),
+                      item.chargeable&&e('span',{style:{color:'#dc2626',fontWeight:700}},'CHARGEABLE'),
+                      e('span',null,new Date(item.created_at).toLocaleDateString('en-GB'))
+                    )
+                  ),
+                  e('select',{value:item.status,onChange:ev=>onUpdateItem(item.id,{status:ev.target.value}),
+                    style:{fontSize:10,padding:'3px 6px',border:'1px solid #d1d5db',borderRadius:5,color:'#374151',background:'#fff',cursor:'pointer'}},
+                    ['open','issued','actioned','closed'].map(s=>e('option',{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1)))
+                  )
+                )
+              );
+            })
+          )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// REPORTS TAB — Weekly Site Report & Team Brief
+//
+// Two AI-powered reports generated from live schedule data:
+//  • Site Report  — formal management overview, printable PDF
+//  • Team Brief   — punchy actionable brief for direct team
+//
+// Both use Claude API for a narrative paragraph; all tables are data-driven.
+// ══════════════════════════════════════════════════════════════════════════
+function ReportsTab({ plots, stageDefs, plotStages, trades, materials, items, hsLog }) {
+  const [mode, setMode]           = useState(null);     // null | 'site' | 'team'
+  const [generating, setGenerating] = useState(false);
+  const [reportHtml, setReportHtml] = useState('');
+  const [matOrders, setMatOrders] = useState([]);
+  const printRef = useRef(null);
+
+  const workingDays = useMemo(() => genWDs(PROG_START, 730), []);
+  const todayIdx    = useMemo(() => {
+    const t = new Date(TODAY);
+    const i = workingDays.findIndex(d => d >= t);
+    return i < 0 ? 0 : i;
+  }, [workingDays]);
+
+  const schedules = useMemo(() =>
+    buildSchedules(plots, stageDefs, plotStages, todayIdx),
+    [plots, stageDefs, plotStages, todayIdx]
+  );
+
+  const sortedPlots = useMemo(() =>
+    [...plots].filter(p=>!p.is_core_block).sort((a,b)=>(parseInt(a.plot_number)||0)-(parseInt(b.plot_number)||0)),
+    [plots]
+  );
+  const defMap = useMemo(() => { const m={}; stageDefs.forEach(d=>m[d.id]=d); return m; }, [stageDefs]);
+
+  // Week window: today..today+4 (Mon-Fri)
+  const weekStart = todayIdx;
+  const weekEnd   = todayIdx + 4;
+  const fmtDate   = d => d ? d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}) : '';
+  const weekLabel = workingDays[weekStart] ? fmtDate(workingDays[weekStart]) : '';
+
+  function scheduledCRCDay(plot) {
+    const sc = schedules[plot.id]; if (!sc) return null;
+    const crcDef = stageDefs.find(d=>d.name==='CRC'||(d.name||'').toLowerCase()==='crc');
+    if (!crcDef) return null;
+    const s = sc[crcDef.id]; if (!s) return null;
+    return workingDays[s.start] || null;
+  }
+
+  function varianceDays(plot) {
+    const schDate = scheduledCRCDay(plot);
+    if (!schDate || !plot.crc_deadline_date) return null;
+    const deadline = new Date(plot.crc_deadline_date);
+    return Math.round((deadline - schDate) / (1000*60*60*24));
+  }
+
+  function plotCurrentStage(plot) {
+    if (!plot.current_stage_id) return '—';
+    return defMap[plot.current_stage_id]?.name || '—';
+  }
+
+  function plotNextStage(plot) {
+    const cur = defMap[plot.current_stage_id];
+    if (!cur) return stageDefs[0]?.name || '—';
+    const curOrder = cur.stage_order || 0;
+    const next = stageDefs.filter(d=>(d.stage_order||0)>curOrder).sort((a,b)=>a.stage_order-b.stage_order)[0];
+    return next?.name || 'Complete';
+  }
+
+  // Plots active this week (current stage falls within weekStart..weekEnd)
+  const activeThisWeek = useMemo(() => {
+    return sortedPlots.filter(p => {
+      const sc = schedules[p.id]; if (!sc) return false;
+      const id = p.current_stage_id; if (!id) return false;
+      const s = sc[id]; if (!s) return false;
+      return s.start <= weekEnd && (s.start + s.dur) >= weekStart;
+    });
+  }, [sortedPlots, schedules, weekStart, weekEnd]);
+
+  // Plots behind CRC schedule
+  const behindPlots = useMemo(() =>
+    sortedPlots.filter(p => { const v=varianceDays(p); return v!==null && v<0; }),
+    [sortedPlots, schedules]
+  );
+
+  // Materials flagged this week (delivery due weekStart..weekEnd)
+  const matsDueThisWeek = useMemo(() => {
+    const rows = [];
+    materials.forEach(mat => {
+      const leadDays = mat.delivery_offset_days ?? (mat.lead_time_weeks * 5);
+      sortedPlots.forEach(plot => {
+        const sc = schedules[plot.id];
+        const stageSched = sc ? sc[mat.linked_stage_id] : null;
+        if (!stageSched) return;
+        const dIdx = Math.max(0, stageSched.start - leadDays);
+        if (dIdx >= weekStart && dIdx <= weekEnd) {
+          const order = matOrders.find(o=>o.material_id===mat.id&&o.plot_id===plot.id);
+          rows.push({ mat, plot, dIdx, status: order?.status||'not_ordered' });
+        }
+      });
+    });
+    return rows;
+  }, [materials, sortedPlots, schedules, matOrders, weekStart, weekEnd]);
+
+  // Outstanding items (cleanup_notice, outstanding_work)
+  const outstandingItems = useMemo(() =>
+    items.filter(i => i.item_type === 'cleanup_notice' || i.item_type === 'outstanding_work'),
+    [items]
+  );
+
+  // Stages active this week by trade (for Team Brief)
+  const tradeSchedule = useMemo(() => {
+    const byTrade = {};
+    sortedPlots.forEach(p => {
+      const sc = schedules[p.id]; if(!sc) return;
+      stageDefs.forEach(def => {
+        const s = sc[def.id]; if(!s) return;
+        if (s.start > weekEnd || (s.start+s.dur) < weekStart) return;
+        const trade = def.trade||'Other';
+        if (!byTrade[trade]) byTrade[trade] = [];
+        byTrade[trade].push({ plot:p, def, s });
+      });
+    });
+    return byTrade;
+  }, [sortedPlots, stageDefs, schedules, weekStart, weekEnd]);
+
+  async function generate(type) {
+    setMode(type);
+    setGenerating(true);
+    setReportHtml('');
+    // Fetch material orders fresh
+    try {
+      const ordsR = await api('/material-orders').then(r=>r.json());
+      setMatOrders(ordsR||[]);
+    } catch(_){}
+
+    // Build data summary for Claude
+    const behindSummary = behindPlots.map(p=>`P${p.plot_number} (${plotCurrentStage(p)}, ${varianceDays(p)}d variance)`).join(', ');
+    const activeCount = activeThisWeek.length;
+    const matUrgent = matsDueThisWeek.filter(m=>m.status==='not_ordered').map(m=>`${m.mat.material_name} (P${m.plot.plot_number})`).join(', ');
+    const hsOpen = hsLog.filter(h=>!h.closed).length;
+
+    // Build variance data for AI analysis
+    const plotVariances = sortedPlots.map(p=>{
+      const v = varianceDays(p);
+      if (v===null) return null;
+      return `P${p.plot_number} (${plotCurrentStage(p)}): ${v>=0?'+':''}${v}d`;
+    }).filter(Boolean).slice(0,20).join(', ');
+
+    const tradeLoad = Object.entries(tradeSchedule)
+      .map(([t,items])=>`${t}: ${items.length} plots`)
+      .join(', ');
+
+    const prompt = type==='site'
+      ? `You are writing a professional site manager's weekly progress report for Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge (74 plots).
+Week commencing: ${weekLabel}
+Active plots this week: ${activeCount}
+Plots behind CRC schedule: ${behindPlots.length}${behindSummary ? ' — '+behindSummary : ''}
+Materials urgently needing ordering: ${matUrgent||'None'}
+Open H&S items: ${hsOpen}
+Write a professional 3-sentence executive summary paragraph for this report. Be direct and factual. Do not use markdown. Start with "This week".`
+      : type==='analysis'
+      ? `You are an expert construction programme analyst. Analyse the following data for SS17 Phase 1C, Sandle Park, Fordingbridge (74 residential plots, Pennyfarthing Homes).
+
+Date: ${weekLabel}
+Plot CRC variances (positive=ahead, negative=behind): ${plotVariances||'No data yet — site starting soon'}
+Trade workload this week: ${tradeLoad||'No active stages yet'}
+Plots behind CRC deadline: ${behindPlots.length} of ${sortedPlots.length}
+Open H&S issues: ${hsOpen}
+Urgent material orders needed: ${matUrgent||'None'}
+
+Provide a structured analysis covering:
+1. SCHEDULE RISK: Top 3 scheduling risks and which plots are most at risk of missing CRC deadline
+2. TRADE CONFLICTS: Any periods of high trade demand that could cause resource conflicts
+3. SLIPPAGE PATTERNS: Any evidence of consistent slippage and which trades or plot types are involved
+4. RECOMMENDATIONS: 3 specific actions to improve programme performance
+5. OUTLOOK: 4-week outlook prediction
+
+Be concise and actionable. Use numbered sections. No markdown headers — use ALL CAPS for section names.`
+      : `You are writing a punchy team brief for the site team at Pennyfarthing Homes SS17 Phase 1C, Sandle Park, Fordingbridge.
+Week commencing: ${weekLabel}
+Active plots: ${activeCount}
+Behind schedule: ${behindPlots.length} plots${behindSummary ? ' — '+behindSummary : ''}
+Urgent material orders needed: ${matUrgent||'None'}
+Open H&S actions: ${hsOpen}
+Write 3 bullet-pointed top priorities for the team this week. Each bullet should be an actionable instruction. No markdown formatting. Use plain dashes. Be direct and practical.`;
+
+    let aiText = '';
+    try {
+      const aiResp = await api('/ai/generate', {
+        method:'POST',
+        body: JSON.stringify({ prompt, comm_type:'report' })
+      });
+      const aiR = await aiResp.json();
+      aiText = aiR.text || aiR.content || aiR.message || '';
+    } catch(_) { aiText = 'Unable to generate AI summary — check connection.'; }
+
+    // Generate HTML report
+    const html = type === 'site'
+      ? generateSiteReport(aiText)
+      : type === 'analysis'
+        ? generateAnalysisReport(aiText)
+        : generateTeamBrief(aiText);
+
+    setReportHtml(html);
+    setGenerating(false);
+  }
+
+  function generateSiteReport(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const rows = sortedPlots.map(p => {
+      const curStage = plotCurrentStage(p);
+      const nextStage = plotNextStage(p);
+      const variance = varianceDays(p);
+      const schDate = scheduledCRCDay(p);
+      const status = !variance ? '—'
+        : variance >= 0 ? `<span style="color:#16a34a;font-weight:700">✓ On track (+${variance}d)</span>`
+        : `<span style="color:#dc2626;font-weight:700">⚠ Behind (${variance}d)</span>`;
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.house_type||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.tenure||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${curStage}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#6b7280">${nextStage}</td>
+        <td style="padding:5px 8px;font-size:11px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${status}</td>
+      </tr>`;
+    }).join('');
+
+    const matsRows = matsDueThisWeek.map(m => {
+      const dueDate = workingDays[m.dIdx] ? workingDays[m.dIdx].toLocaleDateString('en-GB') : '—';
+      const statusBadge = m.status==='delivered'?'<span style="color:#16a34a">✓ Delivered</span>'
+        : m.status==='ordered'?'<span style="color:#d97706">Ordered</span>'
+        : '<span style="color:#dc2626;font-weight:700">⚠ NOT ORDERED</span>';
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px">${m.mat.material_name}</td>
+        <td style="padding:5px 8px">P${m.plot.plot_number}</td>
+        <td style="padding:5px 8px">${dueDate}</td>
+        <td style="padding:5px 8px">${statusBadge}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No deliveries due this week</td></tr>';
+
+    const outRows = outstandingItems.slice(0,15).map(i => {
+      const p = plots.find(pl=>pl.id===i.plot_id);
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px">${p?'P'+p.plot_number:'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${i.item_type.replace(/_/g,' ')}</td>
+        <td style="padding:5px 8px;font-size:11px">${(i.description||'').substring(0,60)}${(i.description||'').length>60?'…':''}</td>
+        <td style="padding:5px 8px;font-size:11px">${i.status||'—'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No outstanding items</td></tr>';
+
+    return `
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #f97316;
+       border-bottom: 2px solid #f97316; padding-bottom: 4px; margin: 20px 0 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #1e293b; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 10px 14px; margin: 8px 0 16px 0;
+            font-style: italic; font-size: 12px; line-height: 1.6; }
+  .kpi { display: inline-block; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+         padding: 8px 16px; margin: 0 8px 8px 0; text-align: center; }
+  .kpi-num { font-size: 24px; font-weight: 800; color: #111827; display: block; }
+  .kpi-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; }
+</style>
+<div style="padding:20px;max-width:1100px">
+  <div style="border-bottom:3px solid #111827;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em">Pennyfarthing Homes</div>
+      <h1>SS17 Phase 1C — Sandle Park, Fordingbridge</h1>
+      <div style="font-size:13px;font-weight:700;color:#374151">Site Manager's Weekly Progress Report</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:3px">Week commencing ${weekLabel}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9ca3af">
+      Generated: ${today}<br>
+      Prepared by: Site Manager
+    </div>
+  </div>
+
+  <h2>Site KPIs</h2>
+  <div>
+    <div class="kpi"><span class="kpi-num">${sortedPlots.length}</span><span class="kpi-lbl">Total Plots</span></div>
+    <div class="kpi"><span class="kpi-num">${activeThisWeek.length}</span><span class="kpi-lbl">Active This Week</span></div>
+    <div class="kpi" style="border-color:${behindPlots.length>0?'#dc2626':'#16a34a'}">
+      <span class="kpi-num" style="color:${behindPlots.length>0?'#dc2626':'#16a34a'}">${behindPlots.length}</span>
+      <span class="kpi-lbl">Behind Schedule</span></div>
+    <div class="kpi"><span class="kpi-num">${matsDueThisWeek.filter(m=>m.status==='not_ordered').length}</span><span class="kpi-lbl">Urgent Orders</span></div>
+    <div class="kpi"><span class="kpi-num">${hsLog.filter(h=>!h.closed).length}</span><span class="kpi-lbl">H&S Open Items</span></div>
+  </div>
+
+  <h2>Executive Summary</h2>
+  <div class="ai-box">${aiText.replace(/\n/g,'<br>')}</div>
+
+  <h2>Build Programme Status — All Plots</h2>
+  <table>
+    <thead><tr>
+      <th>Plot</th><th>Type</th><th>Tenure</th><th>Current Stage</th><th>Next Stage</th>
+      <th>CRC Deadline</th><th>Scheduled CRC</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  ${behindPlots.length>0?'<h2 style="color:#dc2626;border-color:#dc2626">&#9888; Behind Schedule &mdash; Action Required</h2><table><thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th></tr></thead><tbody>'+behindPlots.map(p=>{const v=varianceDays(p);const schDate=scheduledCRCDay(p);return '<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb"><td style="padding:5px 8px;font-weight:700">P'+p.plot_number+'</td><td style="padding:5px 8px;font-size:11px">'+(p.house_type||'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px">'+plotCurrentStage(p)+'</td><td style="padding:5px 8px;font-size:11px">'+(p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px">'+(schDate?schDate.toLocaleDateString('en-GB'):'&mdash;')+'</td><td style="padding:5px 8px;font-size:11px;color:#dc2626;font-weight:700">'+v+'d</td></tr>';}).join('')+'</tbody></table>':''}
+
+  <h2>Materials Due This Week</h2>
+  <table>
+    <thead><tr><th>Material</th><th>Plot</th><th>Due Date</th><th>Status</th></tr></thead>
+    <tbody>${matsRows}</tbody>
+  </table>
+
+  <h2>Outstanding Works &amp; Clean-Up Notices</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Type</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>${outRows}</tbody>
+  </table>
+
+  <div style="margin-top:30px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between">
+    <span>SS17 Phase 1C — Sandle Park, Fordingbridge | Pennyfarthing Homes</span>
+    <span>Generated by SMC on ${today}</span>
+  </div>
+</div>`;
+  }
+
+  function generateAnalysisReport(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    // Build variance table
+    const varRows = sortedPlots.filter(p=>varianceDays(p)!==null).map(p=>{
+      const v=varianceDays(p); const schDate=scheduledCRCDay(p);
+      const rag=v>=14?'#16a34a':v>=0?'#d97706':'#dc2626';
+      const ragLabel=v>=14?'Green':v>=0?'Amber':'Red';
+      return `<tr style="border-bottom:1px solid #e5e7eb;background:${v<0?'#fef2f2':'inherit'}">
+        <td style="padding:5px 8px;font-weight:700">P${p.plot_number}</td>
+        <td style="padding:5px 8px;font-size:10px">${p.house_type||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${plotCurrentStage(p)}</td>
+        <td style="padding:5px 8px;font-size:10px">${p.crc_deadline_date?new Date(p.crc_deadline_date).toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-size:10px">${schDate?schDate.toLocaleDateString('en-GB'):'—'}</td>
+        <td style="padding:5px 8px;font-weight:700;color:${rag}">${v>=0?'+':''}${v}d</td>
+        <td style="padding:5px 8px"><span style="background:${rag};color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;font-weight:700">${ragLabel}</span></td>
+      </tr>`;
+    }).join('');
+
+    const tradeRows = Object.entries(tradeSchedule).sort((a,b)=>b[1].length-a[1].length).map(([trade,items])=>{
+      const pct=Math.round(items.length/sortedPlots.length*100);
+      const bar='█'.repeat(Math.round(pct/5))+'░'.repeat(20-Math.round(pct/5));
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">${trade}</td>
+        <td style="padding:5px 8px;font-size:11px">${items.length} plots (${pct}% of site)</td>
+        <td style="padding:5px 8px;font-family:monospace;font-size:10px;color:#7c3aed">${bar}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #7c3aed;
+       border-bottom: 2px solid #7c3aed; padding-bottom: 4px; margin: 20px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #1e293b; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #faf5ff; border-left: 4px solid #7c3aed; padding: 12px 16px; margin: 8px 0 16px;
+            font-size: 12px; line-height: 1.8; white-space: pre-line; }
+  .kpi { display:inline-block;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 14px;margin:0 6px 6px 0;text-align:center }
+  .kpi-n { font-size:22px;font-weight:800;display:block }
+  .kpi-l { font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af }
+</style>
+<div style="padding:20px;max-width:1050px">
+  <div style="border-bottom:3px solid #7c3aed;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div style="font-size:9px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em">Pennyfarthing Homes</div>
+      <h1>AI Predictive Analysis — SS17 Phase 1C</h1>
+      <div style="font-size:11px;color:#6b7280">Sandle Park, Fordingbridge · ${weekLabel}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9ca3af">Generated: ${today}<br>Powered by Claude AI</div>
+  </div>
+
+  <h2>Risk Summary</h2>
+  <div>
+    <div class="kpi" style="border-color:#16a34a"><span class="kpi-n" style="color:#16a34a">${sortedPlots.filter(p=>{const v=varianceDays(p);return v!==null&&v>=14}).length}</span><span class="kpi-l">On Track (Green)</span></div>
+    <div class="kpi" style="border-color:#d97706"><span class="kpi-n" style="color:#d97706">${sortedPlots.filter(p=>{const v=varianceDays(p);return v!==null&&v>=0&&v<14}).length}</span><span class="kpi-l">At Risk (Amber)</span></div>
+    <div class="kpi" style="border-color:#dc2626"><span class="kpi-n" style="color:#dc2626">${behindPlots.length}</span><span class="kpi-l">Behind Schedule (Red)</span></div>
+    <div class="kpi"><span class="kpi-n">${Object.keys(tradeSchedule).length}</span><span class="kpi-l">Active Trades This Week</span></div>
+  </div>
+
+  <h2>AI Analysis</h2>
+  <div class="ai-box">${aiText.replace(/\n/g,'<br>')}</div>
+
+  <h2>CRC Variance — All Plots</h2>
+  <table>
+    <thead><tr><th>Plot</th><th>Type</th><th>Current Stage</th><th>CRC Deadline</th><th>Scheduled CRC</th><th>Variance</th><th>RAG</th></tr></thead>
+    <tbody>${varRows||'<tr><td colspan="7" style="padding:8px;color:#9ca3af;text-align:center">No schedule data yet — site starting soon</td></tr>'}</tbody>
+  </table>
+
+  <h2>Trade Demand This Week</h2>
+  <table>
+    <thead><tr><th>Trade</th><th>Plots Required</th><th>Demand Indicator</th></tr></thead>
+    <tbody>${tradeRows||'<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody>
+  </table>
+
+  <div style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center">
+    AI Predictive Analysis — SS17 Phase 1C · Pennyfarthing Homes · Powered by Claude AI
+  </div>
+</div>`;
+  }
+
+  function generateTeamBrief(aiText) {
+    const today = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+    const tradeRows = Object.entries(tradeSchedule).sort((a,b)=>b[1].length-a[1].length).map(([trade,items])=>{
+      const plotList = [...new Set(items.map(x=>'P'+x.plot.plot_number))].join(', ');
+      const stageList = [...new Set(items.map(x=>x.def.name))].join(' · ');
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:6px 10px;font-weight:700">${trade}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#dc2626;font-weight:700">${items.length} plot${items.length>1?'s':''}</td>
+        <td style="padding:6px 10px;font-size:11px">${plotList}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#6b7280">${stageList}</td>
+      </tr>`;
+    }).join('');
+
+    const urgentMats = matsDueThisWeek.filter(m=>m.status==='not_ordered');
+    const matRows = urgentMats.map(m=>{
+      const dueDate = workingDays[m.dIdx]?workingDays[m.dIdx].toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'—';
+      return `<tr style="background:#fef2f2;border-bottom:1px solid #e5e7eb">
+        <td style="padding:6px 10px;font-weight:700;color:#dc2626">⚠</td>
+        <td style="padding:6px 10px;font-weight:700">${m.mat.material_name}</td>
+        <td style="padding:6px 10px">P${m.plot.plot_number}</td>
+        <td style="padding:6px 10px;font-size:11px">${dueDate}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#dc2626;font-weight:700">ORDER NOW</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="padding:8px;color:#9ca3af;text-align:center">No urgent orders — all materials on track ✓</td></tr>';
+
+    const cleanItems = outstandingItems.slice(0,10);
+    const cleanRows = cleanItems.map(i=>{
+      const p = plots.find(pl=>pl.id===i.plot_id);
+      return `<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700">${p?'P'+p.plot_number:'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${(i.description||'').substring(0,70)}${(i.description||'').length>70?'…':''}</td>
+        <td style="padding:5px 8px;font-size:11px;color:${i.status==='completed'?'#16a34a':'#d97706'}">${i.status||'Pending'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No outstanding items ✓</td></tr>';
+
+    const hsRows = hsLog.filter(h=>!h.closed).slice(0,5).map(h=>`
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:5px 8px;font-weight:700;color:${h.severity==='red'?'#dc2626':h.severity==='amber'?'#d97706':'#16a34a'}">${h.severity?.toUpperCase()||'?'}</td>
+        <td style="padding:5px 8px;font-size:11px">${(h.description||'').substring(0,60)}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#6b7280">${h.raised_date?new Date(h.raised_date).toLocaleDateString('en-GB'):'—'}</td>
+      </tr>`).join('') || '<tr><td colspan="3" style="padding:8px;color:#9ca3af;text-align:center">No open H&S issues ✓</td></tr>';
+
+    return `
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; }
+  h1 { font-size: 16px; margin: 0 0 4px 0; letter-spacing: -0.02em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #fff;
+       background: #1e293b; padding: 6px 12px; margin: 20px 0 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #374151; color: #fff; padding: 6px 10px; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .ai-box { background: #fff7ed; border-left: 4px solid #f97316; padding: 10px 14px; margin: 8px 0 0 0;
+            font-size: 12px; line-height: 1.7; white-space: pre-line; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+</style>
+<div style="padding:16px;max-width:900px">
+  <div style="background:#111827;color:#fff;padding:14px 18px;border-radius:6px;margin-bottom:0">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#9ca3af">Pennyfarthing Homes · SS17 Phase 1C</div>
+    <h1 style="color:#f97316;margin:3px 0">TEAM BRIEF — Week commencing ${weekLabel}</h1>
+    <div style="font-size:10px;color:#9ca3af">Sandle Park, Fordingbridge · Generated ${today}</div>
+  </div>
+  <h2>🎯 Top Priorities This Week</h2>
+  <div class="ai-box">${aiText.replace(/\\n/g,'<br>').replace(/^-\s/gm,'• ')}</div>
+  <h2>👷 Trade Call-Out Schedule</h2>
+  <table><thead><tr><th>Trade</th><th>Plots Required</th><th>Plot Numbers</th><th>Stage(s)</th></tr></thead>
+  <tbody>${tradeRows||'<tr><td colspan="4" style="padding:8px;color:#9ca3af;text-align:center">No active stages this week</td></tr>'}</tbody></table>
+  <h2>📦 Materials to Chase Urgently</h2>
+  <table><thead><tr><th>!</th><th>Material</th><th>Plot</th><th>Due</th><th>Action</th></tr></thead>
+  <tbody>${matRows}</tbody></table>
+  <h2>🧹 Outstanding Works / Clean-Ups</h2>
+  <table><thead><tr><th>Plot</th><th>Description</th><th>Status</th></tr></thead>
+  <tbody>${cleanRows}</tbody></table>
+  <h2>⛑️ H&amp;S Actions</h2>
+  <table><thead><tr><th>Level</th><th>Issue</th><th>Raised</th></tr></thead>
+  <tbody>${hsRows}</tbody></table>
+  <div style="margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;margin-bottom:4px">Next CRC Deadlines</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${sortedPlots.filter(p=>p.crc_deadline_date).sort((a,b)=>new Date(a.crc_deadline_date)-new Date(b.crc_deadline_date)).slice(0,8).map(p=>{const d=new Date(p.crc_deadline_date);const wks=Math.round((d-new Date())/(1000*60*60*24*7));return '<span class="pill" style="background:'+(wks<12?'#fee2e2':wks<26?'#fff7ed':'#f0fdf4')+';color:'+(wks<12?'#dc2626':wks<26?'#d97706':'#16a34a')+'">P'+p.plot_number+' &mdash; '+d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+' ('+wks+'w)</span>';}).join('')}</div>
+  </div>
+  <div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center">
+    SS17 Phase 1C &mdash; Sandle Park, Fordingbridge | Pennyfarthing Homes | Generated by SMC
+  </div>
+</div>`;
+  }
+  // ── Render ───────────────────────────────────────────────────────────────
+  return e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden',minHeight:0,background:'#f9fafb'}},
+    e('div',{style:{padding:'12px 18px',borderBottom:'1px solid #e5e7eb',background:'#fff',flexShrink:0}},
+      e('div',{style:{fontSize:13,fontWeight:700,color:'#111827',marginBottom:6}},'\u{1F4CB} Weekly Reports'),
+      e('div',{style:{fontSize:11,color:'#6b7280',marginBottom:12}},
+        'Generate a live report from your current Gantt schedule, materials, H&S log, and outstanding works. '+
+        'AI narrative generated by Claude from your live site data.'
+      ),
+      e('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
+        e('button',{onClick:()=>generate('site'),disabled:generating,
+          style:{padding:'10px 20px',background:'#1e293b',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F4CA} Site Progress Report'),
+        e('button',{onClick:()=>generate('team'),disabled:generating,
+          style:{padding:'10px 20px',background:'#f97316',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F477} Team Weekly Brief'),
+        e('button',{onClick:()=>generate('analysis'),disabled:generating,
+          style:{padding:'10px 20px',background:'#7c3aed',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,cursor:generating?'wait':'pointer',opacity:generating?0.6:1}
+        },'\u{1F916} AI Predictive Analysis'),
+        reportHtml&&e('button',{
+          onClick:()=>{const w=window.open('','_blank');w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Report</title></head><body>'+reportHtml+'</body></html>');w.document.close();w.print();},
+          style:{padding:'10px 16px',background:'#e5e7eb',border:'none',borderRadius:8,color:'#374151',fontSize:12,fontWeight:700,cursor:'pointer'}
+        },'\u{1F5A8} Print / Save PDF')
+      )
+    ),
+    e('div',{style:{flex:1,overflow:'auto',minHeight:0}},
+      generating&&e('div',{style:{padding:40,textAlign:'center',color:'#6b7280'}},
+        e('div',{style:{fontSize:32,marginBottom:12}},'\u23F3'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},'Generating report...'),
+        e('div',{style:{fontSize:11}},'Analysing schedule, generating AI summary.')
+      ),
+      !generating&&!reportHtml&&e('div',{style:{padding:40,textAlign:'center',color:'#9ca3af'}},
+        e('div',{style:{fontSize:40,marginBottom:12}},'\u{1F4CB}'),
+        e('div',{style:{fontSize:14,fontWeight:700,marginBottom:6,color:'#374151'}},'Choose a report type above'),
+        e('div',{style:{fontSize:12,maxWidth:400,margin:'0 auto',lineHeight:1.6}},
+          e('b',null,'Site Progress Report'),' \u2014 formal management overview.',
+          e('br'),e('br'),
+          e('b',null,'Team Weekly Brief'),' \u2014 punchy brief with trade schedule.',
+          e('br'),e('br'),
+          e('b',null,'AI Predictive Analysis'),' \u2014 schedule risks and 4-week outlook.'
+        )
+      ),
+      reportHtml&&e('div',{dangerouslySetInnerHTML:{__html:reportHtml},style:{background:'#fff',minHeight:'100%'}})
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PERFECT DELIVERY TAB
+//
+function PDTab({ plots, stageDefs, plotStages, hsLog }) {
+  const [pdUrl, setPdUrl]       = useState(() => { try { return localStorage.getItem('smc_pd_url')||''; } catch(_){return '';} });
+  const [showFrame, setShowFrame] = useState(false);
+  const [frameError, setFrameError] = useState(false);
+
+  // Safe arrays
+  const safePlots  = Array.isArray(plots)  ? plots  : [];
+  const safeHsLog  = Array.isArray(hsLog)  ? hsLog  : [];
+
+  const activePlots = safePlots.filter(p => !p.is_core_block);
+  const cmlDone     = activePlots.filter(p => p.cml_signed_off).length;
+  const crcDone     = activePlots.filter(p => p.crc_signed_off).length;
+  const openRedHs   = safeHsLog.filter(h => !h.closed && h.severity === 'red');
+  const openRedPlotIds = new Set(openRedHs.map(h => h.plot_id));
+
+  function saveUrl(url) {
+    setPdUrl(url);
+    try { localStorage.setItem('smc_pd_url', url); } catch(_){}
+  }
+
+  return e('div',{style:{display:'flex',flexDirection:'column',flex:1,overflow:'hidden',minHeight:0,background:'#f9fafb'}},
+
+    // ── Header card ──────────────────────────────────────────────────────
+    e('div',{style:{padding:'14px 20px',background:'#fff',borderBottom:'1px solid #e5e7eb',flexShrink:0}},
+      e('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:12}},
+        e('div',{style:{width:40,height:40,background:'#111827',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}},'🏠'),
+        e('div',null,
+          e('div',{style:{fontSize:15,fontWeight:800,color:'#111827'}},'Perfect Delivery'),
+          e('div',{style:{fontSize:11,color:'#6b7280'}},'QR-based stage sign-off — SS17 Phase 1C, Sandle Park')
+        )
+      ),
+      // KPIs
+      e('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        ...[
+          ['Total Plots', activePlots.length, '#374151'],
+          ['CML Achieved', cmlDone, '#16a34a'],
+          ['CRC Achieved', crcDone, '#0891b2'],
+          ['Open H&S (Red)', openRedHs.length, openRedHs.length > 0 ? '#dc2626' : '#16a34a'],
+        ].map(([label,val,col]) =>
+          e('div',{key:label,style:{background:'#f9fafb',border:'1px solid #e5e7eb',borderRadius:8,padding:'8px 16px',textAlign:'center',minWidth:90}},
+            e('div',{style:{fontSize:22,fontWeight:800,color:col}}, String(val)),
+            e('div',{style:{fontSize:9,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.06em'}}, label)
+          )
+        )
+      )
+    ),
+
+    // ── H&S alert banner ─────────────────────────────────────────────────
+    openRedHs.length > 0 && e('div',{style:{background:'#fef2f2',borderBottom:'2px solid #dc2626',padding:'8px 20px',flexShrink:0,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+      e('span',{style:{fontSize:13,fontWeight:800,color:'#dc2626',flexShrink:0}},'⚠ SAFETY ALERT'),
+      e('span',{style:{fontSize:11,color:'#374151'}},
+        'Open red H&S issues on '+openRedHs.length+' plot'+(openRedHs.length>1?'s':'')+' — subcontractors must not start work until resolved.'),
+      e('span',{style:{fontSize:11,color:'#dc2626',fontWeight:700}},'→ Check H&S tab.')
+    ),
+
+    // ── Scrollable content ────────────────────────────────────────────────
+    e('div',{style:{flex:1,overflow:'auto',padding:20,minHeight:0}},
+
+      // PD portal link
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,padding:16,marginBottom:16}},
+        e('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10}},'Perfect Delivery Portal'),
+        e('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+          e('input',{
+            type:'url',
+            value:pdUrl,
+            onChange: ev => saveUrl(ev.target.value),
+            placeholder:'https://note2quote.co.uk/pd/ — paste your PD portal URL',
+            style:{flex:1,minWidth:200,fontSize:12,border:'1px solid #d1d5db',borderRadius:7,padding:'9px 12px',color:'#111827'}
+          }),
+          e('button',{
+            onClick:()=>{ if(pdUrl){ setShowFrame(true); setFrameError(false); } },
+            disabled:!pdUrl,
+            style:{padding:'9px 18px',background:pdUrl?'#f97316':'#e5e7eb',border:'none',borderRadius:7,
+              color:pdUrl?'#fff':'#9ca3af',fontSize:12,fontWeight:700,cursor:pdUrl?'pointer':'not-allowed'}
+          },'Embed'),
+          pdUrl && e('a',{href:pdUrl, target:'_blank', rel:'noopener noreferrer',
+            style:{padding:'9px 14px',background:'#1e293b',borderRadius:7,color:'#fff',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap'}
+          },'↗ Open in New Tab')
+        ),
+        e('div',{style:{fontSize:10,color:'#9ca3af',marginTop:6}},'URL is saved in your browser. Use "↗ Open in New Tab" if embed is blocked by the site.')
+      ),
+
+      // Embedded frame
+      showFrame && !frameError && e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden',marginBottom:16}},
+        e('div',{style:{background:'#1e293b',padding:'7px 14px',display:'flex',alignItems:'center',gap:8}},
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#ef4444'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#fbbf24'}}),
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:'#34d399'}}),
+          e('span',{style:{fontSize:11,color:'#9ca3af',marginLeft:8,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},pdUrl),
+          e('button',{onClick:()=>setShowFrame(false),style:{background:'none',border:'none',color:'#6b7280',cursor:'pointer',fontSize:14,lineHeight:1}},'✕')
+        ),
+        e('iframe',{
+          src:pdUrl,
+          width:'100%',
+          height:520,
+          style:{border:'none',display:'block'},
+          title:'Perfect Delivery Portal',
+          onError:()=>setFrameError(true)
+        })
+      ),
+
+      frameError && e('div',{style:{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:14,marginBottom:16}},
+        e('div',{style:{fontWeight:700,color:'#dc2626',marginBottom:4}},'Cannot embed this page'),
+        e('div',{style:{fontSize:11,color:'#374151'}},'The PD portal has blocked embedding (X-Frame-Options). Use "↗ Open in New Tab" instead.')
+      ),
+
+      // Plot sign-off status table
+      e('div',{style:{background:'#fff',border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}},
+        e('div',{style:{padding:'10px 16px',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+          e('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Plot Sign-Off Status (CML / CRC)'),
+          e('span',{style:{fontSize:10,color:'#9ca3af'}},cmlDone+' CML · '+crcDone+' CRC achieved')
+        ),
+        e('div',{style:{overflowX:'auto',WebkitOverflowScrolling:'touch'}},
+          e('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:480}},
+            e('thead',null,
+              e('tr',{style:{background:'#f1f5f9'}},
+                ['Plot','Type','Tenure','CML Cert','CRC Cert','H&S'].map(h=>
+                  e('th',{key:h,style:{padding:'7px 10px',textAlign:'left',color:'#6b7280',fontWeight:700,fontSize:10,textTransform:'uppercase',whiteSpace:'nowrap'}},h)
+                )
+              )
+            ),
+            e('tbody',null,
+              activePlots.length === 0
+                ? e('tr',null, e('td',{colSpan:6,style:{padding:16,textAlign:'center',color:'#9ca3af'}},'Loading plots...'))
+                : activePlots
+                    .sort((a,b) => (parseInt(a.plot_number)||0) - (parseInt(b.plot_number)||0))
+                    .map(p =>
+                      e('tr',{key:p.id, style:{borderBottom:'1px solid #f1f5f9', background: openRedPlotIds.has(p.id) ? '#fef2f2' : 'inherit'}},
+                        e('td',{style:{padding:'5px 10px',fontWeight:700}},'P'+p.plot_number),
+                        e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.house_type||'—'),
+                        e('td',{style:{padding:'5px 10px',color:'#6b7280',fontSize:10}},p.tenure||'—'),
+                        e('td',{style:{padding:'5px 10px'}},
+                          p.cml_cert_url
+                            ? e('a',{href:p.cml_cert_url,target:'_blank',style:{color:'#16a34a',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                            : p.cml_signed_off
+                              ? e('span',{style:{color:'#16a34a',fontSize:10,fontWeight:600}},'✓ Signed')
+                              : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                        ),
+                        e('td',{style:{padding:'5px 10px'}},
+                          p.crc_cert_url
+                            ? e('a',{href:p.crc_cert_url,target:'_blank',style:{color:'#0891b2',fontWeight:700,fontSize:10,textDecoration:'none'}},'✓ Cert')
+                            : p.crc_signed_off
+                              ? e('span',{style:{color:'#0891b2',fontSize:10,fontWeight:600}},'✓ Signed')
+                              : e('span',{style:{color:'#d1d5db',fontSize:10}},'—')
+                        ),
+                        e('td',{style:{padding:'5px 10px'}},
+                          openRedPlotIds.has(p.id)
+                            ? e('span',{style:{color:'#dc2626',fontWeight:700,fontSize:10}},'⚠ OPEN')
+                            : e('span',{style:{color:'#16a34a',fontSize:10}},'✓ Clear')
+                        )
+                      )
+                    )
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+function App() {
+  const [tab,setTab]               = useState('programme');
+  const [plots,setPlots]           = useState([]);
+  const [stageDefs,setStageDefs]   = useState([]);
+  const [plotStages,setPlotStages] = useState([]);
+  const [inspections,setInspections]= useState([]);
+  const [hsLog,setHsLog]           = useState([]);
+  const [materials,setMaterials]   = useState([]);
+  const [items,setItems]           = useState([]);
+  const [materialOrders,setMaterialOrders] = useState([]);
+  const [trades,setTrades]               = useState([]);
+  const [stageTemplates,setStageTemplates] = useState([]);
+  const [allStageDefs,setAllStageDefs]     = useState([]); // all templates — for Stage Editor only
+  const [loading,setLoading]             = useState(true);
+  const [loadErr,setLoadErr]       = useState(null);
+
+  // Persistent state — survives tab switches. The drawing image is stored in
+  // Supabase (smc_map_image) rather than localStorage, because a 3x-resolution
+  // PDF render can easily exceed the browser's localStorage quota (~5-10MB),
+  // which was failing silently and causing the "doesn't save" bug.
+  const [bgImage,setBgImageRaw] = useState(null); // loaded from IndexedDB or server on mount
+  const [mapDots,setMapDotsRaw] = useState(() => lsGet('smc_dots_v4',{}));
+
+  // Shared compression + server-save for the map drawing.
+  // Uses devicePixelRatio so retina/high-DPI mobile screens get a sharp image.
+  // Min 1920px, max 3840px — enough for a 1:1 pixel match on any display.
+  function _saveToServer(v, dotsOverride) {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // Scale to at least 1920px or the screen's physical pixel width (whichever is larger)
+        const physicalW = Math.round(window.screen.width * (window.devicePixelRatio || 1));
+        const MAX = Math.min(Math.max(physicalW, 1920), 3840);
+        const scale = img.naturalWidth > MAX ? MAX / img.naturalWidth : 1;
+        canvas.width  = Math.round(img.naturalWidth  * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.88); // higher quality for sharpness
+        const body = { image_data: compressed };
+        // Include dots if provided so both are saved in one request
+        const dots = dotsOverride !== undefined ? dotsOverride : mapDots;
+        if (dots && Object.keys(dots).length > 0) body.dots_json = JSON.stringify(dots);
+        api('/map-image', { method:'POST', body:JSON.stringify(body) })
+          .then(r=>r.json()).then(d=>{
+            if(d.ok) console.log('[SMC] Map + dots saved to server ✓');
+          }).catch(ex => console.warn('[SMC] Server save failed:', ex));
+      };
+      img.src = v;
+    } catch(_) {}
+  }
+
+  // Save dots only (no image re-upload) — used when dots change but image stays the same
+  function _saveDotsToServer(dots) {
+    api('/map-image', { method:'POST', body:JSON.stringify({ dots_json: JSON.stringify(dots) }) })
+      .catch(()=>{});
+  }
+
+  // Sync version key — bump this to force a re-upload on next desktop load
+  // (used when compression settings change, e.g. quality upgrade)
+  const MAP_SYNC_VER = 'smc_map_sync_v4_hq'; // bumped — forces re-upload at scale 5
+
+  // Load drawing + dots: IndexedDB first (fast), then server (cross-device).
+  // On desktop: if server quality is old or dots are missing, push them up.
+  // On mobile/new device: pull from server.
+  useEffect(() => {
+    const needsResync = !localStorage.getItem(MAP_SYNC_VER);
+
+    idbGet('map_drawing').then(img => {
+      if (img) {
+        setBgImageRaw(img);
+
+        // Always fetch server state to get dots and check quality version
+        api('/map-image').then(r=>r.json()).then(data => {
+          const localDots = lsGet('smc_dots_v4', {});
+          const serverHasDots = data.dots_json && JSON.parse(data.dots_json||'{}');
+          const serverDotsEmpty = !serverHasDots || Object.keys(serverHasDots).length === 0;
+          const localHasDots = localDots && Object.keys(localDots).length > 0;
+
+          if (needsResync || !data.image_data) {
+            // Re-upload at new high quality + include local dots
+            console.log('[SMC] Re-syncing map at high quality...');
+            _saveToServer(img, localDots);
+            localStorage.setItem(MAP_SYNC_VER, '1');
+          } else if (serverDotsEmpty && localHasDots) {
+            // Image is fine but dots missing on server — push dots only
+            console.log('[SMC] Pushing dots to server...');
+            _saveDotsToServer(localDots);
+          } else if (!serverDotsEmpty) {
+            // Load server dots (may be newer from another device)
+            try {
+              const sd = JSON.parse(data.dots_json);
+              if (sd && Object.keys(sd).length > 0) {
+                setMapDotsRaw(sd);
+                lsSet('smc_dots_v4', sd);
+              }
+            } catch(_) {}
+          }
+        }).catch(()=>{});
+        return;
+      }
+
+      // Nothing local — pull everything from server
+      api('/map-image').then(r=>r.json()).then(data => {
+        const src = data.image_data || data.image_url || null;
+        if (src) { setBgImageRaw(src); idbSet('map_drawing', src).catch(()=>{}); }
+        if (data.dots_json) {
+          try {
+            const sd = JSON.parse(data.dots_json);
+            if (sd && Object.keys(sd).length > 0) { setMapDotsRaw(sd); lsSet('smc_dots_v4', sd); }
+          } catch(_) {}
+        }
+      }).catch(()=>{});
+    }).catch(()=>{
+      api('/map-image').then(r=>r.json()).then(data => {
+        const src = data.image_data || data.image_url || null;
+        if (src) setBgImageRaw(src);
+        if (data.dots_json) {
+          try { setMapDotsRaw(JSON.parse(data.dots_json)); } catch(_) {}
+        }
+      }).catch(()=>{});
+    });
+  }, []);
+
+  function setBgImage(v) {
+    setBgImageRaw(v);
+    idbSet('map_drawing', v).catch(()=>{});
+    _saveToServer(v); // saves image + current dots
+    try { localStorage.removeItem('smc_bgimage_v2'); } catch(_) {}
+  }
+
+  function setMapDots(fn) {
+    setMapDotsRaw(prev => {
+      const next = typeof fn==='function' ? fn(prev) : fn;
+      lsSet('smc_dots_v4', next);
+      return next;
+    });
+  }
+
+  // Called when dots are moved/placed in SiteMapTab
+  function onDotsSaved(dots) {
+    _saveDotsToServer(dots);
+  }
+
+  // Manual sync button in SiteMapTab calls this — re-uploads image + dots at full quality
+  function onManualSync() {
+    if (!bgImage) return;
+    console.log('[SMC] Manual sync triggered');
+    localStorage.removeItem('smc_map_sync_v3_hq');
+    _saveToServer(bgImage, mapDots);
+  }
+
+  useEffect(()=>{
+    Promise.all([
+      api('/plots').then(r=>r.json()).catch(()=>[]),
+      api('/stage-defs').then(r=>r.json()).catch(()=>[]),
+      api('/plot-stages').then(r=>r.json()).catch(()=>[]),
+      api('/hs-inspections').then(r=>r.json()).catch(()=>[]),
+      api('/hs-log').then(r=>r.json()).catch(()=>[]),
+      api('/materials').then(r=>r.json()).catch(()=>[]),
+      api('/material-orders').then(r=>r.json()).catch(()=>[]),
+      api('/trades').then(r=>r.json()).catch(()=>[]),
+      api('/stage-templates').then(r=>r.json()).catch(()=>[]),
+      api('/items').then(r=>r.json()).catch(()=>[]),
+      api('/stage-defs?all=1').then(r=>r.json()).catch(()=>[]),
+    ]).then(function(res){
+      setPlots(Array.isArray(res[0])?res[0]:[]);
+      setStageDefs(Array.isArray(res[1])?res[1]:[]);
+      setPlotStages(Array.isArray(res[2])?res[2]:[]);
+      setInspections(Array.isArray(res[3])?res[3]:[]);
+      setHsLog(Array.isArray(res[4])?res[4]:[]);
+      setMaterials(Array.isArray(res[5])?res[5]:[]);
+      setMaterialOrders(Array.isArray(res[6])?res[6]:[]);
+      setTrades(Array.isArray(res[7])?res[7]:[]);
+      setStageTemplates(Array.isArray(res[8])?res[8]:[]);
+      setItems(Array.isArray(res[9])?res[9]:[]);
+      setAllStageDefs(Array.isArray(res[10])?res[10]:[]); // all templates — for Stage Editor
+      setLoading(false);
+    }).catch(ex=>{ setLoadErr(ex.message||'Failed'); setLoading(false); });
+  },[]);
+
+  // Update a plot's fields both locally (instant) and on the server
+  async function onUpdatePlot(plotId, fields) {
+    setPlots(prev => prev.map(p => p.id === plotId ? Object.assign({}, p, fields) : p));
+    try {
+      await api('/plots/' + plotId, { method: 'PATCH', body: JSON.stringify(fields) });
+    } catch (ex) { console.error('Plot update failed', ex); }
+  }
+
+  // Persist a batch of rescheduled stages for one plot (used by the Gantt's
+  // cascade-on-drag logic), then refresh plotStages so every tab agrees.
+  async function onSaveStages(plotId, changedStages) {
+    try {
+      await api('/plot-stages', {
+        method: 'POST',
+        body: JSON.stringify({ stages: changedStages.map(s => Object.assign({ plot_id: plotId }, s)) })
+      });
+      const fresh = await api('/plot-stages').then(r=>r.json());
+      setPlotStages(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) { console.error('Save stages failed', ex); }
+  }
+
+  // ── Materials handlers ──────────────────────────────────────────────────
+  async function onCreateMaterial(payload) {
+    try {
+      const r = await api('/materials', { method:'POST', body: JSON.stringify(payload) }).then(r=>r.json());
+      if (r.ok) {
+        // Refetch materials list (need the joined stage name)
+        const fresh = await api('/materials').then(r=>r.json());
+        setMaterials(Array.isArray(fresh)?fresh:[]);
+      }
+    } catch (ex) { console.error('Create material failed', ex); }
+  }
+
+  async function onDeleteMaterial(materialId) {
+    setMaterials(prev => prev.filter(m => m.id !== materialId));
+    try { await api('/materials/' + materialId, { method:'DELETE' }); }
+    catch (ex) { console.error('Delete material failed', ex); }
+  }
+
+  async function onUpdateMaterial(materialId, fields) {
+    try {
+      await api('/materials/' + materialId, { method:'PATCH', body: JSON.stringify(fields) });
+      const fresh = await api('/materials').then(r=>r.json());
+      setMaterials(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) { console.error('Update material failed', ex); }
+  }
+
+  async function onSetOrder(materialId, plotId, fields) {
+    // Optimistic local update so the UI feels instant
+    setMaterialOrders(prev => {
+      const existing = prev.find(o => o.material_id===materialId && o.plot_id===plotId);
+      if (existing) return prev.map(o => o===existing ? Object.assign({},o,fields) : o);
+      return [...prev, Object.assign({material_id:materialId, plot_id:plotId}, fields)];
+    });
+    try {
+      const r = await api('/material-orders', { method:'POST', body: JSON.stringify(Object.assign({material_id:materialId, plot_id:plotId}, fields)) }).then(r=>r.json());
+      if (!r.ok) { alert('Could not save — ' + (r.error||'unknown error') + '. Please try again.'); }
+      // Re-fetch from server as the source of truth, so the UI can never silently drift out of sync
+      const fresh = await api('/material-orders').then(r=>r.json());
+      setMaterialOrders(Array.isArray(fresh)?fresh:[]);
+    } catch (ex) {
+      console.error('Set order failed', ex);
+      alert('Could not save — check your connection and try again.');
+    }
+  }
+
+  // Raise an H&S issue from a plot's modal — posts to the existing endpoint
+  // and refreshes the H&S log so it shows up on the H&S tab immediately.
+  async function onRaiseHsIssue(plotId, detail, severity) {
+    try {
+      const r = await api('/plots/' + plotId + '/raise-hs-issue', {
+        method: 'POST',
+        body: JSON.stringify({ detail, severity })
+      }).then(r=>r.json());
+      if (r.ok) {
+        const fresh = await api('/hs-log').then(r=>r.json());
+        setHsLog(Array.isArray(fresh)?fresh:[]);
+      }
+      return r.ok;
+    } catch (ex) { console.error('Raise H&S issue failed', ex); return false; }
+  }
+
+  async function onUpdateInspection(inspId, fields) {
+    setInspections(prev => prev.map(i => i.id===inspId ? Object.assign({},i,fields) : i));
+    try { await api('/hs-inspections/' + inspId, { method:'PATCH', body: JSON.stringify(fields) }); }
+    catch (ex) { console.error('Update inspection failed', ex); }
+  }
+
+  async function onUpdateLog(logId, fields) {
+    setHsLog(prev => prev.map(l => l.id===logId ? Object.assign({},l,fields) : l));
+    try { await api('/hs-log/' + logId, { method:'PATCH', body: JSON.stringify(fields) }); }
+    catch (ex) { console.error('Update log failed', ex); }
+  }
+
+  // ── Items handlers ─────────────────────────────────────────────────────
+  async function onCreateItem(payload) {
+    try {
+      const r = await api('/items', { method:'POST', body:JSON.stringify(payload) }).then(r=>r.json());
+      if (r.ok && r.item) setItems(prev => [r.item, ...prev]);
+      return r.item;
+    } catch(ex) { console.error('Create item failed', ex); return null; }
+  }
+
+  async function onUpdateItem(itemId, fields) {
+    setItems(prev => prev.map(i => i.id===itemId ? Object.assign({},i,fields) : i));
+    try { await api('/items/'+itemId, { method:'PATCH', body:JSON.stringify(fields) }); }
+    catch(ex) { console.error('Update item failed', ex); }
+  }
+
+  async function onDeleteItem(itemId) {
+    setItems(prev => prev.filter(i => i.id !== itemId));
+    try { await api('/items/'+itemId, { method:'DELETE' }); }
+    catch(ex) { console.error('Delete item failed', ex); }
+  }
+
+  // ── AI communication generation ────────────────────────────────────────
+  async function onGenerateComm(type, context) {
+    const r = await api('/ai/generate', { method:'POST', body:JSON.stringify({ type, context }) }).then(r=>r.json());
+    if (!r.ok) throw new Error(r.error || 'Generation failed');
+    return r.text;
+  }
+
+  const TABS=[
+    {id:'programme', label:'📅  Programme'},
+    {id:'map',       label:'🗺️  Site Map'},
+    {id:'materials', label:'📦  Materials'},
+    {id:'stages',    label:'⚙️  Stage Editor'},
+    {id:'comms',     label:'✉️  Comms'},
+    {id:'hs',        label:'⛑️  H&S'},
+    {id:'reports',   label:'📋 Reports'},
+  {id:'pd',         label:'🏠 Perfect Delivery'},
+  ];
+
+  const privateCt = plots.filter(p=>p.tenure==='Private').length;
+  const affordCt  = plots.length - privateCt;
+
+  return e('div',{style:{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}},
+    // Header
+    e('div',{style:{background:'#ffffff',borderBottom:'1px solid #e5e7eb',padding:'7px 14px 0',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}},
+      e('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}},
+        e('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          e('span',{style:{fontSize:18}},'🏗️'),
+          e('div',null,
+            e('div',{style:{fontSize:12,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'0.1em'}},'Site Command Centre'),
+            e('div',{style:{fontSize:10,color:'#6b7280'}},'SS17 Phase 1C · Sandle Park, Fordingbridge · '+plots.length+' Plots loaded')
+          )
+        ),
+        e('div',{style:{display:'flex',gap:10,fontSize:10,alignItems:'center'}},
+          !loading && e('span',{style:{color:'#f59e0b',fontWeight:700}},privateCt+' Private'),
+          !loading && e('span',{style:{color:'#16a34a',fontWeight:700}},affordCt+' Affordable'),
+          e('span',{style:{color:'#6b7280'}},'📅 '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})),
+          e('a',{href:'/smc/logout',style:{color:'#9ca3af',textDecoration:'none',fontSize:10}},'Log out')
+        )
+      ),
+      e('div',{id:'top-tabs',style:{display:'flex',gap:2,background:'#f9fafb',borderTop:'1px solid #e5e7eb',padding:'0 4px',marginTop:6}},
+        ...TABS.map(t=>e('button',{key:t.id,onClick:()=>setTab(t.id),
+          style:{padding:'8px 16px',fontSize:11,fontWeight:600,border:'none',borderBottom:tab===t.id?'2px solid #f97316':'2px solid transparent',cursor:'pointer',marginBottom:'-1px',
+            background:tab===t.id?'#ffffff':'transparent',color:tab===t.id?'#f97316':'#6b7280'}},t.label))
+      )
+    ),
+    // Content
+    e('div',{style:{flex:1,overflow:'hidden',background:'#f9fafb'}},
+      loading
+        ?e('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:10}},
+            e('div',{style:{fontSize:14,color:'#6b7280'}},'Loading SS17 site data...'),
+            e('div',{style:{fontSize:11,color:'#9ca3af'}},'Fetching 74 plots, stage definitions and programme...')
+          )
+        :loadErr
+          ?e('div',{style:{padding:20,color:'#dc2626',fontSize:13}},'Error loading data: '+loadErr+'. Make sure you are logged in and the API is accessible.')
+          :tab==='programme'
+            ?e(ProgrammeTab,{plots,stageDefs,plotStages,onUpdatePlot,onSaveStages,trades,hsLog})
+            :tab==='map'
+              ?e(SiteMapTab,{plots,bgImage,setBgImage,dots:mapDots,setDots:setMapDots,onDotsSaved,onManualSync,stageDefs,plotStages,onUpdatePlot,materials,materialOrders,onSetOrder,onRaiseHsIssue,items,trades,onCreateItem,onUpdateItem,onDeleteItem})
+              :tab==='materials'
+                ?e(MaterialsTab,{plots,stageDefs,plotStages,materials,materialOrders,onCreateMaterial,onDeleteMaterial,onUpdateMaterial,onSetOrder})
+                :tab==='stages'
+                  ?e(StageEditorTab,{stageDefs:allStageDefs,setStageDefs:setAllStageDefs,plots,trades,stageTemplates,onUpdatePlot})
+                  :tab==='comms'
+                    ?e(CommsTab,{plots,items,trades,hsLog,materials,stageDefs,onCreateItem,onUpdateItem,onDeleteItem,onGenerateComm})
+                    :tab==='reports'
+                      ?e(ReportsTab,{plots,stageDefs,plotStages,trades,materials,items,hsLog})
+                      :tab==='pd'
+                        ?e(PDTab,{plots,stageDefs,plotStages,schedules:null,hsLog})
+                        :e(HSTab,{inspections,hsLog,onUpdateInspection,onUpdateLog})
+    ),
+    // Footer
+    e('div',{style:{background:'#ffffff',borderTop:'1px solid #e5e7eb',padding:'4px 14px',display:'flex',gap:12,alignItems:'center',flexShrink:0,flexWrap:'wrap'}},
+      ...Object.entries(TEN_COL).map(([k,col])=>
+        e('div',{key:k,style:{display:'flex',alignItems:'center',gap:4,fontSize:10}},
+          e('div',{style:{width:8,height:8,borderRadius:'50%',background:col}}),
+          e('span',{style:{color:'#9ca3af'}},k)
+        )
+      ),
+      e('span',{style:{marginLeft:'auto',fontSize:9,color:'#9ca3af'}},'● House · ◆ Bungalow · ■ Flat · 🟧 Block Core')
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(e(App,null));
+</script>
+<!-- Offline indicator and sync badge (outside React) -->
+<div id="offline-bar">📵 OFFLINE — changes will sync when signal returns</div>
+<div id="sync-badge" onclick="flushSyncQueue()"></div>
+<div id="root" style="height:100%"></div>
+</body>
+</html>
