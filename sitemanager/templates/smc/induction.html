@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Site Induction — Sandle Park</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap');
+  :root {
+    --charcoal:#15181B; --amber:#F2A900; --steel:#2F5D8A;
+    --green:#256330; --red:#D6483F; --paper:#ECEDE9; --line:#d8dad6;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; }
+  body {
+    font-family:'Inter',sans-serif; background:var(--paper); color:var(--charcoal);
+    display:flex; flex-direction:column; min-height:100vh;
+  }
+  .hazard-stripe {
+    height:8px; width:100%;
+    background-image:repeating-linear-gradient(135deg, var(--charcoal) 0px, var(--charcoal) 10px, var(--amber) 10px, var(--amber) 20px);
+  }
+  header {
+    background:var(--charcoal); color:var(--paper); padding:16px 20px 14px;
+  }
+  header .eyebrow { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); font-family:'Inter'; }
+  header .title { font-family:'Oswald'; font-size:20px; font-weight:600; margin-top:2px; }
+  main { flex:1; display:flex; flex-direction:column; padding:20px; max-width:480px; margin:0 auto; width:100%; }
+  h2 { font-family:'Oswald'; font-size:17px; margin:0 0 4px; }
+  p.sub { color:#5b5f63; font-size:13px; margin:0 0 16px; }
+  label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#5b5f63; margin:12px 0 6px; }
+  input, select {
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
+    font-size:15px; font-family:'Inter'; background:#fff; color:var(--charcoal);
+  }
+  .btn {
+    margin-top:22px; width:100%; padding:14px; border:none; border-radius:12px;
+    font-weight:600; font-size:15px; cursor:pointer; font-family:'Inter';
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-amber { background:var(--amber); color:var(--charcoal); }
+  .btn-amber:disabled { background:#d8dad6; color:#8A8D91; }
+  .btn-steel { background:var(--steel); color:#fff; }
+  .btn-outline { background:transparent; border:1px solid var(--line); color:var(--charcoal); }
+  .hint { font-size:11px; color:#8A8D91; text-align:center; margin-top:10px; }
+  .error { background:#FBE7E5; color:var(--red); font-size:13px; padding:10px 12px; border-radius:8px; margin-top:12px; }
+  .hazard-chips { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .chip { background:#fff; border-radius:10px; padding:10px 12px; font-size:12.5px; }
+  video { width:100%; border-radius:12px; background:var(--charcoal); }
+  .quiz-q { font-size:15px; font-weight:500; margin:18px 0 12px; }
+  .quiz-opt {
+    display:block; width:100%; text-align:left; padding:13px 14px; margin-bottom:8px;
+    border-radius:10px; border:1px solid var(--line); background:#fff; font-size:14px;
+    font-family:'Inter'; cursor:pointer;
+  }
+  .quiz-opt.correct { background:#E4F0E6; border-color:var(--green); color:var(--green); }
+  .quiz-opt.wrong { background:#FBE7E5; border-color:var(--red); color:var(--red); }
+  .progress-dots { display:flex; gap:6px; margin-top:16px; }
+  .dot { height:5px; flex:1; border-radius:99px; background:var(--line); }
+  .dot.active { background:var(--amber); }
+  .rams-item { background:#fff; border-radius:10px; padding:12px 14px; margin-bottom:8px; font-size:13.5px; }
+  .badge-card { background:#fff; border-radius:16px; overflow:hidden; border:1px solid var(--line); }
+  .badge-body { padding:16px; display:flex; gap:12px; align-items:flex-start; }
+  .badge-icon { width:52px; height:52px; border-radius:10px; background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+  .badge-name { font-family:'Oswald'; font-size:16px; font-weight:600; }
+  .badge-sub { font-size:12px; color:#5b5f63; margin-top:1px; }
+  .badge-verified { font-size:11px; color:var(--green); font-family:'JetBrains Mono'; margin-top:6px; }
+  .status-box { display:flex; align-items:center; gap:8px; border-radius:10px; padding:12px 14px; margin-top:10px; font-size:12.5px; }
+  .status-in { background:#E4F0E6; color:var(--green); }
+  .status-out { background:#F1F1EE; color:#8A8D91; }
+  .file-btn {
+    display:flex; align-items:center; gap:10px; border:1px dashed #8A8D91; border-radius:10px;
+    padding:12px 14px; margin-top:8px; cursor:pointer;
+  }
+  .file-btn.captured { border-color:var(--green); background:#E4F0E6; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(0,0,0,.15); border-top-color:var(--charcoal); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="hazard-stripe"></div>
+<header>
+  <div class="eyebrow">SS17 Phase 1C</div>
+  <div class="title">Sandle Park — Site Induction</div>
+</header>
+
+<main id="app"></main>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API = "/smc/api/induction";
+const VIDEO_URL = null; // set to your hosted induction video URL when ready
+const QUIZ = [
+  { q: "Where is the muster point if the alarm sounds?", options: ["Compound gate A", "Site office car park", "Plot 14 driveway"], correct: 0 },
+  { q: "What must you wear in the excavation zone?", options: ["Standard PPE only", "Hi-vis, hard hat, and harness on edge protection", "No extra PPE required"], correct: 1 },
+  { q: "Who do you report a near-miss to?", options: ["No one, just note it yourself", "The site manager, same day", "End of week only"], correct: 1 },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────
+const state = {
+  phone: "", operativeId: null, contractorId: null, inductionId: null,
+  trades: [], form: {}, ramsDocs: [], quizIndex: 0, quizCorrect: 0,
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || "Something went wrong");
+  return data;
+}
+
+const app = document.getElementById("app");
+function render(html) { app.innerHTML = html; }
+
+// ── Screen: Welcome (phone check) ───────────────────────────────────────────
+function screenWelcome() {
+  render(`
+    <h2>Welcome</h2>
+    <p class="sub">Enter your mobile number to begin or continue your induction.</p>
+    <label>Mobile number</label>
+    <input id="phone" type="tel" placeholder="07000 000000" inputmode="tel" />
+    <div id="err"></div>
+    <button class="btn btn-amber" id="go">Continue</button>
+    <div class="hint">Takes about 6 minutes first time · 60 seconds after</div>
+  `);
+  document.getElementById("go").onclick = async () => {
+    const phone = document.getElementById("phone").value.trim();
+    if (phone.length < 8) return showErr("Enter a valid mobile number");
+    setLoading("go", true);
+    try {
+      state.phone = phone;
+      const res = await api("/lookup", { method: "POST", body: { phone } });
+      if (res.found && res.induction_still_valid) {
+        state.operativeId = res.operative.id;
+        state.contractorId = res.operative.contractor_id;
+        state.form = res.operative;
+        return screenWelcomeBack();
+      }
+      if (res.found) {
+        state.operativeId = res.operative.id;
+        state.contractorId = res.operative.contractor_id;
+        state.form = res.operative;
+      }
+      return screenForm();
+    } catch (e) { showErr(e.message); }
+    setLoading("go", false);
+  };
+}
+
+function screenWelcomeBack() {
+  render(`
+    <h2>Welcome back, ${escapeHtml(state.form.name || "")}</h2>
+    <p class="sub">Your induction is still valid. Confirm your details to continue.</p>
+    <div class="rams-item">
+      ${escapeHtml(state.form.name || "")}<br>
+      <span style="color:#5b5f63">${escapeHtml(state.form.trade_name || "Operative")}</span>
+    </div>
+    <button class="btn btn-amber" id="confirm">Confirm & continue</button>
+    <button class="btn btn-outline" id="notme">This isn't me / details changed</button>
+  `);
+  document.getElementById("confirm").onclick = async () => {
+    setLoading("confirm", true);
+    try {
+      const startRes = await api("/start", { method: "POST", body: { operative_id: state.operativeId } });
+      state.inductionId = startRes.induction.id;
+      // Auto-pass quiz for a still-valid repeat visitor — the full induction
+      // was already completed and verified on a previous visit.
+      await api("/quiz", { method: "POST", body: { induction_id: state.inductionId, score: QUIZ.length, total: QUIZ.length } });
+      loadRamsThenShow();
+    } catch (e) { showErr(e.message); setLoading("confirm", false); }
+  };
+  document.getElementById("notme").onclick = screenForm;
+}
+
+// ── Screen: Form ─────────────────────────────────────────────────────────
+async function screenForm() {
+  if (!state.trades.length) {
+    try { state.trades = await api("/trades"); } catch (e) { state.trades = []; }
+  }
+  const tradeOptions = state.trades.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+  render(`
+    <h2>Your details</h2>
+    <p class="sub">Needed for site records and emergency contact.</p>
+    <label>Full name</label>
+    <input id="name" value="${escapeHtml(state.form.name || "")}" />
+    <label>Mobile number</label>
+    <input id="phone" value="${escapeHtml(state.phone)}" />
+    <label>Company</label>
+    <input id="company" placeholder="e.g. RJ Civils" />
+    <label>Trade</label>
+    <select id="trade"><option value="">Select trade</option>${tradeOptions}</select>
+    <label>Vehicle registration</label>
+    <input id="vehicle" placeholder="e.g. AB12 CDE" />
+    <label>Emergency contact name</label>
+    <input id="ecName" />
+    <label>Emergency contact number</label>
+    <input id="ecPhone" />
+    <label>CSCS card</label>
+    <div class="file-btn" id="cscsBtn">
+      <span id="cscsLabel">📷 Take a photo of your CSCS card</span>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="cscsFile" style="display:none" />
+    <div id="err"></div>
+    <button class="btn btn-amber" id="submit">Continue</button>
+  `);
+
+  let cscsUrl = null;
+  document.getElementById("cscsBtn").onclick = () => document.getElementById("cscsFile").click();
+  document.getElementById("cscsFile").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById("cscsLabel").textContent = "Uploading…";
+    try {
+      const b64 = await fileToBase64(file);
+      const res = await api("/cscs-photo", { method: "POST", body: { image_b64: b64, mime_type: file.type } });
+      cscsUrl = res.url;
+      document.getElementById("cscsBtn").classList.add("captured");
+      document.getElementById("cscsLabel").textContent = "✓ CSCS card captured";
+    } catch (err) {
+      document.getElementById("cscsLabel").textContent = "Upload failed — tap to retry";
+    }
+  };
+
+  document.getElementById("submit").onclick = async () => {
+    const payload = {
+      operative_id: state.operativeId,
+      name: document.getElementById("name").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      company_name: document.getElementById("company").value.trim(),
+      trade_id: document.getElementById("trade").value || null,
+      vehicle_reg: document.getElementById("vehicle").value.trim(),
+      emergency_contact_name: document.getElementById("ecName").value.trim(),
+      emergency_contact_phone: document.getElementById("ecPhone").value.trim(),
+      cscs_card_url: cscsUrl,
+    };
+    if (!payload.name || !payload.phone || !payload.company_name || !payload.emergency_contact_name || !payload.emergency_contact_phone) {
+      return showErr("Please fill in all required fields");
+    }
+    setLoading("submit", true);
+    try {
+      const res = await api("/form", { method: "POST", body: payload });
+      state.operativeId = res.operative_id;
+      state.contractorId = res.contractor_id;
+      state.form = payload;
+      const startRes = await api("/start", { method: "POST", body: { operative_id: state.operativeId } });
+      state.inductionId = startRes.induction.id;
+      screenVideo();
+    } catch (e) { showErr(e.message); setLoading("submit", false); }
+  };
+}
+
+// ── Screen: Video ─────────────────────────────────────────────────────────
+function screenVideo() {
+  render(`
+    <h2>Watch the briefing</h2>
+    <p class="sub">Site health & safety induction video.</p>
+    ${VIDEO_URL
+      ? `<video id="vid" controls playsinline src="${VIDEO_URL}"></video>`
+      : `<div style="background:var(--charcoal);color:#fff;border-radius:12px;padding:40px 20px;text-align:center;font-size:13px;">
+           Induction video not yet uploaded for this site.<br><br>
+           <span id="holdTimer">Hold the button below for 8 seconds to confirm you've received the safety briefing verbally.</span>
+         </div>`
+    }
+    <div class="hazard-chips">
+      <div class="chip">⚠️ Working at height</div>
+      <div class="chip">🚚 Moving plant</div>
+      <div class="chip">🕳️ Excavations</div>
+      <div class="chip">📦 Manual handling</div>
+    </div>
+    <button class="btn btn-amber" id="next" disabled>Continue</button>
+  `);
+  const nextBtn = document.getElementById("next");
+
+  if (VIDEO_URL) {
+    document.getElementById("vid").addEventListener("ended", () => { nextBtn.disabled = false; });
+  } else {
+    let held = 0;
+    const holdBtn = nextBtn;
+    holdBtn.disabled = false;
+    holdBtn.textContent = "Hold to confirm (8s)";
+    let interval = null;
+    const start = () => {
+      interval = setInterval(() => {
+        held += 0.2;
+        holdBtn.textContent = `Hold to confirm (${Math.max(0, 8 - held).toFixed(1)}s)`;
+        if (held >= 8) {
+          clearInterval(interval);
+          holdBtn.textContent = "Continue";
+          holdBtn.onclick = markWatched;
+        }
+      }, 200);
+    };
+    const stop = () => { clearInterval(interval); if (held < 8) { held = 0; holdBtn.textContent = "Hold to confirm (8s)"; } };
+    holdBtn.addEventListener("mousedown", start);
+    holdBtn.addEventListener("touchstart", start);
+    ["mouseup", "mouseleave", "touchend"].forEach(ev => holdBtn.addEventListener(ev, stop));
+  }
+
+  async function markWatched() {
+    try {
+      await api("/video-watched", { method: "POST", body: { induction_id: state.inductionId } });
+      screenQuiz();
+    } catch (e) { showErr(e.message); }
+  }
+  if (VIDEO_URL) nextBtn.onclick = markWatched;
+}
+
+// ── Screen: Quiz ─────────────────────────────────────────────────────────
+function screenQuiz() {
+  state.quizIndex = 0; state.quizCorrect = 0;
+  renderQuizQ();
+}
+function renderQuizQ() {
+  const q = QUIZ[state.quizIndex];
+  const dots = QUIZ.map((_, i) => `<div class="dot ${i <= state.quizIndex ? "active" : ""}"></div>`).join("");
+  render(`
+    <h2>Quick check</h2>
+    <p class="sub">Question ${state.quizIndex + 1} of ${QUIZ.length}</p>
+    <div class="quiz-q">${escapeHtml(q.q)}</div>
+    ${q.options.map((opt, i) => `<button class="quiz-opt" data-i="${i}">${escapeHtml(opt)}</button>`).join("")}
+    <div class="progress-dots">${dots}</div>
+  `);
+  document.querySelectorAll(".quiz-opt").forEach(btn => {
+    btn.onclick = () => {
+      const i = parseInt(btn.dataset.i);
+      document.querySelectorAll(".quiz-opt").forEach(b => b.onclick = null);
+      if (i === q.correct) { btn.classList.add("correct"); state.quizCorrect++; }
+      else {
+        btn.classList.add("wrong");
+        document.querySelector(`.quiz-opt[data-i="${q.correct}"]`).classList.add("correct");
+      }
+      setTimeout(async () => {
+        if (state.quizIndex < QUIZ.length - 1) { state.quizIndex++; renderQuizQ(); }
+        else {
+          try {
+            await api("/quiz", { method: "POST", body: { induction_id: state.inductionId, score: state.quizCorrect, total: QUIZ.length } });
+            loadRamsThenShow();
+          } catch (e) { showErr(e.message); }
+        }
+      }, 650);
+    };
+  });
+}
+
+// ── Screen: RAMS ─────────────────────────────────────────────────────────
+async function loadRamsThenShow() {
+  try {
+    const tradeId = document.getElementById("trade") ? document.getElementById("trade").value : (state.form.trade_id || "");
+    state.ramsDocs = await api("/rams" + (tradeId ? `?trade_id=${tradeId}` : ""));
+  } catch (e) { state.ramsDocs = []; }
+  screenRams();
+}
+function screenRams() {
+  render(`
+    <h2>Site documents</h2>
+    <p class="sub">Please confirm you've read the following before starting work.</p>
+    ${state.ramsDocs.length
+      ? state.ramsDocs.map(r => `<div class="rams-item">📄 ${escapeHtml(r.title)} <span style="color:#8A8D91">v${escapeHtml(r.version || "1")}</span></div>`).join("")
+      : `<div class="rams-item">No trade-specific RAMS on file yet for this site — general site rules apply.</div>`
+    }
+    <button class="btn btn-amber" id="signRams">I have read and understood — confirm</button>
+  `);
+  document.getElementById("signRams").onclick = async () => {
+    setLoading("signRams", true);
+    try {
+      for (const doc of state.ramsDocs) {
+        await api("/rams-sign", { method: "POST", body: { rams_id: doc.id, operative_id: state.operativeId, induction_id: state.inductionId } });
+      }
+      await api("/sign-in", { method: "POST", body: { induction_id: state.inductionId } });
+      screenBadge(true);
+    } catch (e) { showErr(e.message); setLoading("signRams", false); }
+  };
+}
+
+// ── Screen: Badge / sign in-out ─────────────────────────────────────────
+function screenBadge(signedIn) {
+  render(`
+    <h2>You're all set</h2>
+    <div class="badge-card">
+      <div class="hazard-stripe"></div>
+      <div class="badge-body">
+        <div class="badge-icon">👷</div>
+        <div>
+          <div class="badge-name">${escapeHtml(state.form.name || "")}</div>
+          <div class="badge-sub">${escapeHtml(state.form.company_name || state.form.trade_name || "")}</div>
+          <div class="badge-verified">✓ Induction on file</div>
+        </div>
+      </div>
+    </div>
+    <div class="status-box ${signedIn ? "status-in" : "status-out"}">
+      ${signedIn ? "🟢 Signed in" : "⚪ Signed out"}
+    </div>
+    <button class="btn ${signedIn ? "btn-steel" : "btn-amber"}" id="toggle">
+      ${signedIn ? "Sign out" : "Sign back in"}
+    </button>
+    <div class="hint">You'll get a reminder at site close if you're still signed in</div>
+  `);
+  document.getElementById("toggle").onclick = async () => {
+    setLoading("toggle", true);
+    try {
+      await api(signedIn ? "/sign-out" : "/sign-in", { method: "POST", body: { induction_id: state.inductionId } });
+      screenBadge(!signedIn);
+    } catch (e) { showErr(e.message); setLoading("toggle", false); }
+  };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function showErr(msg) {
+  const el = document.getElementById("err");
+  if (el) el.innerHTML = `<div class="error">${escapeHtml(msg)}</div>`;
+}
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  if (loading) { btn.dataset.label = btn.textContent; btn.innerHTML = `<span class="spinner"></span>`; }
+  else if (btn.dataset.label) { btn.textContent = btn.dataset.label; }
+}
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function escapeHtml(str) {
+  return String(str || "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+screenWelcome();
+</script>
+</body>
+</html>
