@@ -7,7 +7,10 @@ submission, QR sign in/out, CSCS card photo upload, and the manager
 roster.
 
 Reuses the same supabase client, SMC_PROJECT_ID, and auth decorator
-as SMblueprint.py.
+as SMblueprint.py — this assumes sitemanager is a proper package
+(has __init__.py) so the relative import works. If your app.py
+imports SMblueprint some other way (e.g. plain `import SMblueprint`
+rather than as a package), change the import line below to match.
 """
 
 from flask import Blueprint, request, jsonify
@@ -202,6 +205,29 @@ def induction_quiz():
             {"quiz_score": score, "quiz_passed": passed}
         ).eq("id", induction_id).execute()
         return jsonify({"ok": True, "passed": passed})
+    except Exception as e:
+        return err(e)
+
+
+@induction_bp.route("/induction")
+def induction_landing():
+    """Public QR-scan landing page — no login required."""
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "smc", "induction.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    from flask import Response
+    return Response(content, mimetype="text/html")
+
+
+@induction_bp.route("/api/induction/trades", methods=["GET"])
+def induction_trades():
+    """Public trade list for the operative form dropdown — the existing
+    /api/trades in SMblueprint.py sits behind _require_auth, which an
+    operative on their own phone won't have."""
+    try:
+        result = supabase.table("smc_trades").select("*").order("sort_order").execute()
+        return jsonify(result.data or [])
     except Exception as e:
         return err(e)
 
