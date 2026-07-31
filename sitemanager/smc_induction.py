@@ -7,10 +7,7 @@ submission, QR sign in/out, CSCS card photo upload, and the manager
 roster.
 
 Reuses the same supabase client, SMC_PROJECT_ID, and auth decorator
-as SMblueprint.py — this assumes sitemanager is a proper package
-(has __init__.py) so the relative import works. If your app.py
-imports SMblueprint some other way (e.g. plain `import SMblueprint`
-rather than as a package), change the import line below to match.
+as SMblueprint.py.
 """
 
 from flask import Blueprint, request, jsonify
