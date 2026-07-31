@@ -21,6 +21,17 @@ from .SMblueprint import supabase, SMC_PROJECT_ID, _require_auth, ok, err
 
 induction_bp = Blueprint("induction", __name__)
 
+
+@induction_bp.after_request
+def add_cors_headers(response):
+    """Allows the operative-facing endpoints to be called from a phone
+    browser that isn't on the note2quote.co.uk domain (e.g. a QR-scan
+    landing page hosted elsewhere, or this API tester)."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 REPEAT_INDUCTION_VALID_DAYS = 365  # company/person-level induction validity
 
 
