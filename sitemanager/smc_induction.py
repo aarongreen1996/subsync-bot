@@ -305,6 +305,47 @@ def induction_sign_out():
 # MANAGER-FACING — behind the SMC login, same as the rest of the dashboard.
 # ══════════════════════════════════════════════════════════════════════════
 
+@induction_bp.route("/manage")
+@_require_auth
+def induction_manage():
+    """Manager dashboard — roster + company folders. Behind SMC login."""
+    import os
+    from flask import Response
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "smc", "induction_manage.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return Response(content, mimetype="text/html")
+
+
+@induction_bp.route("/api/induction/contractors")
+@_require_auth
+def induction_contractors():
+    """Company folder view — each contractor with their operatives nested,
+    CSCS expiry flagged, and a RAMS count. This is what an HSE visit gets shown."""
+    try:
+        contractors = supabase.table("smc_contractors").select("*").eq("project_id", SMC_PROJECT_ID).execute()
+        operatives = supabase.table("smc_operatives").select("*").execute()
+        rams = supabase.table("smc_rams").select("id, contractor_id").eq("project_id", SMC_PROJECT_ID).execute()
+
+        ops_by_contractor = {}
+        for op in (operatives.data or []):
+            ops_by_contractor.setdefault(op["contractor_id"], []).append(op)
+        rams_count = {}
+        for r in (rams.data or []):
+            rams_count[r["contractor_id"]] = rams_count.get(r["contractor_id"], 0) + 1
+
+        result = []
+        for c in (contractors.data or []):
+            result.append({
+                **c,
+                "operatives": ops_by_contractor.get(c["id"], []),
+                "rams_count": rams_count.get(c["id"], 0),
+            })
+        return jsonify(result)
+    except Exception as e:
+        return err(e)
+
+
 @induction_bp.route("/api/induction/roster")
 @_require_auth
 def induction_roster():
