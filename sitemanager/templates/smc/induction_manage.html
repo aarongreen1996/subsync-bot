@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Manager — Induction & Compliance</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap');
+  :root {
+    --charcoal:#15181B; --amber:#F2A900; --steel:#2F5D8A;
+    --green:#256330; --red:#D6483F; --paper:#ECEDE9; --line:#d8dad6;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Inter',sans-serif; background:var(--paper); color:var(--charcoal); }
+  header { background:var(--charcoal); color:#fff; padding:18px 24px; }
+  header .eyebrow { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); }
+  header .title { font-family:'Oswald'; font-size:20px; font-weight:600; margin-top:2px; }
+  .tabs { display:flex; gap:6px; padding:16px 24px 0; }
+  .tab { padding:9px 16px; border-radius:99px; font-size:13px; font-weight:600; cursor:pointer; background:#fff; color:#5b5f63; }
+  .tab.active { background:var(--charcoal); color:#fff; }
+  main { padding:20px 24px 60px; max-width:900px; margin:0 auto; }
+  .stat-row { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; }
+  .stat { background:#fff; border-radius:12px; padding:14px; text-align:center; }
+  .stat .num { font-family:'Oswald'; font-size:22px; }
+  .stat .lab { font-size:11px; color:#8A8D91; text-transform:uppercase; }
+  .stat.warn .num { color:var(--red); }
+  .card { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+  .row { display:flex; align-items:center; gap:12px; }
+  .avatar { width:36px; height:36px; border-radius:99px; background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex-shrink:0; }
+  .name { font-weight:600; font-size:14px; }
+  .sub { font-size:12px; color:#8A8D91; }
+  .pill { font-size:10.5px; padding:3px 9px; border-radius:99px; font-weight:600; margin-left:auto; white-space:nowrap; }
+  .pill-on { background:#E4F0E6; color:var(--green); }
+  .pill-off { background:#F1F1EE; color:#8A8D91; }
+  .pill-overdue { background:#FBE7E5; color:var(--red); }
+  .pill-expiring { background:#FDF1D9; color:#8a6400; }
+  .contractor-head { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .contractor-name { font-family:'Oswald'; font-weight:600; font-size:15px; }
+  .contractor-meta { font-size:12px; color:#8A8D91; }
+  .op-list { margin-top:10px; border-top:1px solid var(--line); padding-top:10px; display:none; }
+  .op-list.open { display:block; }
+  .op-row { display:flex; align-items:center; gap:10px; padding:6px 0; font-size:13px; }
+  .empty { text-align:center; color:#8A8D91; font-size:13px; padding:30px 0; }
+  .loading { text-align:center; color:#8A8D91; padding:30px 0; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">SS17 Phase 1C</div>
+  <div class="title">Site Manager — Induction & Compliance</div>
+</header>
+<div class="tabs">
+  <div class="tab active" id="tab-roster">Roster</div>
+  <div class="tab" id="tab-companies">Companies</div>
+</div>
+<main id="app"><div class="loading">Loading…</div></main>
+
+<script>
+const API = "/smc/api/induction";
+let currentTab = "roster";
+
+async function api(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error("Request failed (" + res.status + ")");
+  return res.json();
+}
+
+function initials(name) {
+  return (name || "?").split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const diff = (new Date(dateStr) - new Date()) / (1000 * 60 * 60 * 24);
+  return Math.floor(diff);
+}
+
+async function loadRoster() {
+  const app = document.getElementById("app");
+  app.innerHTML = '<div class="loading">Loading roster…</div>';
+  try {
+    const rows = await api("/roster");
+    const onSite = rows.filter(r => r.status === "signed_in");
+    const overdue = rows.filter(r => r.status === "signed_in" && !r.signed_out_at &&
+      (new Date() - new Date(r.signed_in_at || r.created_at)) > 12 * 60 * 60 * 1000);
+
+    let html = `
+      <div class="stat-row">
+        <div class="stat"><div class="num">${onSite.length}</div><div class="lab">On site</div></div>
+        <div class="stat ${overdue.length ? 'warn' : ''}"><div class="num">${overdue.length}</div><div class="lab">Overdue signout</div></div>
+        <div class="stat"><div class="num">${rows.length}</div><div class="lab">Total inductions</div></div>
+      </div>
+    `;
+
+    if (!rows.length) {
+      html += `<div class="empty">No inductions recorded yet.</div>`;
+    } else {
+      rows.forEach(r => {
+        const op = r.smc_operatives || {};
+        const company = (op.smc_contractors || {}).name || "—";
+        const isOverdue = overdue.some(o => o.id === r.id);
+        let pillClass = "pill-off", pillText = "Signed out";
+        if (r.status === "signed_in") { pillClass = isOverdue ? "pill-overdue" : "pill-on"; pillText = isOverdue ? "Overdue" : "On site"; }
+        html += `
+          <div class="card row">
+            <div class="avatar">${initials(op.name)}</div>
+            <div>
+              <div class="name">${escapeHtml(op.name || "Unknown")}</div>
+              <div class="sub">${escapeHtml(company)} · ${op.vehicle_reg ? escapeHtml(op.vehicle_reg) : "no vehicle logged"}</div>
+            </div>
+            <span class="pill ${pillClass}">${pillText}</span>
+          </div>
+        `;
+      });
+    }
+    app.innerHTML = html;
+  } catch (e) {
+    app.innerHTML = `<div class="empty">Couldn't load roster — ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadCompanies() {
+  const app = document.getElementById("app");
+  app.innerHTML = '<div class="loading">Loading companies…</div>';
+  try {
+    const contractors = await api("/contractors");
+    if (!contractors.length) {
+      app.innerHTML = `<div class="empty">No companies on file yet — they'll appear here once operatives complete induction.</div>`;
+      return;
+    }
+    let html = "";
+    contractors.forEach((c, idx) => {
+      const expiring = (c.operatives || []).filter(o => {
+        const d = daysUntil(o.cscs_expiry);
+        return d !== null && d <= 30;
+      });
+      html += `
+        <div class="card">
+          <div class="contractor-head" onclick="toggleOps(${idx})">
+            <div>
+              <div class="contractor-name">${escapeHtml(c.name)}</div>
+              <div class="contractor-meta">${(c.operatives || []).length} operative(s) · ${c.rams_count} RAMS on file
+                ${expiring.length ? `<span class="pill pill-expiring" style="margin-left:8px">${expiring.length} CSCS expiring soon</span>` : ""}
+              </div>
+            </div>
+          </div>
+          <div class="op-list" id="ops-${idx}">
+            ${(c.operatives || []).map(o => {
+              const d = daysUntil(o.cscs_expiry);
+              const expiringSoon = d !== null && d <= 30;
+              return `
+                <div class="op-row">
+                  <div class="avatar">${initials(o.name)}</div>
+                  <div style="flex:1">
+                    <div>${escapeHtml(o.name)}</div>
+                    <div class="sub">${escapeHtml(o.cscs_type || "No CSCS type recorded")} ${o.cscs_expiry ? "· exp " + escapeHtml(o.cscs_expiry) : ""}</div>
+                  </div>
+                  ${expiringSoon ? `<span class="pill pill-expiring">Expires in ${d}d</span>` : ""}
+                </div>
+              `;
+            }).join("") || '<div class="sub">No operatives inducted yet.</div>'}
+          </div>
+        </div>
+      `;
+    });
+    app.innerHTML = html;
+  } catch (e) {
+    app.innerHTML = `<div class="empty">Couldn't load companies — ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function toggleOps(idx) {
+  document.getElementById("ops-" + idx).classList.toggle("open");
+}
+
+function escapeHtml(str) {
+  return String(str || "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+document.getElementById("tab-roster").onclick = () => {
+  document.getElementById("tab-roster").classList.add("active");
+  document.getElementById("tab-companies").classList.remove("active");
+  loadRoster();
+};
+document.getElementById("tab-companies").onclick = () => {
+  document.getElementById("tab-companies").classList.add("active");
+  document.getElementById("tab-roster").classList.remove("active");
+  loadCompanies();
+};
+
+loadRoster();
+</script>
+</body>
+</html>
