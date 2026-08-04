@@ -288,6 +288,7 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
   const [busy, setBusy]   = useState('');
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [uploadPct, setUploadPct] = useState(null);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
@@ -335,7 +336,16 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
       });
-      const mr = new MediaRecorder(stream);
+      // 32kbps mono opus is ample for speech and cuts file size by ~4x
+      let mr;
+      const opts = { audioBitsPerSecond: 32000 };
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        opts.mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        opts.mimeType = 'audio/mp4';   // Safari / iOS
+      }
+      try { mr = new MediaRecorder(stream, opts); }
+      catch(_) { mr = new MediaRecorder(stream); }
       chunksRef.current = [];
       mr.ondataavailable = ev => { if (ev.data.size) chunksRef.current.push(ev.data); };
       mr.onstop = async () => {
@@ -359,18 +369,54 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
     setRecording(false);
   }
 
-  async function uploadAudio(blob) {
-    setBusy('Uploading audio...');
-    const b64 = await new Promise(res => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result.split(',')[1]);
-      fr.readAsDataURL(blob);
-    });
-    const r = await api('/transcribe/' + meetingId, { method:'POST',
-      body: JSON.stringify({ audio_b64: b64 }) }).then(r => r.json());
-    setBusy('');
-    if (r.ok) { await patchMeeting({ transcribe_status:'processing' }); load(); }
-    else alert('Transcription failed: ' + (r.error || 'unknown'));
+  // Upload the raw audio blob directly - no base64 (which inflates by 33%
+  // and blocks the main thread). XHR is used because fetch gives no upload
+  // progress events.
+  function uploadAudio(blob) {
+    const mb = blob.size / 1048576;
+    if (mb > 180) {
+      alert('That file is ' + mb.toFixed(0) + ' MB, which is too large to upload '
+        + 'reliably.\n\nTry converting it to a lower bitrate, or split it in two.');
+      return;
+    }
+    setUploadPct(0);
+    setBusy('Uploading ' + mb.toFixed(1) + ' MB...');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/mm/api/transcribe/' + meetingId, true);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = ev => {
+      if (!ev.lengthComputable) return;
+      const pct = Math.round((ev.loaded / ev.total) * 100);
+      setUploadPct(pct);
+      setBusy('Uploading ' + (ev.loaded/1048576).toFixed(1) + ' / '
+              + mb.toFixed(1) + ' MB  (' + pct + '%)');
+    };
+
+    xhr.onload = async () => {
+      setUploadPct(null);
+      setBusy('');
+      let r = {};
+      try { r = JSON.parse(xhr.responseText); } catch(_) {}
+      if (xhr.status === 200 && r.ok) {
+        await patchMeeting({ transcribe_status: 'processing' });
+        load();
+      } else {
+        alert('Upload failed: ' + (r.error || ('HTTP ' + xhr.status)));
+      }
+    };
+    xhr.onerror = () => {
+      setUploadPct(null); setBusy('');
+      alert('Upload failed - check your connection and try again.');
+    };
+    xhr.ontimeout = () => {
+      setUploadPct(null); setBusy('');
+      alert('Upload timed out. Try again on a stronger connection.');
+    };
+    xhr.timeout = 20 * 60 * 1000;   // 20 minutes
+    xhr.send(blob);
   }
 
   async function draftMinutes() {
@@ -405,7 +451,13 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
     ),
 
     busy && e('div', { className:'no-print', style:{ background:'#fef3c7',
-      padding:'8px 16px', fontSize:12, fontWeight:600, color:'#b45309' } }, '⏳ ' + busy),
+      padding:'8px 16px', fontSize:12, fontWeight:600, color:'#b45309' } },
+      e('div', null, '⏳ ' + busy),
+      uploadPct !== null && e('div', { style:{ marginTop:6, height:6,
+        background:'#fde68a', borderRadius:3, overflow:'hidden' } },
+        e('div', { style:{ height:'100%', width: uploadPct + '%',
+          background:'#f97316', transition:'width .2s' } }))
+    ),
 
     e('div', { style:{ padding:16, maxWidth:900, margin:'0 auto' } },
 
