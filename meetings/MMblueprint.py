@@ -58,13 +58,26 @@ def _require_auth(fn):
 # ══════════════════════════════════════════════════════════════════
 # Auth + app shell
 # ══════════════════════════════════════════════════════════════════
-def _read_template(name):
-    """Read an HTML file from templates/mm/ directly, bypassing Jinja2.
-    Avoids any template-resolution issues and keeps React braces untouched."""
+def _template_candidates(name):
+    """Possible locations for an HTML file, most specific first."""
     here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, "templates", "mm", name)
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    return [
+        os.path.join(here, "templates", "mm", name),
+        os.path.join(here, "templates", name),
+        os.path.join(here, name),
+    ]
+
+
+def _read_template(name):
+    """Read an HTML file directly, bypassing Jinja2. Tolerates the file
+    sitting in templates/mm/, templates/, or beside the blueprint, so a
+    slightly different upload path does not break the app."""
+    for path in _template_candidates(name):
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+    raise FileNotFoundError(name + " not found in any of: "
+                            + ", ".join(_template_candidates(name)))
 
 
 @mm_bp.route("/login", methods=["GET", "POST"])
@@ -121,9 +134,11 @@ def health():
     here = os.path.dirname(os.path.abspath(__file__))
     tpl_dir = os.path.join(here, "templates", "mm")
 
-    def check(p):
-        return {"path": p, "exists": os.path.exists(p),
-                "size": os.path.getsize(p) if os.path.exists(p) else 0}
+    def check(name):
+        for p in _template_candidates(name):
+            if os.path.exists(p):
+                return {"found_at": p, "exists": True, "size": os.path.getsize(p)}
+        return {"exists": False, "searched": _template_candidates(name)}
 
     info = {
         "blueprint_file": __file__,
@@ -131,8 +146,10 @@ def health():
         "dir_contents":   sorted(os.listdir(here)) if os.path.exists(here) else "MISSING",
         "templates_mm_exists": os.path.exists(tpl_dir),
         "templates_mm_contents": sorted(os.listdir(tpl_dir)) if os.path.exists(tpl_dir) else "MISSING",
-        "MMapp_html":  check(os.path.join(tpl_dir, "MMapp.html")),
-        "login_html":  check(os.path.join(tpl_dir, "login.html")),
+        "templates_dir_contents": sorted(os.listdir(os.path.join(here, "templates")))
+            if os.path.exists(os.path.join(here, "templates")) else "MISSING",
+        "MMapp_html":  check("MMapp.html"),
+        "login_html":  check("login.html"),
         "supabase_connected": supabase is not None,
         "env": {
             "SUPABASE_URL_set":   bool(os.environ.get("SUPABASE_URL")),
