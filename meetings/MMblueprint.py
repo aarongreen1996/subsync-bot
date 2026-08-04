@@ -908,19 +908,32 @@ def api_transcribe(mid):
     key = os.environ.get("ASSEMBLYAI_KEY", "")
     if not key:
         return jsonify({"ok": False, "error": "ASSEMBLYAI_KEY not configured"}), 400
-    d = request.get_json() or {}
-    audio_b64 = d.get("audio_b64", "")
-    if not audio_b64:
-        return jsonify({"ok": False, "error": "audio_b64 required"}), 400
+    # Accept raw binary (preferred - no base64 inflation) or legacy base64 JSON
+    ctype = (request.content_type or "").lower()
+    if "application/json" in ctype:
+        d = request.get_json() or {}
+        audio_b64 = d.get("audio_b64", "")
+        if not audio_b64:
+            return jsonify({"ok": False, "error": "audio required"}), 400
+        audio_bytes = base64.b64decode(audio_b64)
+    else:
+        audio_bytes = request.get_data()
+        if not audio_bytes:
+            return jsonify({"ok": False, "error": "audio required"}), 400
+
     try:
         import requests
-        audio_bytes = base64.b64decode(audio_b64)
+        size_mb = round(len(audio_bytes) / 1048576, 1)
+        print(f"[mm transcribe] Received {size_mb} MB for meeting {mid}")
 
         up = requests.post(
             "https://api.assemblyai.com/v2/upload",
             headers={"authorization": key},
-            data=audio_bytes, timeout=300,
+            data=audio_bytes, timeout=600,
         )
+        if up.status_code != 200:
+            return jsonify({"ok": False,
+                            "error": f"Upload to AssemblyAI failed: {up.text[:200]}"}), 502
         audio_url = up.json()["upload_url"]
 
         job = requests.post(
