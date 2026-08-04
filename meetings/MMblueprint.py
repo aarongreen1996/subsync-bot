@@ -58,16 +58,37 @@ def _require_auth(fn):
 # ══════════════════════════════════════════════════════════════════
 # Auth + app shell
 # ══════════════════════════════════════════════════════════════════
+def _read_template(name):
+    """Read an HTML file from templates/mm/ directly, bypassing Jinja2.
+    Avoids any template-resolution issues and keeps React braces untouched."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "templates", "mm", name)
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 @mm_bp.route("/login", methods=["GET", "POST"])
 def login():
+    error = None
     if request.method == "POST":
         if request.form.get("password", "") == MM_PASSWORD:
             resp = make_response(redirect(url_for("mm.app_page")))
             resp.set_cookie(COOKIE_NAME, _hash(), max_age=60 * 60 * 24 * 90,
                             httponly=True, samesite="Lax", path="/")
             return resp
-        return render_template("mm/login.html", error="Incorrect password")
-    return render_template("mm/login.html", error=None)
+        error = "Incorrect password"
+    try:
+        html = _read_template("login.html")
+    except FileNotFoundError:
+        return Response(
+            "<h2>login.html not found</h2>"
+            "<p>Expected at meetings/templates/mm/login.html</p>"
+            "<p>Visit <a href='/mm/health'>/mm/health</a> for details.</p>",
+            mimetype="text/html", status=500)
+    # Simple placeholder substitution instead of Jinja2
+    block = ('<div class="err">' + error + "</div>") if error else ""
+    html = html.replace("{% if error %}<div class=\"err\">{{ error }}</div>{% endif %}", block)
+    return Response(html, mimetype="text/html")
 
 
 @mm_bp.route("/logout")
@@ -83,10 +104,53 @@ def logout():
 def app_page():
     """Serve the SPA directly as text/html, bypassing Jinja2 so React
     template braces are never touched."""
+    try:
+        return Response(_read_template("MMapp.html"), mimetype="text/html")
+    except FileNotFoundError:
+        return Response(
+            "<h2>MMapp.html not found</h2>"
+            "<p>Expected at meetings/templates/mm/MMapp.html</p>"
+            "<p>Visit <a href='/mm/health'>/mm/health</a> for details.</p>",
+            mimetype="text/html", status=500)
+
+
+@mm_bp.route("/health")
+def health():
+    """Diagnostic - no auth required. Reports exactly what is on disk and
+    whether the database connection works."""
     here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, "templates", "mm", "MMapp.html")
-    with open(path, "r", encoding="utf-8") as f:
-        return Response(f.read(), mimetype="text/html")
+    tpl_dir = os.path.join(here, "templates", "mm")
+
+    def check(p):
+        return {"path": p, "exists": os.path.exists(p),
+                "size": os.path.getsize(p) if os.path.exists(p) else 0}
+
+    info = {
+        "blueprint_file": __file__,
+        "blueprint_dir":  here,
+        "dir_contents":   sorted(os.listdir(here)) if os.path.exists(here) else "MISSING",
+        "templates_mm_exists": os.path.exists(tpl_dir),
+        "templates_mm_contents": sorted(os.listdir(tpl_dir)) if os.path.exists(tpl_dir) else "MISSING",
+        "MMapp_html":  check(os.path.join(tpl_dir, "MMapp.html")),
+        "login_html":  check(os.path.join(tpl_dir, "login.html")),
+        "supabase_connected": supabase is not None,
+        "env": {
+            "SUPABASE_URL_set":   bool(os.environ.get("SUPABASE_URL")),
+            "SUPABASE_KEY_set":   bool(os.environ.get("SUPABASE_KEY")),
+            "MM_PASSWORD_set":    bool(os.environ.get("MM_PASSWORD")),
+            "ASSEMBLYAI_KEY_set": bool(os.environ.get("ASSEMBLYAI_KEY")),
+            "ANTHROPIC_API_KEY_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        },
+    }
+    # Test a live query
+    try:
+        r = supabase.table("mm_templates").select("id,name").limit(5).execute()
+        info["db_test"] = {"ok": True, "templates_found": len(r.data or []),
+                           "names": [t["name"] for t in (r.data or [])]}
+    except Exception as ex:
+        info["db_test"] = {"ok": False, "error": str(ex)}
+
+    return jsonify(info)
 
 
 # ══════════════════════════════════════════════════════════════════
