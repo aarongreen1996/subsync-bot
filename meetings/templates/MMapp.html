@@ -420,12 +420,28 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
   }
 
   async function draftMinutes() {
+    if (data.items.some(i => i.content && i.content.trim())) {
+      if (!confirm('This meeting already has minute text. Drafting again will '
+        + 'overwrite it and add any new actions on top of the existing ones.\n\n'
+        + 'Continue?')) return;
+    }
     setBusy('Drafting minutes from transcript...');
     const r = await api('/ai/draft-minutes/' + meetingId, { method:'POST',
       body: JSON.stringify({}) }).then(r => r.json());
     setBusy('');
-    if (r.ok) { load(); alert('Minutes drafted. ' + r.actions_created + ' actions created.'); }
-    else alert('Drafting failed: ' + (r.error || 'unknown'));
+    if (!r.ok) { alert('Drafting failed: ' + (r.error || 'unknown')); return; }
+    load();
+    let msg = 'Minutes drafted into ' + r.items_filled + ' agenda item'
+            + (r.items_filled === 1 ? '' : 's') + '.\n'
+            + r.actions_created + ' action' + (r.actions_created === 1 ? '' : 's')
+            + ' created.';
+    if (r.actions_created === 0) {
+      msg += '\n\n' + (r.no_actions_reason
+        || 'No commitments or follow-ups were detected in the recording.')
+        + '\n\nYou can add actions manually with the "+ Action" button on any '
+        + 'agenda item.';
+    }
+    alert(msg);
   }
 
   const mmss = s => String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
