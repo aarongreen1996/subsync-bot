@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in - Meeting Minutes</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0f172a;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;border-radius:16px;padding:36px 32px;width:100%;max-width:380px;
+        box-shadow:0 24px 60px rgba(0,0,0,.4)}
+  .logo{width:52px;height:52px;background:#0f172a;border-radius:13px;display:flex;
+        align-items:center;justify-content:center;font-size:26px;margin-bottom:18px}
+  h1{font-size:19px;font-weight:800;color:#0f172a;margin-bottom:4px;letter-spacing:-.02em}
+  .sub{font-size:12px;color:#64748b;margin-bottom:24px}
+  label{display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;
+        text-transform:uppercase;letter-spacing:.06em}
+  input{width:100%;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:9px;
+        font-size:15px;margin-bottom:16px;outline:none;transition:border-color .15s}
+  input:focus{border-color:#0f172a}
+  button{width:100%;padding:12px;background:#0f172a;color:#fff;border:none;border-radius:9px;
+         font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s}
+  button:hover{opacity:.88}
+  .err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;
+       border-radius:8px;font-size:12px;margin-bottom:16px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">📋</div>
+    <h1>Meeting Minutes</h1>
+    <div class="sub">Pennyfarthing Homes</div>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <form method="POST">
+      <label for="p">Password</label>
+      <input id="p" type="password" name="password" autofocus autocomplete="current-password">
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>
