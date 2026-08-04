@@ -24,6 +24,7 @@ from auth import auth_bp, create_magic_token
 from perfect_delivery import pd_bp, portal_bp, superadmin_bp
 from sitemanager.SMblueprint import smc_bp
 from sitemanager.smc_induction import induction_bp
+from meetings.MMblueprint import mm_bp
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
@@ -37,6 +38,7 @@ app.register_blueprint(portal_bp)
 app.register_blueprint(superadmin_bp)
 app.register_blueprint(smc_bp, url_prefix='/smc')
 app.register_blueprint(induction_bp, url_prefix='/smc')
+app.register_blueprint(mm_bp, url_prefix="/mm")
 start_scheduler()
 
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
