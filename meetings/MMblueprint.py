@@ -719,17 +719,45 @@ def api_ai_draft_minutes(mid):
         agenda = items.data or []
         agenda_list = "\n".join(f'{i["item_no"]}. {i["title"]}' for i in agenda)
 
+        today_str = datetime.date.today().isoformat()
         prompt = f"""You are minuting a UK construction site meeting for Pennyfarthing Homes.
+Today's date is {today_str}.
 
-Below is the meeting transcript, followed by the FIXED agenda headings this
-meeting must be minuted against.
+You have two jobs of EQUAL importance:
 
-Your task: assign each piece of discussion to the correct agenda heading and
-write concise, professional minute text for each. Use the language and tone of
-UK construction site minutes - factual, brief, no filler. Where nothing was
-discussed under a heading, return an empty string for it.
+JOB 1 - MINUTE THE DISCUSSION
+Assign each piece of discussion to the correct fixed agenda heading and write
+concise, professional minute text. Use the tone of UK construction site minutes:
+factual, brief, no filler, past tense. Where a heading was not discussed, return
+an empty string for it.
 
-Also extract every ACTION agreed: who is responsible and by when.
+JOB 2 - EXTRACT EVERY ACTION
+This is the most valuable output. Site meetings rarely say "action:" out loud -
+actions are almost always IMPLICIT. Capture all of these as actions:
+  - Anyone committing to do something: "I'll chase that", "leave it with me",
+    "I'll get onto them", "we'll sort that"
+  - Anyone being asked or told to do something: "can you look at that",
+    "Dave needs to book that in", "get that ordered"
+  - Anything agreed as needing to happen: "that needs doing before the pour",
+    "we need a revised drawing", "that wants chasing up"
+  - Any unresolved problem where someone must follow up
+  - Anything with a deadline attached: "by Friday", "before next week",
+    "end of the month"
+
+For each action:
+  - description: plain, imperative, specific. "Chase Bradfords for the revised
+    steel drawings" not "Steel drawings discussed".
+  - assigned_text: the person or company named. Use exactly the name heard. If
+    genuinely nobody was named, use null - do not guess.
+  - due_date: convert relative dates using today's date {today_str}. "Friday" ->
+    the next Friday. "next week" -> 7 days on. "end of month" -> last day of this
+    month. If no date was mentioned, null.
+  - priority: "critical" for anything safety related or programme-blocking,
+    "high" if a deadline was stressed, otherwise "normal".
+  - item_no: the agenda heading it arose under.
+
+Err on the side of INCLUDING an action. A missed action costs money on site; a
+spurious one takes two seconds to delete.
 
 TRANSCRIPT:
 {transcript[:60000]}
@@ -743,11 +771,12 @@ Return ONLY valid JSON, no markdown fences, in exactly this shape:
     {{"item_no": "1", "content": "minute text here"}}
   ],
   "actions": [
-    {{"description": "what must be done", "assigned_text": "person or company",
-      "due_date": "YYYY-MM-DD or null", "item_no": "which agenda item it came from",
-      "priority": "low|normal|high|critical"}}
+    {{"description": "Chase Bradfords for revised steel drawings",
+      "assigned_text": "Dave", "due_date": "2026-08-08",
+      "item_no": "4", "priority": "high"}}
   ],
-  "attendees_detected": ["names heard in the transcript"]
+  "attendees_detected": ["names heard in the transcript"],
+  "no_actions_reason": "only if the actions array is empty, one short sentence saying why"
 }}"""
 
         raw = _claude(prompt, max_tokens=8000)
@@ -784,9 +813,11 @@ Return ONLY valid JSON, no markdown fences, in exactly this shape:
 
         return jsonify({
             "ok": True,
-            "items_filled": len(data.get("items", [])),
+            "items_filled": len([i for i in data.get("items", []) if i.get("content")]),
             "actions_created": len(created),
             "attendees_detected": data.get("attendees_detected", []),
+            "no_actions_reason": data.get("no_actions_reason"),
+            "transcript_chars": len(transcript),
         })
     except Exception as e:
         return err(e)
