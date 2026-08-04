@@ -823,6 +823,112 @@ Return ONLY valid JSON, no markdown fences, in exactly this shape:
         return err(e)
 
 
+@mm_bp.route("/api/ai/import-minutes/<mid>", methods=["POST"])
+@_require_auth
+def api_ai_import_minutes(mid):
+    """Take minutes already written elsewhere (pasted from Word, email or a PDF)
+    and map them onto this meeting's agenda headings, extracting actions as it
+    goes. Same classification approach as the transcript path."""
+    d = request.get_json() or {}
+    text = (d.get("text") or "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "text required"}), 400
+    try:
+        m = supabase.table("mm_meetings").select("*").eq("id", mid).single().execute()
+        meeting = m.data
+        items = supabase.table("mm_meeting_items").select("*") \
+            .eq("meeting_id", mid).order("sort_order").execute().data or []
+        agenda_list = "\n".join(f'{i["item_no"]}. {i["title"]}' for i in items)
+        today_str = datetime.date.today().isoformat()
+
+        prompt = f"""These are minutes for a UK construction site meeting that have
+already been written up. Today's date is {today_str}.
+
+Map the existing content onto the fixed agenda headings below, and pull out every
+action.
+
+RULES
+- Preserve the original wording wherever you can. This is a re-filing exercise,
+  not a rewrite. Only tidy obvious formatting artefacts from copy and paste.
+- Match content to headings by meaning, not just by any numbering in the source -
+  the pasted minutes may use a different order or different heading names.
+- If the source has content that fits no heading, put it under the heading closest
+  in meaning, or under Any Other Business.
+- Return an empty string for headings with nothing against them.
+
+ACTIONS - extract all of these:
+- Anyone named against a task, including in an Action or Owner column
+- Commitments in the prose: "X to chase", "Y will arrange", "to be confirmed by Z"
+- Anything with a deadline attached
+- Convert relative dates against {today_str}. Absolute dates stay as they are.
+- assigned_text: the person or company exactly as written, else null
+- priority: "critical" for safety or programme-blocking, "high" where a deadline
+  was stressed, otherwise "normal"
+
+PASTED MINUTES:
+{text[:60000]}
+
+AGENDA HEADINGS:
+{agenda_list}
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "items": [{{"item_no": "1", "content": "minute text"}}],
+  "actions": [{{"description": "...", "assigned_text": "...",
+                "due_date": "YYYY-MM-DD or null", "item_no": "1",
+                "priority": "normal"}}],
+  "attendees_detected": ["names"],
+  "apologies_detected": ["names"],
+  "meeting_date_detected": "YYYY-MM-DD or null"
+}}"""
+
+        raw = _claude(prompt, max_tokens=8000)
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean)
+
+        by_no = {i["item_no"]: i for i in items}
+        filled = 0
+        for it in data.get("items", []):
+            target = by_no.get(str(it.get("item_no")))
+            if target and it.get("content"):
+                supabase.table("mm_meeting_items") \
+                    .update({"content": it["content"]}) \
+                    .eq("id", target["id"]).execute()
+                filled += 1
+
+        created = 0
+        for a in data.get("actions", []):
+            item = by_no.get(str(a.get("item_no")))
+            supabase.table("mm_actions").insert({
+                "owner_id":        OWNER_ID,
+                "meeting_id":      mid,
+                "meeting_item_id": item["id"] if item else None,
+                "project_id":      meeting.get("project_id"),
+                "description":     a.get("description", ""),
+                "assigned_text":   a.get("assigned_text"),
+                "due_date":        a.get("due_date") or None,
+                "priority":        a.get("priority", "normal"),
+                "status":          "open",
+            }).execute()
+            created += 1
+
+        # Fill attendees / apologies if the meeting has none yet
+        upd = {}
+        if not meeting.get("attendees") and data.get("attendees_detected"):
+            upd["attendees"] = ", ".join(data["attendees_detected"])
+        if not meeting.get("apologies") and data.get("apologies_detected"):
+            upd["apologies"] = ", ".join(data["apologies_detected"])
+        if upd:
+            supabase.table("mm_meetings").update(upd).eq("id", mid).execute()
+
+        return jsonify({"ok": True, "items_filled": filled,
+                        "actions_created": created,
+                        "attendees_detected": data.get("attendees_detected", []),
+                        "meeting_date_detected": data.get("meeting_date_detected")})
+    except Exception as e:
+        return err(e)
+
+
 @mm_bp.route("/api/ai/process-inbox", methods=["POST"])
 @_require_auth
 def api_ai_process_inbox():
@@ -1079,13 +1185,11 @@ def api_documents_delete(did):
 @mm_bp.route("/api/export/<mid>.docx", methods=["GET"])
 @_require_auth
 def api_export_docx(mid):
-    """Generate a .docx matching the house template: title block, attendees,
-    optional Programme Review box, and the No./Item/Action/Date table."""
+    """Fill the real Pennyfarthing .dotx template so the output is an exact
+    format match - logo, header, footer, fonts, margins and page numbering all
+    come from the original template. Falls back to building from scratch if the
+    template file is not present in the repo."""
     try:
-        from docx import Document
-        from docx.shared import Pt, Cm, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.enum.table import WD_TABLE_ALIGNMENT
         from io import BytesIO
 
         m = supabase.table("mm_meetings").select("*").eq("id", mid).single().execute()
@@ -1107,151 +1211,52 @@ def api_export_docx(mid):
         people = {p["id"]: p for p in (supabase.table("mm_people")
                   .select("id,initials,name").execute().data or [])}
 
-        doc = Document()
-        sec = doc.sections[0]
-        sec.left_margin = sec.right_margin = Cm(1.8)
-        sec.top_margin = sec.bottom_margin = Cm(1.5)
-
-        # Header
-        hdr = sec.header.paragraphs[0]
-        hdr.text = tpl.get("doc_title") or "MEETING MINUTES"
-        hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for r in hdr.runs:
-            r.bold = True
-            r.font.size = Pt(12)
-
-        # Footer
-        ftr = sec.footer.paragraphs[0]
-        ftr.text = "Company Confidential"
-        ftr.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for r in ftr.runs:
-            r.font.size = Pt(8)
-            r.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
-
-        # Title block
         date_str = meeting.get("meeting_date", "")
         try:
             date_str = datetime.date.fromisoformat(date_str).strftime("%d %B %Y")
         except Exception:
             pass
-        p = doc.add_paragraph()
-        run = p.add_run(date_str)
-        run.bold = True
-        run.font.size = Pt(11)
-
-        p = doc.add_paragraph()
-        title_line = f'{proj.get("project_no","")} {proj.get("name","")}'.strip()
-        if meeting.get("title"):
-            title_line = f'{title_line} - {meeting["title"]}'
-        run = p.add_run(title_line)
-        run.bold = True
-        run.font.size = Pt(11)
-
-        doc.add_paragraph(f'Attendees: {meeting.get("attendees") or ""}')
-        doc.add_paragraph(f'Apologies: {meeting.get("apologies") or ""}')
-
-        # Programme Review box
-        if tpl.get("has_programme_review"):
-            doc.add_paragraph()
-            pr = doc.add_table(rows=2, cols=4)
-            pr.style = "Table Grid"
-            labels = [
-                ("Programme Review:", ""),
-                ("Baseline Duration:", meeting.get("prog_baseline_duration") or ""),
-                ("Prior Duration:", meeting.get("prog_prior_duration") or ""),
-                ("Current Duration:", meeting.get("prog_current_duration") or ""),
-            ]
-            for i, (lab, val) in enumerate(labels):
-                c = pr.rows[0].cells[i]
-                c.text = ""
-                para = c.paragraphs[0]
-                rr = para.add_run(lab)
-                rr.bold = True
-                rr.font.size = Pt(8)
-                if val:
-                    para.add_run(f" {val}").font.size = Pt(8)
-            row2 = [
-                ("Baseline Completion:", meeting.get("prog_baseline_completion") or ""),
-                ("", ""),
-                ("Programme Anticipated Completion:",
-                 meeting.get("prog_anticipated_completion") or ""),
-                ("", ""),
-            ]
-            for i, (lab, val) in enumerate(row2):
-                c = pr.rows[1].cells[i]
-                c.text = ""
-                para = c.paragraphs[0]
-                if lab:
-                    rr = para.add_run(lab)
-                    rr.bold = True
-                    rr.font.size = Pt(8)
-                if val:
-                    para.add_run(f" {val}").font.size = Pt(8)
-
-        doc.add_paragraph()
-
-        # Main minutes table
-        has_actions = tpl.get("has_action_column", True)
-        ncols = 4 if has_actions else 2
-        table = doc.add_table(rows=1, cols=ncols)
-        table.style = "Table Grid"
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
-
-        headers = ["No.", "Item", "Action", "Date"] if has_actions else ["No.", "Item"]
-        for i, h in enumerate(headers):
-            c = table.rows[0].cells[i]
-            c.text = ""
-            rr = c.paragraphs[0].add_run(h)
-            rr.bold = True
-            rr.font.size = Pt(9)
+        proj_line = " ".join(x for x in [proj.get("project_no"), proj.get("name")] if x)
 
         acts_by_item = {}
         for a in actions:
             acts_by_item.setdefault(a.get("meeting_item_id"), []).append(a)
 
-        for it in items:
-            row = table.add_row()
-            c0 = row.cells[0]
-            c0.text = ""
-            rr = c0.paragraphs[0].add_run(it["item_no"])
-            rr.bold = True
-            rr.font.size = Pt(9)
+        def who_when(item_id):
+            aa = acts_by_item.get(item_id, [])
+            who = ", ".join(
+                (people.get(a.get("assigned_to"), {}).get("initials")
+                 or a.get("assigned_text") or "")
+                for a in aa if (a.get("assigned_to") or a.get("assigned_text")))
+            when = ""
+            dates = []
+            for a in aa:
+                if a.get("due_date"):
+                    try:
+                        dates.append(datetime.date.fromisoformat(
+                            a["due_date"]).strftime("%d %b"))
+                    except Exception:
+                        dates.append(a["due_date"])
+            when = ", ".join(dates)
+            return who, when
 
-            c1 = row.cells[1]
-            c1.text = ""
-            para = c1.paragraphs[0]
-            rr = para.add_run(it["title"])
-            rr.bold = True
-            rr.font.size = Pt(9)
-            if it.get("content"):
-                for line in it["content"].split("\n"):
-                    if line.strip():
-                        pp = c1.add_paragraph()
-                        pr2 = pp.add_run(line.strip())
-                        pr2.font.size = Pt(9)
+        # Locate the Word template shipped with the app
+        here = os.path.dirname(os.path.abspath(__file__))
+        tpl_file = tpl.get("word_template_file") or "TEMPLATE_ProjectTeamMeetMins.dotx"
+        dotx_path = None
+        for cand in [os.path.join(here, "templates", "word", tpl_file),
+                     os.path.join(here, "templates", tpl_file),
+                     os.path.join(here, tpl_file)]:
+            if os.path.exists(cand):
+                dotx_path = cand
+                break
 
-            if has_actions:
-                item_actions = acts_by_item.get(it["id"], [])
-                who = ", ".join(
-                    (people.get(a.get("assigned_to"), {}).get("initials")
-                     or a.get("assigned_text") or "")
-                    for a in item_actions if (a.get("assigned_to") or a.get("assigned_text"))
-                )
-                when = ", ".join(
-                    a["due_date"] for a in item_actions if a.get("due_date"))
-                c2 = row.cells[2]
-                c2.text = ""
-                c2.paragraphs[0].add_run(who).font.size = Pt(9)
-                c3 = row.cells[3]
-                c3.text = ""
-                c3.paragraphs[0].add_run(when).font.size = Pt(9)
-
-        doc.add_paragraph()
-        cp = doc.add_paragraph()
-        rr = cp.add_run("Circulation:")
-        rr.bold = True
-        rr.font.size = Pt(9)
-        cp.add_run(" As Attendees and Apologies").font.size = Pt(9)
+        if dotx_path:
+            doc = _fill_word_template(dotx_path, meeting, tpl, items, proj_line,
+                                      date_str, who_when)
+        else:
+            doc = _build_docx_from_scratch(meeting, tpl, items, proj_line,
+                                           date_str, who_when)
 
         buf = BytesIO()
         doc.save(buf)
@@ -1264,3 +1269,211 @@ def api_export_docx(mid):
         )
     except Exception as e:
         return err(e)
+
+
+def _load_dotx(path):
+    """Open a .dotx as an editable Document by rewriting its content type."""
+    import zipfile, io
+    from docx import Document
+    zin = zipfile.ZipFile(path, "r")
+    buf = io.BytesIO()
+    zout = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED)
+    for item in zin.infolist():
+        data = zin.read(item.filename)
+        if item.filename == "[Content_Types].xml":
+            data = data.replace(b"wordprocessingml.template.main+xml",
+                                b"wordprocessingml.document.main+xml")
+        zout.writestr(item, data)
+    zout.close()
+    zin.close()
+    buf.seek(0)
+    return Document(buf)
+
+
+def _cell_write(cell, text, bold=False, underline=False):
+    """Replace a cell's contents, one paragraph per line, clearing any
+    inherited run formatting from the cloned template row."""
+    for p in list(cell.paragraphs[1:]):
+        p._element.getparent().remove(p._element)
+    para = cell.paragraphs[0]
+    for r in list(para.runs):
+        r._element.getparent().remove(r._element)
+    lines = (text or "").split("\n")
+    run = para.add_run(lines[0])
+    run.bold = bold
+    run.underline = underline
+    run.font.highlight_color = None
+    for extra in lines[1:]:
+        np = cell.add_paragraph()
+        r2 = np.add_run(extra)
+        r2.bold = bold
+        r2.underline = underline
+        r2.font.highlight_color = None
+    return para
+
+
+def _para_replace(doc, needle, replacement):
+    """Swap placeholder text in a paragraph, dropping the yellow highlight."""
+    for p in doc.paragraphs:
+        if needle in p.text:
+            for r in p.runs:
+                if needle in r.text:
+                    r.text = r.text.replace(needle, replacement)
+                    r.font.highlight_color = None
+                elif r.text.strip() and p.text.strip().startswith(needle):
+                    r.font.highlight_color = None
+            return True
+    return False
+
+
+def _para_append(doc, label, value):
+    """Append a value after a label paragraph such as 'Attendees:'."""
+    if not value:
+        return
+    for p in doc.paragraphs:
+        if p.text.strip().rstrip(":").lower() == label.lower().rstrip(":"):
+            if p.runs:
+                p.runs[-1].text = p.runs[-1].text + "  " + value
+            else:
+                p.add_run("  " + value)
+            return
+
+
+def _fill_word_template(dotx_path, meeting, tpl, items, proj_line, date_str, who_when):
+    """Populate the real house template, preserving all of its formatting."""
+    import copy
+    doc = _load_dotx(dotx_path)
+
+    _para_replace(doc, "INSERT DATE OF MEETING", date_str)
+    _para_replace(doc, "INSERT PROJECT NO & NAME", proj_line)
+    _para_append(doc, "Attendees", meeting.get("attendees") or "")
+    _para_append(doc, "Apologies", meeting.get("apologies") or "")
+
+    tables = doc.tables
+    prog_table = None
+    mins_table = None
+    for t in tables:
+        head = " ".join(cc.text for cc in t.rows[0].cells).lower()
+        if "programme review" in head:
+            prog_table = t
+        elif "item" in head and "no." in head:
+            mins_table = t
+    if mins_table is None and tables:
+        mins_table = tables[-1]
+
+    # Programme Review box - append values after each existing label
+    if prog_table is not None and tpl.get("has_programme_review"):
+        vals = {
+            "baseline duration":   meeting.get("prog_baseline_duration"),
+            "prior duration":      meeting.get("prog_prior_duration"),
+            "current duration":    meeting.get("prog_current_duration"),
+            "baseline completion": meeting.get("prog_baseline_completion"),
+            "programme anticipated completion": meeting.get("prog_anticipated_completion"),
+        }
+        seen = set()
+        for row in prog_table.rows:
+            for cell in row.cells:
+                key = cell.text.strip().rstrip(":").lower()
+                if key in vals and vals[key] and id(cell._tc) not in seen:
+                    seen.add(id(cell._tc))
+                    para = cell.paragraphs[0]
+                    r = para.add_run("  " + str(vals[key]))
+                    r.bold = False
+                    r.font.highlight_color = None
+
+    # Minutes table - clone the title/content row pair, then rebuild
+    if mins_table is not None and len(mins_table.rows) >= 3:
+        ncols = len(mins_table.columns)
+        title_tr   = copy.deepcopy(mins_table.rows[1]._tr)
+        content_tr = copy.deepcopy(mins_table.rows[2]._tr)
+        for r in list(mins_table.rows[1:]):
+            mins_table._tbl.remove(r._tr)
+
+        for it in items:
+            mins_table._tbl.append(copy.deepcopy(title_tr))
+            trow = mins_table.rows[-1]
+            _cell_write(trow.cells[0], it["item_no"], bold=True)
+            indent = "    " if it.get("parent_no") else ""
+            _cell_write(trow.cells[1], indent + it["title"], bold=True)
+            if ncols >= 4:
+                _cell_write(trow.cells[2], "")
+                _cell_write(trow.cells[3], "")
+
+            mins_table._tbl.append(copy.deepcopy(content_tr))
+            crow = mins_table.rows[-1]
+            _cell_write(crow.cells[0], "")
+            _cell_write(crow.cells[1], it.get("content") or "")
+            if ncols >= 4:
+                who, when = who_when(it["id"])
+                _cell_write(crow.cells[2], who)
+                _cell_write(crow.cells[3], when)
+
+    return doc
+
+
+def _build_docx_from_scratch(meeting, tpl, items, proj_line, date_str, who_when):
+    """Fallback used only when the .dotx is not present in the repo."""
+    from docx import Document
+    from docx.shared import Pt, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.left_margin = sec.right_margin = Cm(1.8)
+    sec.top_margin = sec.bottom_margin = Cm(1.5)
+
+    hdr = sec.header.paragraphs[0]
+    hdr.text = tpl.get("doc_title") or "MEETING MINUTES"
+    for r in hdr.runs:
+        r.bold = True
+        r.font.size = Pt(12)
+
+    ftr = sec.footer.paragraphs[0]
+    ftr.text = "Company Confidential"
+    ftr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for r in ftr.runs:
+        r.font.size = Pt(8)
+        r.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+
+    for txt in [date_str, proj_line]:
+        p = doc.add_paragraph()
+        run = p.add_run(txt)
+        run.bold = True
+        run.font.size = Pt(10)
+    doc.add_paragraph(f'Attendees: {meeting.get("attendees") or ""}')
+    doc.add_paragraph(f'Apologies: {meeting.get("apologies") or ""}')
+    doc.add_paragraph()
+
+    has_actions = tpl.get("has_action_column", True)
+    ncols = 4 if has_actions else 2
+    table = doc.add_table(rows=1, cols=ncols)
+    table.style = "Table Grid"
+    for i, h in enumerate(["No.", "Item", "Action", "Date"][:ncols]):
+        cc = table.rows[0].cells[i]
+        cc.text = ""
+        rr = cc.paragraphs[0].add_run(h)
+        rr.bold = True
+        rr.font.size = Pt(9)
+
+    for it in items:
+        row = table.add_row()
+        c0 = row.cells[0]; c0.text = ""
+        rr = c0.paragraphs[0].add_run(it["item_no"]); rr.bold = True; rr.font.size = Pt(9)
+        c1 = row.cells[1]; c1.text = ""
+        rr = c1.paragraphs[0].add_run(it["title"]); rr.bold = True; rr.font.size = Pt(9)
+        if it.get("content"):
+            for line in it["content"].split("\n"):
+                if line.strip():
+                    pp = c1.add_paragraph()
+                    pp.add_run(line.strip()).font.size = Pt(9)
+        if has_actions:
+            who, when = who_when(it["id"])
+            for ci, val in [(2, who), (3, when)]:
+                cc = row.cells[ci]; cc.text = ""
+                cc.paragraphs[0].add_run(val).font.size = Pt(9)
+
+    doc.add_paragraph()
+    cp = doc.add_paragraph()
+    rr = cp.add_run("Circulation:"); rr.bold = True; rr.font.size = Pt(9)
+    cp.add_run("  As Attendees and Apologies").font.size = Pt(9)
+    return doc
