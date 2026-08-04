@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f172a">
+<title>Meeting Minutes - Pennyfarthing</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+       background: #f1f5f9; color: #0f172a; height: 100vh; overflow: hidden; }
+#root { height: 100%; }
+
+::-webkit-scrollbar { width: 10px; height: 12px; }
+::-webkit-scrollbar-track { background: #e2e8f0; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #e2e8f0; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+.tab-btn { padding: 9px 16px; font-size: 12px; font-weight: 600; border: none;
+           background: transparent; color: #64748b; cursor: pointer;
+           border-bottom: 2px solid transparent; white-space: nowrap; }
+.tab-btn.on { color: #0f172a; border-bottom-color: #f97316; background: #fff; }
+
+.card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; }
+.btn  { padding: 8px 15px; border: none; border-radius: 7px; font-size: 12px;
+        font-weight: 700; cursor: pointer; }
+.btn-dark { background: #0f172a; color: #fff; }
+.btn-orange { background: #f97316; color: #fff; }
+.btn-grey { background: #e2e8f0; color: #475569; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.inp { padding: 8px 11px; border: 1.5px solid #e2e8f0; border-radius: 7px;
+       font-size: 13px; outline: none; width: 100%; }
+.inp:focus { border-color: #0f172a; }
+
+.pill { display: inline-block; padding: 2px 9px; border-radius: 11px;
+        font-size: 10px; font-weight: 700; }
+
+@media (max-width: 768px) {
+  #tabbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 500;
+            background: #fff; border-top: 1px solid #e2e8f0;
+            box-shadow: 0 -2px 14px rgba(0,0,0,.09);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            overflow-x: auto; scrollbar-width: none; }
+  #tabbar::-webkit-scrollbar { display: none; }
+  .tab-btn { min-width: 72px; height: 54px; flex-direction: column; gap: 3px;
+             display: flex; align-items: center; justify-content: center;
+             font-size: 9px; border-bottom: none; border-top: 2px solid transparent; }
+  .tab-btn.on { border-top-color: #f97316; border-bottom-color: transparent; }
+  #content { padding-bottom: 62px; }
+  button, select, input { min-height: 40px; }
+}
+
+@media print {
+  #tabbar, #topbar, .no-print { display: none !important; }
+  body { overflow: visible; height: auto; background: #fff; }
+  #content { overflow: visible !important; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const e = React.createElement;
+
+const api = async (path, opts = {}) => {
+  const r = await fetch('/mm/api' + path, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts
+  });
+  return r;
+};
+const jget = p => api(p).then(r => r.json());
+
+const _t = new Date();
+const TODAY = _t.getFullYear() + '-' + String(_t.getMonth()+1).padStart(2,'0')
+            + '-' + String(_t.getDate()).padStart(2,'0');
+
+const fmtDate = d => {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString('en-GB',
+    { day:'numeric', month:'short', year:'numeric' }); }
+  catch(_) { return d; }
+};
+const fmtDateShort = d => {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleDateString('en-GB',{ day:'2-digit', month:'short' }); }
+  catch(_) { return d; }
+};
+const daysUntil = d => {
+  if (!d) return null;
+  return Math.round((new Date(d) - new Date(TODAY)) / 86400000);
+};
+
+const STATUS_COL = {
+  open:        { bg:'#fef3c7', col:'#b45309', label:'Open' },
+  in_progress: { bg:'#dbeafe', col:'#1d4ed8', label:'In Progress' },
+  complete:    { bg:'#dcfce7', col:'#15803d', label:'Complete' },
+};
+const PRIORITY_COL = {
+  low:      { bg:'#f1f5f9', col:'#64748b', label:'Low' },
+  normal:   { bg:'#e0e7ff', col:'#4338ca', label:'Normal' },
+  high:     { bg:'#ffedd5', col:'#c2410c', label:'High' },
+  critical: { bg:'#fee2e2', col:'#dc2626', label:'Critical' },
+};
+
+const TABS = [
+  { id:'meetings', label:'Meetings', icon:'📅' },
+  { id:'actions',  label:'Actions',  icon:'✅' },
+  { id:'inbox',    label:'Inbox',    icon:'📥' },
+  { id:'ask',      label:'Ask AI',   icon:'🔍' },
+  { id:'setup',    label:'Setup',    icon:'⚙️' },
+];
+
+
+// ══════════════════════════════════════════════════════════════════
+// MEETINGS TAB
+// ══════════════════════════════════════════════════════════════════
+function MeetingsTab({ projects, templates, series, meetings, people, reload, onOpen }) {
+  const [showNew, setShowNew] = useState(false);
+  const [filterProject, setFilterProject] = useState('all');
+
+  const visible = useMemo(() => meetings.filter(m =>
+    filterProject === 'all' || m.project_id === filterProject
+  ), [meetings, filterProject]);
+
+  const grouped = useMemo(() => {
+    const g = {};
+    visible.forEach(m => {
+      const key = (m.meeting_date || '').slice(0, 7);
+      (g[key] = g[key] || []).push(m);
+    });
+    return Object.entries(g).sort((a,b) => b[0].localeCompare(a[0]));
+  }, [visible]);
+
+  const projName = id => (projects.find(p => p.id === id) || {}).name || '';
+
+  return e('div', { style:{ padding:16, height:'100%', overflowY:'auto' } },
+    e('div', { style:{ display:'flex', gap:10, alignItems:'center',
+                       marginBottom:14, flexWrap:'wrap' } },
+      e('div', { style:{ fontSize:17, fontWeight:800, letterSpacing:'-.02em' } }, 'Meetings'),
+      e('select', { value:filterProject, onChange:ev=>setFilterProject(ev.target.value),
+        className:'inp', style:{ width:'auto', minWidth:150 } },
+        e('option', { value:'all' }, 'All sites'),
+        ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name))
+      ),
+      e('div', { style:{ flex:1 } }),
+      e('button', { className:'btn btn-orange', onClick:()=>setShowNew(true) }, '+ New Meeting')
+    ),
+
+    visible.length === 0
+      ? e('div', { className:'card', style:{ padding:36, textAlign:'center' } },
+          e('div', { style:{ fontSize:34, marginBottom:10 } }, '📅'),
+          e('div', { style:{ fontWeight:700, marginBottom:5 } }, 'No meetings yet'),
+          e('div', { style:{ fontSize:12, color:'#64748b' } },
+            'Create one to record audio, draft minutes, or upload existing minutes.')
+        )
+      : grouped.map(([month, ms]) =>
+          e('div', { key:month, style:{ marginBottom:20 } },
+            e('div', { style:{ fontSize:10, fontWeight:800, color:'#94a3b8',
+              textTransform:'uppercase', letterSpacing:'.08em', marginBottom:7 } },
+              month ? new Date(month + '-01').toLocaleDateString('en-GB',
+                { month:'long', year:'numeric' }) : 'Undated'),
+            e('div', { style:{ display:'flex', flexDirection:'column', gap:7 } },
+              ...ms.map(m =>
+                e('div', { key:m.id, className:'card',
+                  onClick:()=>onOpen(m.id),
+                  style:{ padding:'11px 14px', cursor:'pointer', display:'flex',
+                          alignItems:'center', gap:12 } },
+                  e('div', { style:{ background:'#0f172a', color:'#fff', borderRadius:8,
+                    width:46, height:46, display:'flex', flexDirection:'column',
+                    alignItems:'center', justifyContent:'center', flexShrink:0 } },
+                    e('div', { style:{ fontSize:15, fontWeight:800, lineHeight:1 } },
+                      m.meeting_date ? new Date(m.meeting_date).getDate() : '?'),
+                    e('div', { style:{ fontSize:8, textTransform:'uppercase' } },
+                      m.meeting_date ? new Date(m.meeting_date)
+                        .toLocaleDateString('en-GB',{month:'short'}) : '')
+                  ),
+                  e('div', { style:{ flex:1, minWidth:0 } },
+                    e('div', { style:{ fontWeight:700, fontSize:13, whiteSpace:'nowrap',
+                      overflow:'hidden', textOverflow:'ellipsis' } },
+                      m.title || 'Untitled meeting'),
+                    e('div', { style:{ fontSize:11, color:'#64748b' } },
+                      projName(m.project_id))
+                  ),
+                  m.transcribe_status === 'processing' &&
+                    e('span', { className:'pill', style:{ background:'#dbeafe', color:'#1d4ed8' } },
+                      'Transcribing'),
+                  e('span', { className:'pill', style:{
+                    background: m.status==='final' ? '#dcfce7' : '#f1f5f9',
+                    color:      m.status==='final' ? '#15803d' : '#64748b' } },
+                    m.status === 'final' ? 'Final' : 'Draft')
+                )
+              )
+            )
+          )
+        ),
+
+    showNew && e(NewMeetingModal, { projects, templates, series,
+      onClose:()=>setShowNew(false),
+      onCreated: id => { setShowNew(false); reload(); onOpen(id); } })
+  );
+}
+
+
+function NewMeetingModal({ projects, templates, series, onClose, onCreated }) {
+  const [projectId, setProjectId]   = useState(projects[0]?.id || '');
+  const [templateId, setTemplateId] = useState(templates[0]?.id || '');
+  const [seriesId, setSeriesId]     = useState('');
+  const [date, setDate]   = useState(TODAY);
+  const [title, setTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const projSeries = series.filter(s => s.project_id === projectId);
+
+  async function create() {
+    if (!projectId || !templateId) return;
+    setSaving(true);
+    const tpl = templates.find(t => t.id === templateId);
+    const r = await api('/meetings', { method:'POST', body: JSON.stringify({
+      project_id: projectId, template_id: templateId,
+      series_id: seriesId || null, meeting_date: date,
+      title: title || tpl?.name || 'Meeting',
+    })}).then(r => r.json());
+    setSaving(false);
+    if (r.id) onCreated(r.id);
+  }
+
+  return e('div', { onClick:onClose, style:{ position:'fixed', inset:0,
+      background:'rgba(15,23,42,.6)', zIndex:300, display:'flex',
+      alignItems:'center', justifyContent:'center', padding:16 } },
+    e('div', { onClick:ev=>ev.stopPropagation(), className:'card',
+      style:{ width:440, maxWidth:'100%', padding:22 } },
+      e('div', { style:{ fontSize:16, fontWeight:800, marginBottom:16 } }, 'New Meeting'),
+
+      e('label', { style:{ fontSize:11, fontWeight:700, color:'#475569' } }, 'Site'),
+      e('select', { value:projectId, onChange:ev=>{setProjectId(ev.target.value); setSeriesId('');},
+        className:'inp', style:{ marginBottom:12, marginTop:4 } },
+        ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+
+      e('label', { style:{ fontSize:11, fontWeight:700, color:'#475569' } }, 'Meeting type'),
+      e('select', { value:templateId, onChange:ev=>setTemplateId(ev.target.value),
+        className:'inp', style:{ marginBottom:12, marginTop:4 } },
+        ...templates.map(t => e('option', { key:t.id, value:t.id }, t.name))),
+
+      projSeries.length > 0 && e('div', null,
+        e('label', { style:{ fontSize:11, fontWeight:700, color:'#475569' } },
+          'Series (carries actions forward)'),
+        e('select', { value:seriesId, onChange:ev=>setSeriesId(ev.target.value),
+          className:'inp', style:{ marginBottom:12, marginTop:4 } },
+          e('option', { value:'' }, 'One-off meeting'),
+          ...projSeries.map(s => e('option', { key:s.id, value:s.id }, s.name)))
+      ),
+
+      e('label', { style:{ fontSize:11, fontWeight:700, color:'#475569' } }, 'Date'),
+      e('input', { type:'date', value:date, onChange:ev=>setDate(ev.target.value),
+        className:'inp', style:{ marginBottom:12, marginTop:4 } }),
+
+      e('label', { style:{ fontSize:11, fontWeight:700, color:'#475569' } }, 'Title (optional)'),
+      e('input', { value:title, onChange:ev=>setTitle(ev.target.value),
+        placeholder:'Defaults to the meeting type',
+        className:'inp', style:{ marginBottom:18, marginTop:4 } }),
+
+      e('div', { style:{ display:'flex', gap:8, justifyContent:'flex-end' } },
+        e('button', { className:'btn btn-grey', onClick:onClose }, 'Cancel'),
+        e('button', { className:'btn btn-orange', onClick:create, disabled:saving },
+          saving ? 'Creating...' : 'Create')
+      )
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// MEETING DETAIL - the minutes editor
+// ══════════════════════════════════════════════════════════════════
+function MeetingDetail({ meetingId, projects, templates, people, onBack, reload }) {
+  const [data, setData]   = useState(null);
+  const [busy, setBusy]   = useState('');
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const mediaRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const load = useCallback(async () => {
+    const d = await jget('/meetings/' + meetingId);
+    setData(d);
+  }, [meetingId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Poll while transcription is running
+  useEffect(() => {
+    if (data?.meeting?.transcribe_status !== 'processing') return;
+    const iv = setInterval(async () => {
+      const s = await jget('/transcribe-status/' + meetingId);
+      if (s.status === 'done' || s.status === 'error') { clearInterval(iv); load(); }
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [data?.meeting?.transcribe_status, meetingId, load]);
+
+  if (!data) return e('div', { style:{ padding:40, textAlign:'center', color:'#64748b' } },
+    'Loading...');
+
+  const m   = data.meeting;
+  const tpl = templates.find(t => t.id === m.template_id) || {};
+  const proj = projects.find(p => p.id === m.project_id) || {};
+
+  async function patchMeeting(fields) {
+    await api('/meetings/' + meetingId, { method:'PATCH', body:JSON.stringify(fields) });
+    setData(d => ({ ...d, meeting: { ...d.meeting, ...fields } }));
+  }
+
+  async function patchItem(itemId, content) {
+    await api('/meeting-items/' + itemId, { method:'PATCH',
+      body:JSON.stringify({ content }) });
+    setData(d => ({ ...d, items: d.items.map(i =>
+      i.id === itemId ? { ...i, content } : i) }));
+  }
+
+  // ---- Recording -------------------------------------------------
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+      });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = ev => { if (ev.data.size) chunksRef.current.push(ev.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type:'audio/webm' });
+        await uploadAudio(blob);
+      };
+      mr.start(1000);
+      mediaRef.current = mr;
+      setRecording(true);
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(x => x + 1), 1000);
+    } catch (ex) {
+      alert('Microphone unavailable: ' + ex.message);
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRef.current) mediaRef.current.stop();
+    clearInterval(timerRef.current);
+    setRecording(false);
+  }
+
+  async function uploadAudio(blob) {
+    setBusy('Uploading audio...');
+    const b64 = await new Promise(res => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result.split(',')[1]);
+      fr.readAsDataURL(blob);
+    });
+    const r = await api('/transcribe/' + meetingId, { method:'POST',
+      body: JSON.stringify({ audio_b64: b64 }) }).then(r => r.json());
+    setBusy('');
+    if (r.ok) { await patchMeeting({ transcribe_status:'processing' }); load(); }
+    else alert('Transcription failed: ' + (r.error || 'unknown'));
+  }
+
+  async function draftMinutes() {
+    setBusy('Drafting minutes from transcript...');
+    const r = await api('/ai/draft-minutes/' + meetingId, { method:'POST',
+      body: JSON.stringify({}) }).then(r => r.json());
+    setBusy('');
+    if (r.ok) { load(); alert('Minutes drafted. ' + r.actions_created + ' actions created.'); }
+    else alert('Drafting failed: ' + (r.error || 'unknown'));
+  }
+
+  const mmss = s => String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+
+  return e('div', { style:{ height:'100%', overflowY:'auto', paddingBottom:24 } },
+
+    // Sticky header
+    e('div', { className:'no-print', style:{ position:'sticky', top:0, zIndex:50,
+      background:'#fff', borderBottom:'1px solid #e2e8f0', padding:'11px 16px',
+      display:'flex', alignItems:'center', gap:11, flexWrap:'wrap' } },
+      e('button', { className:'btn btn-grey', onClick:onBack }, '← Back'),
+      e('div', { style:{ flex:1, minWidth:120 } },
+        e('div', { style:{ fontWeight:800, fontSize:14 } }, m.title || 'Meeting'),
+        e('div', { style:{ fontSize:11, color:'#64748b' } },
+          proj.name + ' · ' + fmtDate(m.meeting_date))
+      ),
+      e('a', { href:'/mm/api/export/' + meetingId + '.docx',
+        className:'btn btn-grey', style:{ textDecoration:'none' } }, '⬇ Word'),
+      e('button', { className:'btn btn-grey', onClick:()=>window.print() }, '🖨 Print'),
+      e('button', { className: m.status==='final' ? 'btn btn-grey' : 'btn btn-dark',
+        onClick:()=>patchMeeting({ status: m.status==='final' ? 'draft' : 'final' }) },
+        m.status==='final' ? 'Reopen' : 'Mark Final')
+    ),
+
+    busy && e('div', { className:'no-print', style:{ background:'#fef3c7',
+      padding:'8px 16px', fontSize:12, fontWeight:600, color:'#b45309' } }, '⏳ ' + busy),
+
+    e('div', { style:{ padding:16, maxWidth:900, margin:'0 auto' } },
+
+      // ---- Recording panel ----
+      e('div', { className:'card no-print', style:{ padding:14, marginBottom:14 } },
+        e('div', { style:{ fontSize:11, fontWeight:800, color:'#94a3b8',
+          textTransform:'uppercase', letterSpacing:'.06em', marginBottom:9 } },
+          'Audio & Transcript'),
+        e('div', { style:{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' } },
+          !recording
+            ? e('button', { className:'btn btn-orange', onClick:startRecording },
+                '🎙 Start Recording')
+            : e('button', { className:'btn', style:{ background:'#dc2626', color:'#fff' },
+                onClick:stopRecording }, '⏹ Stop (' + mmss(elapsed) + ')'),
+          e('button', { className:'btn btn-grey', onClick:()=>fileRef.current.click() },
+            '📁 Upload Audio'),
+          e('input', { ref:fileRef, type:'file', accept:'audio/*', style:{ display:'none' },
+            onChange: ev => { const f = ev.target.files[0]; ev.target.value='';
+                              if (f) uploadAudio(f); } }),
+          m.transcript && e('button', { className:'btn btn-dark', onClick:draftMinutes },
+            '✨ Draft Minutes with AI'),
+          m.transcribe_status === 'processing' &&
+            e('span', { style:{ fontSize:12, color:'#1d4ed8', fontWeight:600 } },
+              '⏳ Transcribing - this runs in the background'),
+          m.transcribe_status === 'error' &&
+            e('span', { style:{ fontSize:12, color:'#dc2626', fontWeight:600 } },
+              '✗ Transcription failed')
+        ),
+        recording && e('div', { style:{ marginTop:9, fontSize:11, color:'#64748b' } },
+          'Recording. Place the phone centrally on the table, screen up. ' +
+          'Keep the app in the foreground.'),
+        m.transcript && e('details', { style:{ marginTop:11 } },
+          e('summary', { style:{ fontSize:12, fontWeight:700, cursor:'pointer',
+            color:'#475569' } }, 'View transcript'),
+          e('div', { style:{ marginTop:8, fontSize:12, lineHeight:1.65,
+            whiteSpace:'pre-wrap', maxHeight:280, overflowY:'auto',
+            background:'#f8fafc', padding:11, borderRadius:8 } }, m.transcript)
+        )
+      ),
+
+      // ---- Attendees ----
+      e('div', { className:'card', style:{ padding:14, marginBottom:14 } },
+        e('div', { style:{ marginBottom:9 } },
+          e('label', { style:{ fontSize:11, fontWeight:800, color:'#94a3b8',
+            textTransform:'uppercase', letterSpacing:'.06em' } }, 'Attendees'),
+          e('textarea', { defaultValue:m.attendees || '', rows:2, className:'inp',
+            style:{ marginTop:5, resize:'vertical' },
+            placeholder:'Names, comma separated',
+            onBlur: ev => patchMeeting({ attendees: ev.target.value }) })
+        ),
+        e('div', null,
+          e('label', { style:{ fontSize:11, fontWeight:800, color:'#94a3b8',
+            textTransform:'uppercase', letterSpacing:'.06em' } }, 'Apologies'),
+          e('textarea', { defaultValue:m.apologies || '', rows:1, className:'inp',
+            style:{ marginTop:5, resize:'vertical' },
+            onBlur: ev => patchMeeting({ apologies: ev.target.value }) })
+        )
+      ),
+
+      // ---- Programme Review (auto-fill from SMC) ----
+      tpl.has_programme_review && e(ProgrammeReview, { meeting:m, patchMeeting }),
+
+      // ---- Carried actions ----
+      data.carried_actions?.length > 0 && e('div', { className:'card',
+        style:{ padding:14, marginBottom:14, borderLeft:'4px solid #f97316' } },
+        e('div', { style:{ fontSize:11, fontWeight:800, color:'#c2410c',
+          textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 } },
+          'Outstanding from last meeting (' + data.carried_actions.length + ')'),
+        ...data.carried_actions.map(a =>
+          e('div', { key:a.id, style:{ fontSize:12, padding:'5px 0',
+            borderBottom:'1px solid #f1f5f9' } },
+            e('span', { style:{ fontWeight:600 } }, a.description),
+            a.assigned_text && e('span', { style:{ color:'#64748b' } },
+              ' - ' + a.assigned_text),
+            a.due_date && e('span', { style:{ color:'#dc2626', fontWeight:600 } },
+              ' (due ' + fmtDateShort(a.due_date) + ')')
+          )
+        )
+      ),
+
+      // ---- Agenda items ----
+      e('div', { style:{ display:'flex', flexDirection:'column', gap:9 } },
+        ...data.items.map(item => e(MinuteItem, {
+          key:item.id, item, patchItem,
+          actions: data.actions.filter(a => a.meeting_item_id === item.id),
+          people, meetingId, projectId: m.project_id,
+          hasActions: tpl.has_action_column !== false,
+          onActionsChanged: load,
+        }))
+      )
+    )
+  );
+}
+
+
+function ProgrammeReview({ meeting, patchMeeting }) {
+  const [smc, setSmc] = useState(null);
+  useEffect(() => {
+    if (!meeting.project_id) return;
+    jget('/programme-review/' + meeting.project_id).then(setSmc).catch(()=>{});
+  }, [meeting.project_id]);
+
+  const F = [
+    ['prog_baseline_duration',      'Baseline Duration'],
+    ['prog_prior_duration',         'Prior Duration'],
+    ['prog_current_duration',       'Current Duration'],
+    ['prog_baseline_completion',    'Baseline Completion'],
+    ['prog_anticipated_completion', 'Anticipated Completion'],
+  ];
+
+  function autofill() {
+    if (!smc?.has_data) return;
+    patchMeeting({
+      prog_baseline_duration:      smc.baseline_duration || '',
+      prog_baseline_completion:    smc.baseline_completion || '',
+      prog_anticipated_completion: smc.anticipated_completion || '',
+    });
+  }
+
+  return e('div', { className:'card', style:{ padding:14, marginBottom:14 } },
+    e('div', { style:{ display:'flex', alignItems:'center', gap:9, marginBottom:9 } },
+      e('div', { style:{ fontSize:11, fontWeight:800, color:'#94a3b8',
+        textTransform:'uppercase', letterSpacing:'.06em' } }, 'Programme Review'),
+      e('div', { style:{ flex:1 } }),
+      smc?.has_data && e('button', { className:'btn btn-grey no-print', onClick:autofill,
+        style:{ padding:'4px 10px', fontSize:10 } },
+        '↻ Fill from Site Command Centre')
+    ),
+    smc?.linked && !smc?.has_data && e('div', { style:{ fontSize:11, color:'#94a3b8',
+      marginBottom:8 } }, 'Site linked to SMC but no programme dates set yet.'),
+    e('div', { style:{ display:'grid',
+      gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))', gap:9 } },
+      ...F.map(([k, label]) =>
+        e('div', { key:k },
+          e('label', { style:{ fontSize:10, fontWeight:700, color:'#64748b' } }, label),
+          e('input', { defaultValue: meeting[k] || '', className:'inp',
+            style:{ marginTop:3, fontSize:12 },
+            onBlur: ev => patchMeeting({ [k]: ev.target.value }) })
+        )
+      )
+    )
+  );
+}
+
+
+function MinuteItem({ item, patchItem, actions, people, meetingId, projectId,
+                      hasActions, onActionsChanged }) {
+  const [content, setContent] = useState(item.content || '');
+  const [adding, setAdding]   = useState(false);
+  const [draft, setDraft]     = useState({ description:'', assigned_to:'', due_date:'' });
+  const isSub = !!item.parent_no;
+
+  useEffect(() => { setContent(item.content || ''); }, [item.content]);
+
+  async function addAction() {
+    if (!draft.description.trim()) return;
+    await api('/actions', { method:'POST', body:JSON.stringify({
+      meeting_id: meetingId, meeting_item_id: item.id, project_id: projectId,
+      description: draft.description,
+      assigned_to: draft.assigned_to || null,
+      due_date: draft.due_date || null,
+    })});
+    setDraft({ description:'', assigned_to:'', due_date:'' });
+    setAdding(false);
+    onActionsChanged();
+  }
+
+  async function toggleAction(a) {
+    await api('/actions/' + a.id, { method:'PATCH', body:JSON.stringify({
+      status: a.status === 'complete' ? 'open' : 'complete' }) });
+    onActionsChanged();
+  }
+
+  return e('div', { className:'card',
+    style:{ padding:'11px 14px', marginLeft: isSub ? 22 : 0,
+            borderLeft: isSub ? '3px solid #e2e8f0' : undefined } },
+    e('div', { style:{ display:'flex', gap:9, alignItems:'baseline', marginBottom:6 } },
+      e('div', { style:{ fontWeight:800, fontSize:12, color:'#f97316',
+        minWidth:24, flexShrink:0 } }, item.item_no),
+      e('div', { style:{ fontWeight:700, fontSize:13, flex:1 } }, item.title),
+      hasActions && e('button', { className:'btn btn-grey no-print',
+        style:{ padding:'3px 9px', fontSize:10 },
+        onClick:()=>setAdding(a => !a) }, '+ Action')
+    ),
+
+    e('textarea', {
+      value: content,
+      onChange: ev => setContent(ev.target.value),
+      onBlur:   () => { if (content !== item.content) patchItem(item.id, content); },
+      rows: Math.max(2, content.split('\n').length),
+      className:'inp',
+      style:{ resize:'vertical', fontSize:12.5, lineHeight:1.6, border:'none',
+              background:'#f8fafc', padding:9 },
+      placeholder:'Nothing minuted under this heading',
+    }),
+
+    actions.length > 0 && e('div', { style:{ marginTop:8, display:'flex',
+      flexDirection:'column', gap:4 } },
+      ...actions.map(a => {
+        const person = people.find(p => p.id === a.assigned_to);
+        const dLeft = daysUntil(a.due_date);
+        return e('div', { key:a.id, style:{ display:'flex', alignItems:'center', gap:7,
+          fontSize:11.5, background:'#fff7ed', border:'1px solid #fed7aa',
+          borderRadius:6, padding:'5px 9px' } },
+          e('input', { type:'checkbox', checked:a.status==='complete',
+            onChange:()=>toggleAction(a), className:'no-print',
+            style:{ cursor:'pointer', minHeight:'auto', width:15, height:15 } }),
+          e('span', { style:{ flex:1,
+            textDecoration: a.status==='complete' ? 'line-through' : 'none',
+            color: a.status==='complete' ? '#94a3b8' : '#0f172a' } }, a.description),
+          (person || a.assigned_text) && e('span', { className:'pill',
+            style:{ background:'#0f172a', color:'#fff' } },
+            person ? person.initials : a.assigned_text),
+          a.due_date && e('span', { style:{ fontWeight:700, fontSize:10,
+            color: dLeft !== null && dLeft < 0 ? '#dc2626'
+                 : dLeft !== null && dLeft <= 7 ? '#c2410c' : '#64748b' } },
+            fmtDateShort(a.due_date))
+        );
+      })
+    ),
+
+    adding && e('div', { className:'no-print', style:{ marginTop:8, display:'flex',
+      gap:6, flexWrap:'wrap', alignItems:'center', background:'#f8fafc',
+      padding:9, borderRadius:7 } },
+      e('input', { className:'inp', style:{ flex:1, minWidth:170, fontSize:12 },
+        placeholder:'What needs doing?', value:draft.description, autoFocus:true,
+        onChange:ev=>setDraft(d=>({ ...d, description:ev.target.value })) }),
+      e('select', { className:'inp', style:{ width:'auto', fontSize:12 },
+        value:draft.assigned_to,
+        onChange:ev=>setDraft(d=>({ ...d, assigned_to:ev.target.value })) },
+        e('option', { value:'' }, 'Who?'),
+        ...people.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+      e('input', { type:'date', className:'inp', style:{ width:'auto', fontSize:12 },
+        value:draft.due_date,
+        onChange:ev=>setDraft(d=>({ ...d, due_date:ev.target.value })) }),
+      e('button', { className:'btn btn-orange', onClick:addAction }, 'Add'),
+      e('button', { className:'btn btn-grey', onClick:()=>setAdding(false) }, '✕')
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// ACTIONS TAB - the overview page
+// ══════════════════════════════════════════════════════════════════
+function ActionsTab({ projects, people, reload }) {
+  const [actions, setActions] = useState([]);
+  const [sortBy, setSortBy]   = useState('due_date');
+  const [fStatus, setFStatus] = useState('open');
+  const [fProject, setFProject] = useState('all');
+  const [fPerson, setFPerson]   = useState('all');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setActions(await jget('/actions'));
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const visible = useMemo(() => {
+    let a = actions.filter(x =>
+      (fStatus === 'all' || x.status === fStatus) &&
+      (fProject === 'all' || x.project_id === fProject) &&
+      (fPerson === 'all' ||
+        (fPerson === 'unassigned' ? !x.assigned_to && !x.assigned_text
+                                  : x.assigned_to === fPerson))
+    );
+    const cmp = {
+      due_date: (x,y) => (x.due_date || '9999').localeCompare(y.due_date || '9999'),
+      person:   (x,y) => (x.person_name || 'zz').localeCompare(y.person_name || 'zz'),
+      project:  (x,y) => (x.project_name || '').localeCompare(y.project_name || ''),
+      priority: (x,y) => ['critical','high','normal','low'].indexOf(x.priority)
+                       - ['critical','high','normal','low'].indexOf(y.priority),
+      created:  (x,y) => (y.created_at || '').localeCompare(x.created_at || ''),
+    }[sortBy];
+    return a.sort(cmp);
+  }, [actions, sortBy, fStatus, fProject, fPerson]);
+
+  const overdue = visible.filter(a => a.status !== 'complete'
+    && a.due_date && daysUntil(a.due_date) < 0).length;
+  const dueWeek = visible.filter(a => a.status !== 'complete' && a.due_date
+    && daysUntil(a.due_date) >= 0 && daysUntil(a.due_date) <= 7).length;
+
+  async function toggle(a) {
+    await api('/actions/' + a.id, { method:'PATCH', body:JSON.stringify({
+      status: a.status === 'complete' ? 'open' : 'complete' }) });
+    load();
+  }
+
+  function emailList() {
+    const person = people.find(p => p.id === fPerson);
+    const lines = visible.filter(a => a.status !== 'complete').map(a =>
+      '- ' + a.description
+      + (a.due_date ? ' (due ' + fmtDate(a.due_date) + ')' : '')
+      + (a.project_name ? ' [' + a.project_name + ']' : ''));
+    const body = 'Outstanding actions:\n\n' + lines.join('\n')
+      + '\n\nGenerated from meeting minutes.';
+    const subject = 'Outstanding actions'
+      + (person ? ' - ' + person.name : '');
+    window.location.href = 'mailto:' + (person?.email || '')
+      + '?subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(body);
+  }
+
+  return e('div', { style:{ padding:16, height:'100%', overflowY:'auto' } },
+    e('div', { style:{ display:'flex', gap:9, alignItems:'center', marginBottom:12,
+      flexWrap:'wrap' } },
+      e('div', { style:{ fontSize:17, fontWeight:800, letterSpacing:'-.02em' } }, 'Actions'),
+      e('div', { style:{ flex:1 } }),
+      overdue > 0 && e('span', { className:'pill',
+        style:{ background:'#fee2e2', color:'#dc2626' } }, overdue + ' overdue'),
+      dueWeek > 0 && e('span', { className:'pill',
+        style:{ background:'#ffedd5', color:'#c2410c' } }, dueWeek + ' due this week'),
+      e('button', { className:'btn btn-dark', onClick:emailList }, '✉ Email list')
+    ),
+
+    e('div', { className:'card', style:{ padding:10, marginBottom:12, display:'flex',
+      gap:8, flexWrap:'wrap', alignItems:'center' } },
+      e('select', { value:fStatus, onChange:ev=>setFStatus(ev.target.value),
+        className:'inp', style:{ width:'auto', fontSize:12 } },
+        e('option', { value:'open' }, 'Open only'),
+        e('option', { value:'in_progress' }, 'In progress'),
+        e('option', { value:'complete' }, 'Complete'),
+        e('option', { value:'all' }, 'All statuses')),
+      e('select', { value:fProject, onChange:ev=>setFProject(ev.target.value),
+        className:'inp', style:{ width:'auto', fontSize:12 } },
+        e('option', { value:'all' }, 'All sites'),
+        ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+      e('select', { value:fPerson, onChange:ev=>setFPerson(ev.target.value),
+        className:'inp', style:{ width:'auto', fontSize:12 } },
+        e('option', { value:'all' }, 'Everyone'),
+        e('option', { value:'unassigned' }, 'Unassigned'),
+        ...people.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+      e('div', { style:{ flex:1 } }),
+      e('span', { style:{ fontSize:11, color:'#64748b' } }, 'Sort:'),
+      e('select', { value:sortBy, onChange:ev=>setSortBy(ev.target.value),
+        className:'inp', style:{ width:'auto', fontSize:12 } },
+        e('option', { value:'due_date' }, 'Due date'),
+        e('option', { value:'person' }, 'Person'),
+        e('option', { value:'project' }, 'Site'),
+        e('option', { value:'priority' }, 'Priority'),
+        e('option', { value:'created' }, 'Newest'))
+    ),
+
+    loading
+      ? e('div', { style:{ padding:30, textAlign:'center', color:'#64748b' } }, 'Loading...')
+      : visible.length === 0
+        ? e('div', { className:'card', style:{ padding:34, textAlign:'center' } },
+            e('div', { style:{ fontSize:32, marginBottom:8 } }, '✅'),
+            e('div', { style:{ fontWeight:700 } }, 'Nothing outstanding'))
+        : e('div', { style:{ display:'flex', flexDirection:'column', gap:5 } },
+            ...visible.map(a => {
+              const dLeft = daysUntil(a.due_date);
+              const late  = a.status !== 'complete' && dLeft !== null && dLeft < 0;
+              const soon  = a.status !== 'complete' && dLeft !== null
+                            && dLeft >= 0 && dLeft <= 7;
+              const pr = PRIORITY_COL[a.priority] || PRIORITY_COL.normal;
+              return e('div', { key:a.id, className:'card',
+                style:{ padding:'9px 13px', display:'flex', alignItems:'center', gap:10,
+                  borderLeft: late ? '4px solid #dc2626'
+                            : soon ? '4px solid #f97316' : '4px solid transparent' } },
+                e('input', { type:'checkbox', checked:a.status==='complete',
+                  onChange:()=>toggle(a),
+                  style:{ cursor:'pointer', width:16, height:16, flexShrink:0,
+                          minHeight:'auto' } }),
+                e('div', { style:{ flex:1, minWidth:0 } },
+                  e('div', { style:{ fontSize:13, fontWeight:600,
+                    textDecoration: a.status==='complete' ? 'line-through' : 'none',
+                    color: a.status==='complete' ? '#94a3b8' : '#0f172a' } },
+                    a.description),
+                  e('div', { style:{ fontSize:10.5, color:'#94a3b8', marginTop:2 } },
+                    [a.project_name, a.meeting_title,
+                     a.meeting_date ? fmtDateShort(a.meeting_date) : null]
+                      .filter(Boolean).join(' · '))
+                ),
+                a.priority !== 'normal' && e('span', { className:'pill',
+                  style:{ background:pr.bg, color:pr.col } }, pr.label),
+                a.person_name && e('span', { className:'pill',
+                  style:{ background:'#0f172a', color:'#fff' } },
+                  a.person_initials || a.person_name),
+                a.due_date && e('span', { style:{ fontSize:11, fontWeight:700,
+                  whiteSpace:'nowrap',
+                  color: late ? '#dc2626' : soon ? '#c2410c' : '#64748b' } },
+                  (late ? '⚠ ' : '') + fmtDateShort(a.due_date))
+              );
+            })
+          )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// INBOX TAB - dump text, AI extracts the key information
+// ══════════════════════════════════════════════════════════════════
+function InboxTab({ projects }) {
+  const [text, setText]       = useState('');
+  const [projectId, setPid]   = useState('');
+  const [busy, setBusy]       = useState(false);
+  const [result, setResult]   = useState(null);
+
+  async function process(createActions) {
+    if (!text.trim()) return;
+    setBusy(true); setResult(null);
+    const r = await api('/ai/process-inbox', { method:'POST', body:JSON.stringify({
+      content: text, project_id: projectId || null,
+      source_type:'note', create_actions: createActions }) }).then(r=>r.json());
+    setBusy(false);
+    if (r.ok) { setResult(r.extracted); if (createActions) setText(''); }
+    else alert('Processing failed: ' + (r.error || 'unknown'));
+  }
+
+  return e('div', { style:{ padding:16, height:'100%', overflowY:'auto' } },
+    e('div', { style:{ fontSize:17, fontWeight:800, marginBottom:5,
+      letterSpacing:'-.02em' } }, 'Inbox'),
+    e('div', { style:{ fontSize:12, color:'#64748b', marginBottom:14 } },
+      'Paste an email, WhatsApp message or note. The AI pulls out the actions, ' +
+      'dates and issues so nothing gets lost.'),
+
+    e('div', { className:'card', style:{ padding:14, marginBottom:14 } },
+      e('select', { value:projectId, onChange:ev=>setPid(ev.target.value),
+        className:'inp', style:{ marginBottom:9, width:'auto', minWidth:180 } },
+        e('option', { value:'' }, 'No site selected'),
+        ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+      e('textarea', { value:text, onChange:ev=>setText(ev.target.value), rows:9,
+        className:'inp', style:{ resize:'vertical', fontSize:13, lineHeight:1.6 },
+        placeholder:'Paste the email or message here...' }),
+      e('div', { style:{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' } },
+        e('button', { className:'btn btn-grey', onClick:()=>process(false),
+          disabled:busy || !text.trim() }, busy ? 'Processing...' : '👁 Preview'),
+        e('button', { className:'btn btn-orange', onClick:()=>process(true),
+          disabled:busy || !text.trim() }, '✨ Process & Create Actions')
+      )
+    ),
+
+    result && e('div', { className:'card', style:{ padding:14 } },
+      e('div', { style:{ fontSize:11, fontWeight:800, color:'#94a3b8',
+        textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 } },
+        'Extracted'),
+      result.summary && e('div', { style:{ fontSize:13, lineHeight:1.65,
+        marginBottom:12, padding:11, background:'#f8fafc', borderRadius:8 } },
+        result.summary),
+      result.actions?.length > 0 && e('div', { style:{ marginBottom:12 } },
+        e('div', { style:{ fontSize:11, fontWeight:700, color:'#475569',
+          marginBottom:6 } }, 'Actions (' + result.actions.length + ')'),
+        ...result.actions.map((a,i) =>
+          e('div', { key:i, style:{ fontSize:12, padding:'6px 10px',
+            background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:6,
+            marginBottom:4 } },
+            e('span', { style:{ fontWeight:600 } }, a.description),
+            a.assigned_text && e('span', { style:{ color:'#64748b' } },
+              ' - ' + a.assigned_text),
+            a.due_date && e('span', { style:{ color:'#c2410c', fontWeight:600 } },
+              ' (' + fmtDateShort(a.due_date) + ')')
+          ))
+      ),
+      result.issues_raised?.length > 0 && e('div', { style:{ marginBottom:12 } },
+        e('div', { style:{ fontSize:11, fontWeight:700, color:'#dc2626',
+          marginBottom:6 } }, 'Issues raised'),
+        ...result.issues_raised.map((s,i) =>
+          e('div', { key:i, style:{ fontSize:12, padding:'5px 10px',
+            background:'#fef2f2', borderRadius:6, marginBottom:4 } }, s))
+      ),
+      result.suggested_agenda_item && e('div', { style:{ fontSize:11.5,
+        color:'#64748b' } },
+        'Suggested agenda heading: ',
+        e('b', null, result.suggested_agenda_item))
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// ASK AI TAB
+// ══════════════════════════════════════════════════════════════════
+function AskTab({ projects }) {
+  const [q, setQ]           = useState('');
+  const [projectId, setPid] = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [answer, setAnswer] = useState('');
+  const [sources, setSources] = useState(0);
+
+  const SUGGESTIONS = [
+    'What safety issues have been raised across all sites recently?',
+    'What is outstanding on the programme?',
+    'Which actions are overdue and who owns them?',
+    'Has this problem come up on another site before?',
+  ];
+
+  async function ask(question) {
+    const text = question || q;
+    if (!text.trim()) return;
+    setQ(text); setBusy(true); setAnswer('');
+    const r = await api('/ai/ask', { method:'POST', body:JSON.stringify({
+      question: text, project_id: projectId || null }) }).then(r=>r.json());
+    setBusy(false);
+    if (r.ok) { setAnswer(r.answer); setSources(r.sources_searched || 0); }
+    else setAnswer('Search failed: ' + (r.error || 'unknown'));
+  }
+
+  return e('div', { style:{ padding:16, height:'100%', overflowY:'auto' } },
+    e('div', { style:{ fontSize:17, fontWeight:800, marginBottom:5,
+      letterSpacing:'-.02em' } }, 'Ask AI'),
+    e('div', { style:{ fontSize:12, color:'#64748b', marginBottom:14 } },
+      'Ask anything about your meeting records across every site.'),
+
+    e('div', { className:'card', style:{ padding:14, marginBottom:14 } },
+      e('div', { style:{ display:'flex', gap:8, marginBottom:9, flexWrap:'wrap' } },
+        e('select', { value:projectId, onChange:ev=>setPid(ev.target.value),
+          className:'inp', style:{ width:'auto', minWidth:150 } },
+          e('option', { value:'' }, 'All sites'),
+          ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name)))
+      ),
+      e('textarea', { value:q, onChange:ev=>setQ(ev.target.value), rows:3,
+        className:'inp', style:{ resize:'vertical', fontSize:13 },
+        placeholder:'Ask a question...',
+        onKeyDown: ev => { if (ev.key==='Enter' && (ev.metaKey||ev.ctrlKey)) ask(); } }),
+      e('button', { className:'btn btn-orange', onClick:()=>ask(),
+        disabled:busy || !q.trim(), style:{ marginTop:9 } },
+        busy ? 'Searching...' : '🔍 Ask')
+    ),
+
+    !answer && !busy && e('div', { style:{ marginBottom:14 } },
+      e('div', { style:{ fontSize:11, fontWeight:700, color:'#94a3b8',
+        textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 } },
+        'Try asking'),
+      e('div', { style:{ display:'flex', flexDirection:'column', gap:5 } },
+        ...SUGGESTIONS.map((s,i) =>
+          e('div', { key:i, onClick:()=>ask(s), className:'card',
+            style:{ padding:'9px 13px', fontSize:12, cursor:'pointer',
+                    color:'#475569' } }, s))
+      )
+    ),
+
+    busy && e('div', { className:'card', style:{ padding:30, textAlign:'center',
+      color:'#64748b' } },
+      e('div', { style:{ fontSize:26, marginBottom:8 } }, '🔍'),
+      'Searching meeting records...'),
+
+    answer && e('div', { className:'card', style:{ padding:16 } },
+      e('div', { style:{ fontSize:13.5, lineHeight:1.75, whiteSpace:'pre-wrap' } },
+        answer),
+      e('div', { style:{ marginTop:12, paddingTop:9, borderTop:'1px solid #f1f5f9',
+        fontSize:10.5, color:'#94a3b8' } },
+        'Searched ' + sources + ' minute entries')
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// SETUP TAB
+// ══════════════════════════════════════════════════════════════════
+function SetupTab({ projects, people, templates, series, reload }) {
+  const [tab, setTab] = useState('people');
+
+  return e('div', { style:{ padding:16, height:'100%', overflowY:'auto' } },
+    e('div', { style:{ fontSize:17, fontWeight:800, marginBottom:12,
+      letterSpacing:'-.02em' } }, 'Setup'),
+    e('div', { style:{ display:'flex', gap:5, marginBottom:14, flexWrap:'wrap' } },
+      ...[['people','People'],['projects','Sites'],
+          ['templates','Templates'],['series','Series']].map(([id,label]) =>
+        e('button', { key:id, onClick:()=>setTab(id),
+          className: tab===id ? 'btn btn-dark' : 'btn btn-grey' }, label))
+    ),
+    tab === 'people'    && e(PeopleSetup,    { people, reload }),
+    tab === 'projects'  && e(ProjectsSetup,  { projects, reload }),
+    tab === 'templates' && e(TemplatesSetup, { templates, projects, reload }),
+    tab === 'series'    && e(SeriesSetup,    { series, projects, templates, reload })
+  );
+}
+
+
+function PeopleSetup({ people, reload }) {
+  const [d, setD] = useState({ name:'', email:'', company:'', job_role:'' });
+  async function add() {
+    if (!d.name.trim()) return;
+    await api('/people', { method:'POST', body:JSON.stringify(d) });
+    setD({ name:'', email:'', company:'', job_role:'' });
+    reload();
+  }
+  return e('div', null,
+    e('div', { className:'card', style:{ padding:13, marginBottom:12 } },
+      e('div', { style:{ fontSize:12, fontWeight:700, marginBottom:9 } }, 'Add person'),
+      e('div', { style:{ display:'grid',
+        gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:8 } },
+        e('input', { className:'inp', placeholder:'Name', value:d.name,
+          onChange:ev=>setD({...d, name:ev.target.value}) }),
+        e('input', { className:'inp', placeholder:'Email', value:d.email,
+          onChange:ev=>setD({...d, email:ev.target.value}) }),
+        e('input', { className:'inp', placeholder:'Company', value:d.company,
+          onChange:ev=>setD({...d, company:ev.target.value}) }),
+        e('input', { className:'inp', placeholder:'Role', value:d.job_role,
+          onChange:ev=>setD({...d, job_role:ev.target.value}) })
+      ),
+      e('button', { className:'btn btn-orange', onClick:add,
+        style:{ marginTop:9 } }, '+ Add')
+    ),
+    e('div', { style:{ display:'flex', flexDirection:'column', gap:5 } },
+      ...people.map(p => e('div', { key:p.id, className:'card',
+        style:{ padding:'9px 13px', display:'flex', alignItems:'center', gap:10 } },
+        e('span', { className:'pill', style:{ background:'#0f172a', color:'#fff' } },
+          p.initials),
+        e('div', { style:{ flex:1 } },
+          e('div', { style:{ fontWeight:600, fontSize:13 } }, p.name),
+          e('div', { style:{ fontSize:11, color:'#94a3b8' } },
+            [p.job_role, p.company, p.email].filter(Boolean).join(' · '))
+        )
+      ))
+    )
+  );
+}
+
+
+function ProjectsSetup({ projects, reload }) {
+  const [d, setD] = useState({ name:'', project_no:'', address:'' });
+  async function add() {
+    if (!d.name.trim()) return;
+    await api('/projects', { method:'POST', body:JSON.stringify(d) });
+    setD({ name:'', project_no:'', address:'' });
+    reload();
+  }
+  return e('div', null,
+    e('div', { className:'card', style:{ padding:13, marginBottom:12 } },
+      e('div', { style:{ fontSize:12, fontWeight:700, marginBottom:9 } }, 'Add site'),
+      e('div', { style:{ display:'grid',
+        gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:8 } },
+        e('input', { className:'inp', placeholder:'Site name', value:d.name,
+          onChange:ev=>setD({...d, name:ev.target.value}) }),
+        e('input', { className:'inp', placeholder:'Project no.', value:d.project_no,
+          onChange:ev=>setD({...d, project_no:ev.target.value}) }),
+        e('input', { className:'inp', placeholder:'Address', value:d.address,
+          onChange:ev=>setD({...d, address:ev.target.value}) })
+      ),
+      e('button', { className:'btn btn-orange', onClick:add,
+        style:{ marginTop:9 } }, '+ Add')
+    ),
+    e('div', { style:{ display:'flex', flexDirection:'column', gap:5 } },
+      ...projects.map(p => e('div', { key:p.id, className:'card',
+        style:{ padding:'9px 13px' } },
+        e('div', { style:{ fontWeight:600, fontSize:13 } },
+          (p.project_no ? p.project_no + ' - ' : '') + p.name),
+        e('div', { style:{ fontSize:11, color:'#94a3b8' } }, p.address || ''),
+        p.smc_project_id && e('span', { className:'pill',
+          style:{ background:'#dcfce7', color:'#15803d', marginTop:4 } },
+          '🔗 Linked to Site Command Centre')
+      ))
+    )
+  );
+}
+
+
+function TemplatesSetup({ templates, projects, reload }) {
+  const [openId, setOpenId] = useState(null);
+  return e('div', null,
+    e('div', { style:{ fontSize:11.5, color:'#64748b', marginBottom:11 } },
+      'Agenda items are editable. Meetings snapshot the agenda when created, ' +
+      'so changing a template never rewrites past minutes.'),
+    e('div', { style:{ display:'flex', flexDirection:'column', gap:7 } },
+      ...templates.map(t => e('div', { key:t.id, className:'card',
+        style:{ padding:'11px 14px' } },
+        e('div', { onClick:()=>setOpenId(openId===t.id ? null : t.id),
+          style:{ display:'flex', alignItems:'center', gap:9, cursor:'pointer' } },
+          e('div', { style:{ flex:1 } },
+            e('div', { style:{ fontWeight:700, fontSize:13 } }, t.name),
+            e('div', { style:{ fontSize:11, color:'#94a3b8' } },
+              (t.items?.length || 0) + ' agenda items'
+              + (t.has_action_column ? ' · Action column' : '')
+              + (t.has_programme_review ? ' · Programme Review' : ''))
+          ),
+          e('span', { style:{ color:'#94a3b8' } }, openId===t.id ? '▾' : '▸')
+        ),
+        openId === t.id && e('div', { style:{ marginTop:10, paddingTop:10,
+          borderTop:'1px solid #f1f5f9', display:'flex', flexDirection:'column',
+          gap:3 } },
+          ...(t.items || []).map(i =>
+            e('div', { key:i.id, style:{ fontSize:12, padding:'3px 0',
+              paddingLeft: i.parent_no ? 22 : 0,
+              color: i.parent_no ? '#64748b' : '#0f172a' } },
+              e('b', { style:{ color:'#f97316', marginRight:7 } }, i.item_no),
+              i.title))
+        )
+      ))
+    )
+  );
+}
+
+
+function SeriesSetup({ series, projects, templates, reload }) {
+  const [d, setD] = useState({ name:'', project_id:'', template_id:'',
+                               frequency:'weekly' });
+  async function add() {
+    if (!d.name.trim() || !d.project_id) return;
+    await api('/series', { method:'POST', body:JSON.stringify(d) });
+    setD({ name:'', project_id:'', template_id:'', frequency:'weekly' });
+    reload();
+  }
+  return e('div', null,
+    e('div', { style:{ fontSize:11.5, color:'#64748b', marginBottom:11 } },
+      'A series links recurring meetings so open actions carry forward ' +
+      'automatically into Matters Arising.'),
+    e('div', { className:'card', style:{ padding:13, marginBottom:12 } },
+      e('div', { style:{ display:'grid',
+        gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:8 } },
+        e('input', { className:'inp', placeholder:'Series name', value:d.name,
+          onChange:ev=>setD({...d, name:ev.target.value}) }),
+        e('select', { className:'inp', value:d.project_id,
+          onChange:ev=>setD({...d, project_id:ev.target.value}) },
+          e('option', { value:'' }, 'Site...'),
+          ...projects.map(p => e('option', { key:p.id, value:p.id }, p.name))),
+        e('select', { className:'inp', value:d.template_id,
+          onChange:ev=>setD({...d, template_id:ev.target.value}) },
+          e('option', { value:'' }, 'Template...'),
+          ...templates.map(t => e('option', { key:t.id, value:t.id }, t.name))),
+        e('select', { className:'inp', value:d.frequency,
+          onChange:ev=>setD({...d, frequency:ev.target.value}) },
+          e('option', { value:'weekly' }, 'Weekly'),
+          e('option', { value:'fortnightly' }, 'Fortnightly'),
+          e('option', { value:'monthly' }, 'Monthly'))
+      ),
+      e('button', { className:'btn btn-orange', onClick:add,
+        style:{ marginTop:9 } }, '+ Add series')
+    ),
+    e('div', { style:{ display:'flex', flexDirection:'column', gap:5 } },
+      ...series.map(s => {
+        const p = projects.find(x => x.id === s.project_id);
+        const t = templates.find(x => x.id === s.template_id);
+        return e('div', { key:s.id, className:'card', style:{ padding:'9px 13px' } },
+          e('div', { style:{ fontWeight:600, fontSize:13 } }, s.name),
+          e('div', { style:{ fontSize:11, color:'#94a3b8' } },
+            [p?.name, t?.name, s.frequency].filter(Boolean).join(' · '))
+        );
+      })
+    )
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// APP SHELL
+// ══════════════════════════════════════════════════════════════════
+function App() {
+  const [tab, setTab]             = useState('meetings');
+  const [openMeeting, setOpenMtg] = useState(null);
+  const [projects, setProjects]   = useState([]);
+  const [people, setPeople]       = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [series, setSeries]       = useState([]);
+  const [meetings, setMeetings]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+
+  const reload = useCallback(async () => {
+    try {
+      const [pr, pe, tp, sr, mt] = await Promise.all([
+        jget('/projects'), jget('/people'), jget('/templates'),
+        jget('/series'), jget('/meetings'),
+      ]);
+      setProjects(Array.isArray(pr) ? pr : []);
+      setPeople(Array.isArray(pe) ? pe : []);
+      setTemplates(Array.isArray(tp) ? tp : []);
+      setSeries(Array.isArray(sr) ? sr : []);
+      setMeetings(Array.isArray(mt) ? mt : []);
+    } catch (ex) { console.error('Load failed', ex); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  if (loading) return e('div', { style:{ height:'100%', display:'flex',
+    alignItems:'center', justifyContent:'center', color:'#64748b' } }, 'Loading...');
+
+  if (openMeeting) return e('div', { style:{ height:'100%' } },
+    e(MeetingDetail, { meetingId: openMeeting, projects, templates, people,
+      onBack: () => { setOpenMtg(null); reload(); }, reload }));
+
+  return e('div', { style:{ height:'100%', display:'flex', flexDirection:'column' } },
+
+    e('div', { id:'topbar', style:{ background:'#0f172a', color:'#fff',
+      padding:'9px 16px', display:'flex', alignItems:'center', gap:10,
+      flexShrink:0 } },
+      e('span', { style:{ fontSize:17 } }, '📋'),
+      e('div', { style:{ flex:1 } },
+        e('div', { style:{ fontSize:13, fontWeight:800, letterSpacing:'-.01em' } },
+          'Meeting Minutes'),
+        e('div', { style:{ fontSize:9.5, color:'#94a3b8' } },
+          'Pennyfarthing Homes · ' + projects.length + ' sites')
+      ),
+      e('a', { href:'/mm/logout', style:{ color:'#94a3b8', fontSize:10,
+        textDecoration:'none' } }, 'Log out')
+    ),
+
+    e('div', { id:'tabbar', style:{ display:'flex', background:'#f8fafc',
+      borderBottom:'1px solid #e2e8f0', flexShrink:0 } },
+      ...TABS.map(t => e('button', { key:t.id, onClick:()=>setTab(t.id),
+        className: 'tab-btn' + (tab===t.id ? ' on' : '') },
+        e('span', null, t.icon), e('span', null, t.label)))
+    ),
+
+    e('div', { id:'content', style:{ flex:1, overflow:'hidden', minHeight:0 } },
+      tab === 'meetings' && e(MeetingsTab, { projects, templates, series, meetings,
+        people, reload, onOpen: setOpenMtg }),
+      tab === 'actions'  && e(ActionsTab,  { projects, people, reload }),
+      tab === 'inbox'    && e(InboxTab,    { projects }),
+      tab === 'ask'      && e(AskTab,      { projects }),
+      tab === 'setup'    && e(SetupTab,    { projects, people, templates, series, reload })
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(e(App, null));
+</script>
+</body>
+</html>
