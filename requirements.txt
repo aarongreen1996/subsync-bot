@@ -11,3 +11,5 @@ groq==0.9.0
 qrcode[pil]
 Pillow
 pypdf
+python-docx
+requests
