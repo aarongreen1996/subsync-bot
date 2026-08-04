@@ -289,6 +289,7 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [uploadPct, setUploadPct] = useState(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
@@ -444,6 +445,20 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
     alert(msg);
   }
 
+  async function importMinutes(text) {
+    setPasteOpen(false);
+    setBusy('Reading and filing your minutes...');
+    const r = await api('/ai/import-minutes/' + meetingId, { method:'POST',
+      body: JSON.stringify({ text }) }).then(r => r.json());
+    setBusy('');
+    if (!r.ok) { alert('Import failed: ' + (r.error || 'unknown')); return; }
+    load();
+    alert('Filed into ' + r.items_filled + ' agenda item'
+      + (r.items_filled === 1 ? '' : 's') + '.\n'
+      + r.actions_created + ' action' + (r.actions_created === 1 ? '' : 's')
+      + ' created.');
+  }
+
   const mmss = s => String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 
   return e('div', { style:{ height:'100%', overflowY:'auto', paddingBottom:24 } },
@@ -495,6 +510,8 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
                               if (f) uploadAudio(f); } }),
           m.transcript && e('button', { className:'btn btn-dark', onClick:draftMinutes },
             '✨ Draft Minutes with AI'),
+          e('button', { className:'btn btn-grey', onClick:()=>setPasteOpen(true) },
+            '📋 Paste Existing Minutes'),
           m.transcribe_status === 'processing' &&
             e('span', { style:{ fontSize:12, color:'#1d4ed8', fontWeight:600 } },
               '⏳ Transcribing - this runs in the background'),
@@ -563,6 +580,38 @@ function MeetingDetail({ meetingId, projects, templates, people, onBack, reload 
           hasActions: tpl.has_action_column !== false,
           onActionsChanged: load,
         }))
+      )
+    ),
+    pasteOpen && e(PasteMinutesModal, { onClose:()=>setPasteOpen(false),
+      onImport: importMinutes })
+  );
+}
+
+
+function PasteMinutesModal({ onClose, onImport }) {
+  const [text, setText] = useState('');
+  return e('div', { onClick:onClose, style:{ position:'fixed', inset:0,
+      background:'rgba(15,23,42,.6)', zIndex:300, display:'flex',
+      alignItems:'center', justifyContent:'center', padding:16 } },
+    e('div', { onClick:ev=>ev.stopPropagation(), className:'card',
+      style:{ width:640, maxWidth:'100%', padding:22, maxHeight:'88vh',
+              display:'flex', flexDirection:'column' } },
+      e('div', { style:{ fontSize:16, fontWeight:800, marginBottom:5 } },
+        'Paste Existing Minutes'),
+      e('div', { style:{ fontSize:12, color:'#64748b', marginBottom:12 } },
+        'Paste minutes you have already written - from Word, an email, or a PDF. '
+        + 'They will be filed against this meeting\'s agenda headings and any '
+        + 'actions pulled out automatically. Original wording is preserved.'),
+      e('textarea', { value:text, onChange:ev=>setText(ev.target.value), rows:14,
+        className:'inp', autoFocus:true,
+        style:{ resize:'vertical', fontSize:12.5, lineHeight:1.6, flex:1 },
+        placeholder:'Paste the full minutes here, including any attendees list '
+          + 'and action table...' }),
+      e('div', { style:{ display:'flex', gap:8, justifyContent:'flex-end',
+        marginTop:14 } },
+        e('button', { className:'btn btn-grey', onClick:onClose }, 'Cancel'),
+        e('button', { className:'btn btn-orange', disabled:!text.trim(),
+          onClick:()=>onImport(text) }, 'Import & File')
       )
     )
   );
